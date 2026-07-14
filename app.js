@@ -19,6 +19,9 @@
     el("companyName").textContent = DCR.company + " Portal";
     el("userPill").textContent = `${state.profile.displayName || state.profile.email} · ${state.profile.role}`;
     if (state.profile.role === "Admin") el("adminLink").style.display = "";
+    // "Team Sheets" is for managers/office (scope "*") and leads (have a crew).
+    var ts = state.profile.tsScope;
+    if (ts === "*" || (ts && ts.managed && ts.managed.length)) el("teamLink").style.display = "";
     el("logoutBtn").onclick = () => DCR.logout();
 
     buildNav(state.profile.permissions || {});
