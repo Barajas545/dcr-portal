@@ -11,6 +11,29 @@ var tsScopeInfo = null;       // "*"  OR  { self, managed:[...] }
 var editingId = null;
 var empHighlightIndex = -1;
 
+// Day types other than "Worked" are leave days: no project/schedule, hours may be 0.
+// The chosen type is stored in the Project field (per the payroll decision).
+var LEAVE_TYPES = ["Holiday", "Vacation", "Sick", "Day Off"];
+function currentDayType() { var s = document.getElementById("tsDayType"); return s ? s.value : "Worked"; }
+function isLeaveType(t) { return LEAVE_TYPES.indexOf(t) !== -1; }
+
+// React to the Day type selector: leave days lock Project to the type and hide the schedule.
+function onDayTypeChange() {
+  var type = currentDayType();
+  var proj = document.getElementById("tsProject");
+  if (isLeaveType(type)) {
+    proj.value = type;
+    proj.disabled = true;
+    document.getElementById("tsScheduleSection").style.display = "none";
+    document.getElementById("tsTimeline").innerHTML = "";
+    document.getElementById("tsCalcBar").innerHTML = "";
+  } else {
+    proj.disabled = false;
+    if (LEAVE_TYPES.indexOf(proj.value) !== -1) proj.value = "";
+    tsAutoCalcSchedule();
+  }
+}
+
 function escHtml(s) { return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 function fmtDate(v) { if(!v)return""; return new Date(v).toISOString().split("T")[0]; }
 function getSaturdayOf(date) { var d=new Date(date);d.setHours(0,0,0,0);var day=d.getDay();d.setDate(d.getDate()-(day===6?0:day+1));return d; }
@@ -64,6 +87,7 @@ function tsGetDefaults() {
 
 /* ── Auto-calculate schedule from hours ── */
 function tsAutoCalcSchedule() {
+  if (isLeaveType(currentDayType())) { document.getElementById("tsScheduleSection").style.display = "none"; return; }
   var hours = parseFloat(document.getElementById("tsHours").value) || 0;
   if (hours <= 0) { document.getElementById("tsScheduleSection").style.display = "none"; return; }
   var defaults = tsGetDefaults();
@@ -263,7 +287,9 @@ function clearForm(keepEmployee) {
   document.getElementById("tsDate").value="";
   document.getElementById("tsHours").value=0;
   document.getElementById("tsWork").value="";
+  document.getElementById("tsDayType").value="Worked";
   document.getElementById("tsProject").value="";
+  document.getElementById("tsProject").disabled=false;
   document.getElementById("formMsg").innerHTML="";
   document.getElementById("submitBtn").textContent="✓ Submit time sheet";
   document.getElementById("cancelBtn").style.display="none";
@@ -314,11 +340,14 @@ function editCard(id) {
     document.getElementById("tsName").value=item.timeSheetEmployeeName||"";
     document.getElementById("tsEmployeeID").value=item.timeSheetProployeeID||"";
   }
-  document.getElementById("tsProject").value=item.timeSheetProjectName||"";
+  var proj=item.timeSheetProjectName||"";
+  document.getElementById("tsDayType").value=isLeaveType(proj)?proj:"Worked";
+  document.getElementById("tsProject").value=proj;
+  document.getElementById("tsProject").disabled=isLeaveType(proj);
   document.getElementById("tsDate").value=fmtDate(item.timeSheetDate);
   document.getElementById("tsHours").value=item.timeSheetWorkHours||0;
   document.getElementById("tsWork").value=item.timeSheetWorkCompleted||"";
-  if (item.timeSheetWorkStatTime) {
+  if (!isLeaveType(proj) && item.timeSheetWorkStatTime) {
     document.getElementById("tsScheduleSection").style.display="";
     document.getElementById("tsStart1").value=tsDisplayToTimeInput(item.timeSheetWorkStatTime);
     document.getElementById("tsEnd1").value=tsDisplayToTimeInput(item.timeSheetWorkEndTime);
@@ -354,14 +383,20 @@ async function confirmDelete(id) {
 
 async function submitEntry() {
   var msg=document.getElementById("formMsg");
+  var dayType=currentDayType();
+  var leave=isLeaveType(dayType);
   var name=document.getElementById("tsName").value.trim();
   var employeeID=document.getElementById("tsEmployeeID").value.trim();
-  var project=document.getElementById("tsProject").value.trim();
+  var project=leave ? dayType : document.getElementById("tsProject").value.trim();
   var date=document.getElementById("tsDate").value;
   var hours=document.getElementById("tsHours").value;
   var work=document.getElementById("tsWork").value.trim();
 
-  if(!name||!project||!date||!hours||parseFloat(hours)<=0){msg.innerHTML='<span class="msg-error">Please complete all required fields (*) and set hours above 0.</span>';return;}
+  if(leave){
+    if(!name||!date){msg.innerHTML='<span class="msg-error">Please choose an employee and a date.</span>';return;}
+  } else if(!name||!project||!date||!hours||parseFloat(hours)<=0){
+    msg.innerHTML='<span class="msg-error">Please complete all required fields (*) and set hours above 0.</span>';return;
+  }
   if(!employeeID){var m=employeeList.find(function(emp){return(emp.name||"").toLowerCase()===name.toLowerCase();});if(m){employeeID=m.employeeId;document.getElementById("tsEmployeeID").value=employeeID;}}
 
   var s1=tsParseTimeInput("tsStart1"),e1=tsParseTimeInput("tsEnd1"),s2=tsParseTimeInput("tsStart2"),e2=tsParseTimeInput("tsEnd2");

@@ -126,6 +126,16 @@
         </div>
 
         <div class="ts-grid">
+          <div class="ts-full">
+            <label class="ts-label">Day type *</label>
+            <select id="tsDayType" class="ts-input" onchange="onDayTypeChange()">
+              <option value="Worked">Worked</option>
+              <option value="Holiday">Holiday</option>
+              <option value="Vacation">Vacation</option>
+              <option value="Sick">Sick day</option>
+              <option value="Day Off">Day off</option>
+            </select>
+          </div>
           <div>
             <label class="ts-label">Employee name *</label>
             <div class="emp-combo" id="empCombo">
