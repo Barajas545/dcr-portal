@@ -21,7 +21,10 @@
     if (state.profile.role === "Admin") el("adminLink").style.display = "";
     // "Team Sheets" is for managers/office (scope "*") and leads (have a crew).
     var ts = state.profile.tsScope;
-    if (ts === "*" || (ts && ts.managed && ts.managed.length)) el("teamLink").style.display = "";
+    if (ts === "*" || (ts && ts.managed && ts.managed.length)) {
+      el("teamLink").style.display = "";
+      el("batchLink").style.display = "";
+    }
     el("logoutBtn").onclick = () => DCR.logout();
 
     buildNav(state.profile.permissions || {});
