@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DCR Portal — Admin</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="topbar">
+      <div class="brand">
+        <div class="brand-badge">DCR</div>
+        <h1 id="companyName">DCR Portal — Admin</h1>
+      </div>
+      <div class="top-actions">
+        <span class="pill" id="userPill">…</span>
+        <a class="btn btn-ghost btn-sm" href="dashboard.html">Dashboard</a>
+        <button class="btn btn-ghost btn-sm" id="logoutBtn">Log out</button>
+      </div>
+    </div>
+
+    <main class="content">
+      <div class="page-head">
+        <h2>User Management</h2>
+        <div class="toolbar">
+          <button class="btn" id="newUserBtn">+ New User</button>
+        </div>
+      </div>
+      <div class="msg error" id="pageErr"></div>
+      <div id="usersArea"><div class="spinner">Loading…</div></div>
+    </main>
+
+    <!-- Create / edit user modal -->
+    <div class="modal-backdrop" id="modal">
+      <div class="modal">
+        <h3 id="modalTitle">New user</h3>
+        <div class="field-grid">
+          <div class="full">
+            <label for="uEmail">Email (username)</label>
+            <input id="uEmail" type="email" />
+          </div>
+          <div>
+            <label for="uName">Display name</label>
+            <input id="uName" type="text" />
+          </div>
+          <div>
+            <label for="uRole">Role</label>
+            <select id="uRole">
+              <option value="ReadOnly">Read-only</option>
+              <option value="Field">Field</option>
+              <option value="Manager">Manager</option>
+              <option value="Admin">Admin</option>
+            </select>
+          </div>
+          <div>
+            <label for="uActive">Status</label>
+            <select id="uActive">
+              <option value="true">Active</option>
+              <option value="false">Disabled</option>
+            </select>
+          </div>
+          <div>
+            <label for="uPass" id="passLabel">Temporary password</label>
+            <input id="uPass" type="text" placeholder="min 8 characters" autocomplete="off" />
+          </div>
+          <div class="full">
+            <label>Per-table overrides <span class="muted">(optional — blank = role default)</span></label>
+            <div class="perm-grid" id="permGrid"></div>
+          </div>
+        </div>
+        <div class="msg error" id="modalErr"></div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" id="cancelBtn">Cancel</button>
+          <button class="btn" id="saveBtn">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="common.js"></script>
+    <script src="admin.js"></script>
+  </body>
+</html>

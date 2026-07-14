@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DCR Portal — Sign In</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="auth-wrap">
+      <form class="auth-card" id="loginForm" autocomplete="on">
+        <div class="brand">
+          <div class="brand-badge">DCR</div>
+          <h1 id="companyName">DCR Portal</h1>
+        </div>
+        <p class="subtitle">Sign in to access your dashboard.</p>
+
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" required autocomplete="username" />
+
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" required autocomplete="current-password" />
+
+        <button class="btn btn-block" type="submit" id="submitBtn">Sign In</button>
+        <div class="msg error" id="err"></div>
+      </form>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="common.js"></script>
+    <script>
+      document.getElementById("companyName").textContent = DCR.company + " Portal";
+
+      // If already signed in, skip straight to the dashboard.
+      if (DCR.getToken()) {
+        DCR.api("/api/portal?action=me")
+          .then(() => (location.href = "dashboard.html"))
+          .catch(() => DCR.clearToken());
+      }
+
+      const form = document.getElementById("loginForm");
+      const err = document.getElementById("err");
+      const btn = document.getElementById("submitBtn");
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        err.classList.remove("show");
+        btn.disabled = true;
+        btn.textContent = "Signing in…";
+        try {
+          const data = await DCR.api("/api/portal?action=login", {
+            method: "POST",
+            auth: false,
+            body: {
+              email: document.getElementById("email").value.trim(),
+              password: document.getElementById("password").value,
+            },
+          });
+          DCR.setToken(data.token);
+          location.href = "dashboard.html";
+        } catch (ex) {
+          err.textContent = ex.message || "Sign in failed.";
+          err.classList.add("show");
+          btn.disabled = false;
+          btn.textContent = "Sign In";
+        }
+      });
+    </script>
+  </body>
+</html>
