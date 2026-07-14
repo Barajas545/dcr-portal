@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+    <title>DCR Time Sheet</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      body { background: var(--bg); }
+      .m-wrap { max-width: 560px; margin: 0 auto; padding: 0 14px 40px; }
+      .m-top {
+        position: sticky; top: 0; z-index: 20;
+        display: flex; align-items: center; justify-content: space-between; gap: 10px;
+        padding: 12px 14px; margin: 0 -14px 14px;
+        background: var(--surface); border-bottom: 1px solid var(--border);
+      }
+      .m-top .brand { display: flex; align-items: center; gap: 8px; }
+      .m-top h1 { font-size: 16px; margin: 0; }
+      .m-top-actions { display: flex; align-items: center; gap: 8px; }
+      .m-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px; margin-bottom: 14px; box-shadow: var(--shadow); }
+      .m-h { display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 700; margin: 0 0 14px; color: var(--text); }
+      .m-field { margin-bottom: 14px; }
+      .m-label { display: block; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); margin-bottom: 6px; }
+      .m-input, .m-select, .m-area {
+        width: 100%; box-sizing: border-box; padding: 13px 14px;
+        font-size: 16px; /* >=16px stops iOS zoom-on-focus */
+        border: 1px solid var(--border); border-radius: 11px;
+        background: var(--surface); color: var(--text); color-scheme: light dark; outline: none;
+      }
+      .m-input:focus, .m-select:focus, .m-area:focus { border-color: var(--acc); box-shadow: 0 0 0 3px var(--tint-2); }
+      .m-input:disabled { background: var(--surface-2); color: var(--text-muted); }
+      .m-area { resize: vertical; min-height: 76px; }
+      .m-static { padding: 13px 14px; border: 1px dashed var(--border); border-radius: 11px; font-size: 16px; font-weight: 600; color: var(--text); background: var(--surface-2); }
+      .m-note { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+
+      /* segmented day-type */
+      .m-seg { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+      .m-seg button { padding: 9px 4px; font-size: 12px; font-weight: 700; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); border-radius: 10px; cursor: pointer; }
+      .m-seg button.active { background: var(--acc); border-color: var(--acc); color: #fff; }
+
+      /* big hours stepper */
+      .m-step { display: flex; align-items: stretch; gap: 0; }
+      .m-step button { width: 64px; font-size: 30px; font-weight: 700; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); cursor: pointer; user-select: none; }
+      .m-step button:active { background: var(--tint-2); }
+      .m-step .minus { border-radius: 12px 0 0 12px; border-right: none; }
+      .m-step .plus { border-radius: 0 12px 12px 0; border-left: none; }
+      .m-step input { flex: 1; min-width: 0; text-align: center; font-size: 26px; font-weight: 800; border: 1px solid var(--border); background: var(--surface); color: var(--text); outline: none; }
+      .m-step input:focus { border-color: var(--acc); }
+
+      /* schedule */
+      .m-sched { background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-top: 4px; }
+      .m-sched-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); margin-bottom: 10px; }
+      .m-sess { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; align-items: center; }
+      .m-sess label { font-size: 12px; color: var(--text-muted); font-weight: 600; }
+      .m-time { padding: 9px 10px; font-size: 15px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); color: var(--text); color-scheme: light dark; width: 100%; box-sizing: border-box; }
+      .m-calc { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; padding: 8px 12px; border-radius: 9px; font-size: 13px; font-weight: 600; }
+      .m-calc.match { background: rgba(15,110,86,0.16); color: var(--ok); }
+      .m-calc.mismatch { background: rgba(139,105,20,0.20); color: var(--gold); }
+
+      .m-btn { width: 100%; padding: 15px; font-size: 16px; font-weight: 700; border: none; border-radius: 12px; background: var(--acc); color: #fff; cursor: pointer; }
+      .m-btn:active { background: var(--acc-2); }
+      .m-btn:disabled { background: #7a8595; }
+      .m-btn-ghost { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+      .m-msg { margin-top: 10px; padding: 11px 13px; border-radius: 10px; font-size: 14px; text-align: center; display: none; }
+      .m-msg.show { display: block; }
+      .m-msg.ok { background: rgba(15,110,86,0.16); color: var(--ok); }
+      .m-msg.err { background: rgba(200,55,31,0.16); color: var(--err); }
+
+      .m-daycard { display: flex; align-items: center; justify-content: space-between; padding: 10px 2px; }
+      .m-daylabel { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); margin: 16px 0 6px; }
+      .m-entry { border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-bottom: 10px; background: var(--surface); }
+      .m-entry-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+      .m-entry-proj { font-weight: 700; font-size: 15px; color: var(--text); }
+      .m-entry-work { font-size: 13px; color: var(--text-muted); margin-top: 2px; word-break: break-word; }
+      .m-badge { flex-shrink: 0; background: var(--tint-2); color: var(--badge-text); border-radius: 8px; padding: 3px 9px; font-size: 13px; font-weight: 800; white-space: nowrap; }
+      .m-badge.leave { background: rgba(139,105,20,0.20); color: var(--gold); }
+      .m-entry-actions { display: flex; gap: 8px; margin-top: 12px; }
+      .m-entry-actions button { flex: 1; padding: 9px; font-size: 13px; font-weight: 700; border-radius: 9px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); cursor: pointer; }
+      .m-entry-actions .del { color: var(--err); }
+      .m-empty { text-align: center; color: var(--text-muted); padding: 24px; }
+
+      /* accent vars (same blue as desktop), theme-aware badge text */
+      .m-wrap { --acc:#2f80d8; --acc-2:#1f6fc8; --tint-2: rgba(47,128,216,0.20);
+        --badge-text:#1f6fc8; --gold:#d6a13a; --ok:#2fa679; --err:#d9614f; }
+      @media (prefers-color-scheme: dark) { .m-wrap { --badge-text:#9cc9f5; } }
+      :root[data-theme="dark"] .m-wrap { --badge-text:#9cc9f5; }
+
+      .m-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: flex; align-items: flex-end; z-index: 60; }
+      .m-sheet { background: var(--surface); color: var(--text); width: 100%; border-radius: 16px 16px 0 0; padding: 20px 18px calc(20px + env(safe-area-inset-bottom)); box-shadow: 0 -6px 24px rgba(0,0,0,0.35); }
+      .m-sheet h3 { margin: 0 0 12px; font-size: 16px; }
+      .m-krow { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+      .m-krow span:first-child { color: var(--text-muted); }
+      .m-krow span:last-child { font-weight: 600; text-align: right; word-break: break-word; }
+      .m-sheet-actions { display: flex; gap: 8px; margin-top: 16px; }
+      .m-sheet-actions button { flex: 1; padding: 12px; font-size: 14px; font-weight: 700; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <div class="m-top">
+      <div class="brand"><div class="brand-badge">DCR</div><h1>Time Sheet</h1></div>
+      <div class="m-top-actions">
+        <span class="pill" id="userPill">…</span>
+        <button class="btn btn-ghost btn-sm" id="logoutBtn">Exit</button>
+      </div>
+    </div>
+
+    <div class="m-wrap">
+      <div class="m-card">
+        <div class="m-h">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--acc)" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span id="formTitle">New entry</span>
+        </div>
+
+        <div class="m-field">
+          <span class="m-label">Day type</span>
+          <div class="m-seg" id="daySeg">
+            <button type="button" data-type="Worked" class="active">Worked</button>
+            <button type="button" data-type="Holiday">Holiday</button>
+            <button type="button" data-type="Vacation">Vac.</button>
+            <button type="button" data-type="Sick">Sick</button>
+            <button type="button" data-type="Day Off">Off</button>
+          </div>
+          <input type="hidden" id="tsDayType" value="Worked" />
+        </div>
+
+        <div class="m-field">
+          <span class="m-label">Employee</span>
+          <select id="tsEmpSelect" class="m-select" onchange="onEmpChange()"></select>
+          <div id="empReadonly" class="m-static" style="display:none"></div>
+          <input type="hidden" id="tsName" /><input type="hidden" id="tsEmployeeID" />
+          <div class="m-note" id="empScopeNote"></div>
+        </div>
+
+        <div class="m-field" id="projField">
+          <span class="m-label">Project</span>
+          <input id="tsProject" class="m-input" list="tsProjList" placeholder="Select or type project" />
+          <datalist id="tsProjList"></datalist>
+        </div>
+
+        <div class="m-field">
+          <span class="m-label">Date</span>
+          <input id="tsDate" type="date" class="m-input" onchange="onDateChange()" />
+        </div>
+
+        <div class="m-field">
+          <span class="m-label">Hours worked</span>
+          <div class="m-step">
+            <button type="button" class="minus" onclick="adjustHours(-0.5)">&minus;</button>
+            <input id="tsHours" type="text" inputmode="decimal" value="0" oninput="syncHoursInput()" onblur="cleanHoursInput()" />
+            <button type="button" class="plus" onclick="adjustHours(0.5)">&plus;</button>
+          </div>
+        </div>
+
+        <div class="m-field" id="tsScheduleSection" style="display:none">
+          <div class="m-sched">
+            <div class="m-sched-title">Work schedule</div>
+            <div class="m-sess" style="margin-bottom:10px">
+              <label>Morning start</label><input type="time" class="m-time" id="tsStart1" onchange="tsRecalc()" />
+              <label>Morning end</label><input type="time" class="m-time" id="tsEnd1" onchange="tsRecalc()" />
+            </div>
+            <div class="m-sess" style="margin-bottom:10px">
+              <label>Lunch (hrs)</label><input type="text" inputmode="decimal" class="m-time" id="tsLunch" value="1" onchange="tsRecalc()" onblur="tsRecalc()" />
+              <label class="m-note" id="tsLunchRange" style="grid-column:1/-1"></label>
+            </div>
+            <div class="m-sess">
+              <label>Afternoon start</label><input type="time" class="m-time" id="tsStart2" onchange="tsRecalc()" />
+              <label>Afternoon end</label><input type="time" class="m-time" id="tsEnd2" onchange="tsRecalc()" />
+            </div>
+            <div id="tsCalcBar"></div>
+          </div>
+        </div>
+
+        <div class="m-field">
+          <span class="m-label">Work completed</span>
+          <textarea id="tsWork" class="m-area" placeholder="Describe the work (optional for leave days)…"></textarea>
+        </div>
+
+        <button class="m-btn" id="submitBtn" onclick="submitEntry()">✓ Submit time sheet</button>
+        <button class="m-btn m-btn-ghost" id="cancelBtn" onclick="cancelEdit()" style="display:none;margin-top:8px;">Cancel edit</button>
+        <div class="m-msg" id="formMsg"></div>
+      </div>
+
+      <div class="m-card">
+        <div class="m-daycard">
+          <div class="m-h" style="margin:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--acc)" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> Recent entries</div>
+          <button class="btn btn-ghost btn-sm" onclick="loadData()">&#8635;</button>
+        </div>
+        <div class="m-note" id="listNote" style="margin-bottom:6px"></div>
+        <div id="listArea"><div class="m-empty">Loading…</div></div>
+      </div>
+
+      <div style="text-align:center"><a class="m-note" href="timesheet.html?view=desktop" onclick="try{sessionStorage.setItem('tsView','desktop')}catch(e){}">🖥️ Switch to desktop view</a></div>
+    </div>
+
+    <div id="modalContainer"></div>
+
+    <script src="config.js"></script>
+    <script src="common.js"></script>
+    <script src="timesheet-mobile.js"></script>
+  </body>
+</html>

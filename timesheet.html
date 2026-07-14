@@ -104,6 +104,16 @@
       .ts-timeline-lunch { background: #e0a33a; }
       .ts-timeline-labels { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-muted); margin-top: 3px; }
     </style>
+    <script>
+      // Phones get the touch-optimized page, unless the user chose desktop.
+      (function () {
+        try {
+          var narrow = Math.min(window.innerWidth, window.screen ? window.screen.width : 9999) < 700;
+          var forceDesktop = /[?&]view=desktop/.test(location.search) || sessionStorage.getItem("tsView") === "desktop";
+          if (narrow && !forceDesktop) location.replace("timesheet-mobile.html");
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div class="topbar">
