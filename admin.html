@@ -64,6 +64,15 @@
             <input id="uPass" type="text" placeholder="min 8 characters" autocomplete="off" />
           </div>
           <div class="full">
+            <label for="uEmployee">Employee identity <span class="muted">(matches their name in TimeSheets — for their own time cards)</span></label>
+            <input id="uEmployee" type="text" list="rosterList" placeholder="Start typing an employee name…" autocomplete="off" />
+            <datalist id="rosterList"></datalist>
+          </div>
+          <div class="full">
+            <label for="uManaged">Manages timesheets for <span class="muted">(a lead/PM's crew — hold Ctrl/Cmd to pick several; leave empty for regular workers)</span></label>
+            <select id="uManaged" multiple size="6" style="height:auto;"></select>
+          </div>
+          <div class="full">
             <label>Per-table overrides <span class="muted">(optional — blank = role default)</span></label>
             <div class="perm-grid" id="permGrid"></div>
           </div>

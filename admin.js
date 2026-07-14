@@ -1,7 +1,10 @@
 // Admin console: create users, assign roles, override per-table access, reset passwords.
 (function () {
-  const state = { profile: null, users: [], lists: [], editing: null };
+  const state = { profile: null, users: [], lists: [], roster: [], editing: null };
   const el = (id) => document.getElementById(id);
+
+  const parseNames = (raw) =>
+    String(raw || "").split(/[\n;,]+/).map((s) => s.trim()).filter(Boolean);
 
   async function init() {
     state.profile = await DCR.requireAuth();
@@ -26,6 +29,12 @@
       state.lists = lists;
     } catch (e) {
       /* non-fatal: overrides picker just won't populate */
+    }
+    try {
+      const { employees } = await DCR.api("/api/portal?action=roster");
+      state.roster = employees || [];
+    } catch (e) {
+      /* non-fatal: employee/crew pickers just won't populate */
     }
     await loadUsers();
   }
@@ -99,6 +108,20 @@
     }
   }
 
+  function buildRosterControls(user) {
+    const names = (state.roster || []).map((e) => e.name).filter(Boolean).sort((a, b) => a.localeCompare(b));
+    el("rosterList").innerHTML = names.map((n) => `<option value="${DCR.esc(n)}">`).join("");
+    el("uEmployee").value = user ? user.employeeName || "" : "";
+    const managed = new Set(parseNames(user ? user.managedEmployees : "").map((n) => n.toLowerCase()));
+    el("uManaged").innerHTML = names
+      .map((n) => `<option value="${DCR.esc(n)}"${managed.has(n.toLowerCase()) ? " selected" : ""}>${DCR.esc(n)}</option>`)
+      .join("");
+  }
+
+  function collectManaged() {
+    return Array.from(el("uManaged").selectedOptions).map((o) => o.value);
+  }
+
   function collectOverrides() {
     const out = {};
     el("permGrid")
@@ -130,6 +153,7 @@
       }
     }
     buildPermGrid(overrides);
+    buildRosterControls(user);
     el("modal").classList.add("show");
   }
 
@@ -147,6 +171,8 @@
       role: el("uRole").value,
       active: el("uActive").value === "true",
       permissions: collectOverrides(),
+      employeeName: el("uEmployee").value.trim(),
+      managedEmployees: collectManaged(),
     };
 
     el("saveBtn").disabled = true;
