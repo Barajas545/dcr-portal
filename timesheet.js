@@ -32,6 +32,21 @@ function tsParseTimeInput(id) { var val=document.getElementById(id).value; if(!v
 function tsTimeToMinutes(t) { if(!t)return 0; return t.hours*60+t.minutes; }
 function tsMinutesToTime(m) { return { hours: Math.floor(m/60), minutes: m%60 }; }
 
+// The schedule columns are SharePoint dateTime fields (ISO). Combine the entry date
+// with a 24h time input to an ISO string; and format a stored ISO back to "7:59 AM".
+function tsTimeToISO(inputId, dateStr) {
+  var t = tsParseTimeInput(inputId);
+  if (!t || !dateStr) return null;
+  var p = String(dateStr).split("-");
+  if (p.length !== 3) return null;
+  var d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]), t.hours, t.minutes, 0, 0);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
+function tsIsoToDisplay(iso) {
+  var t = tsParseSpTime(iso);
+  return t ? tsTimeToDisplay(t.hours, t.minutes) : "";
+}
+
 /* ── Selected employee's schedule defaults (from roster) ── */
 function tsGetDefaults() {
   var name = document.getElementById("tsName").value.trim();
@@ -349,7 +364,6 @@ async function submitEntry() {
   if(!name||!project||!date||!hours||parseFloat(hours)<=0){msg.innerHTML='<span class="msg-error">Please complete all required fields (*) and set hours above 0.</span>';return;}
   if(!employeeID){var m=employeeList.find(function(emp){return(emp.name||"").toLowerCase()===name.toLowerCase();});if(m){employeeID=m.employeeId;document.getElementById("tsEmployeeID").value=employeeID;}}
 
-  function fmtSave(id){var t=tsParseTimeInput(id);if(!t)return"";return tsTimeToDisplay(t.hours,t.minutes);}
   var s1=tsParseTimeInput("tsStart1"),e1=tsParseTimeInput("tsEnd1"),s2=tsParseTimeInput("tsStart2"),e2=tsParseTimeInput("tsEnd2");
   var session1=0,session2=0;
   if(s1&&e1)session1=(tsTimeToMinutes(e1)-tsTimeToMinutes(s1))/60;
@@ -358,18 +372,19 @@ async function submitEntry() {
 
   var fields={
     timeSheetEmployeeName:name,
-    timeSheetProployeeID:employeeID,
     timeSheetProjectName:project,
     timeSheetDate:date,
     timeSheetWorkHours:Number(hours),
     timeSheetWorkCompleted:work,
-    timeSheetWorkStatTime:fmtSave("tsStart1"),
-    timeSheetWorkEndTime:fmtSave("tsEnd1"),
-    timeSheetWorkLunchTime:document.getElementById("tsLunch").value||"0",
-    timeSheetWorkStatTime2:fmtSave("tsStart2"),
-    timeSheetWorkEndTime2:fmtSave("tsEnd2"),
+    timeSheetWorkStatTime:tsTimeToISO("tsStart1",date),
+    timeSheetWorkEndTime:tsTimeToISO("tsEnd1",date),
+    timeSheetWorkLunchTime:Number(document.getElementById("tsLunch").value)||0,
+    timeSheetWorkStatTime2:tsTimeToISO("tsStart2",date),
+    timeSheetWorkEndTime2:tsTimeToISO("tsEnd2",date),
     timeSheetWorkCalculatedHours:Number(calculatedHours)
   };
+  // employee ID column is numeric — only send when we have one
+  if (employeeID) fields.timeSheetProployeeID = Number(employeeID);
 
   msg.innerHTML='<span style="color:#888;font-size:13px;">Saving&hellip;</span>';
   document.getElementById("submitBtn").disabled=true;
@@ -427,7 +442,14 @@ async function loadData() {
   document.getElementById("calArea").innerHTML='<div style="color:#888;font-size:14px;">Loading&hellip;</div>';
   try {
     var data = await DCR.api("/api/portal?action=timesheets");
-    allItems = data.items || [];
+    allItems = (data.items || []).map(function(it){
+      // schedule fields come back as ISO dateTimes — show them as clock times
+      it.timeSheetWorkStatTime = tsIsoToDisplay(it.timeSheetWorkStatTime);
+      it.timeSheetWorkEndTime = tsIsoToDisplay(it.timeSheetWorkEndTime);
+      it.timeSheetWorkStatTime2 = tsIsoToDisplay(it.timeSheetWorkStatTime2);
+      it.timeSheetWorkEndTime2 = tsIsoToDisplay(it.timeSheetWorkEndTime2);
+      return it;
+    });
     if (data.scope) tsScopeInfo = data.scope;
     var dl=document.getElementById("tsProjList");dl.innerHTML="";
     (data.projectNames||[]).forEach(function(name){var o=document.createElement("option");o.value=name;dl.appendChild(o);});
