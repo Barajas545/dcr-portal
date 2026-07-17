@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#1a1a1a">
-<title>DCR Photo Tasks</title>
+<title>DCR Tasks on Map</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
 :root{
@@ -389,7 +389,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-s
     <div id="ptTopBar" style="display:none;">
       <div class="pt-top-left">
         <img src="https://images.squarespace-cdn.com/content/62d99cb9f61a1a1ab61df5b3/b0c22d61-35f1-4aa4-bde5-17d8999f66c6/logo+black.png?content-type=image%2Fpng" alt="DCR">
-        <span class="pt-app-title">Photo Tasks</span>
+        <span class="pt-app-title">Tasks on Map</span>
         <div id="ptFilterFloat" style="display:none;">
           <button class="pt-filter-btn pt-active-all" data-f="all" onclick="ptSetFilter('all')"><span class="pt-dot"></span> All <span class="pt-filter-count" id="ptCntAll"></span></button>
           <button class="pt-filter-btn" data-f="urgent" onclick="ptSetFilter('urgent')"><span class="pt-dot"></span> Urgent <span class="pt-filter-count" id="ptCntUrgent"></span></button>
@@ -538,19 +538,32 @@ function ptParseNotes(raw){
 }
 function ptSerializeNotes(notes){return notes.map(n=>n.date?`[${n.date}] --- ${n.text}`:n.text).join("\r\n");}
 
-const _ptPinOverrides={};
-function ptGetSavedPin(addr){
-  if(_ptPinOverrides[addr])return _ptPinOverrides[addr];
-  try{const v=localStorage.getItem("ptPin_"+addr);return v?JSON.parse(v):null;}catch(e){return null;}
+// Pin coordinates live server-side in each task's TaskProjectCoordinates ("lat,lng"),
+// so a saved/adjusted pin is shared across users and devices.
+function ptParseCoords(s){
+  if(!s)return null;
+  const p=String(s).split(/[,;\s]+/).map(parseFloat).filter(n=>!isNaN(n));
+  if(p.length>=2&&Math.abs(p[0])<=90&&Math.abs(p[1])<=180)return{lat:p[0],lng:p[1]};
+  return null;
 }
-function ptSavePin(addr,lat,lng){
-  _ptPinOverrides[addr]={lat,lng};
-  try{localStorage.setItem("ptPin_"+addr,JSON.stringify({lat,lng}));}catch(e){}
+function ptTasksForAddr(addr){
+  return ptRecords.filter(t=>(cleanAddr(t.TaskProjectAddress)||t.TaskProjectName||"No Address")===addr);
+}
+function ptGroupCoords(info){
+  for(const t of info.tasks){const c=ptParseCoords(t.TaskProjectCoordinates);if(c)return c;}
+  return null;
+}
+// Write a pin to every task at this address so the location persists in SharePoint.
+function ptPersistCoords(tasks,lat,lng){
+  const val=Number(lat).toFixed(6)+","+Number(lng).toFixed(6);
+  tasks.forEach(t=>{
+    if((t.TaskProjectCoordinates||"")===val)return;
+    t.TaskProjectCoordinates=val;
+    DCR.api(TASKS_EP,{method:"PATCH",body:{itemId:(t.id||t.ID),TaskProjectCoordinates:val}}).catch(()=>{});
+  });
 }
 
 async function geocode(address,city){
-  const saved=ptGetSavedPin(address);
-  if(saved)return saved;
   const base="https://nominatim.openstreetmap.org/search?format=json&limit=1&email=cristobal%40dcrframing.com&q=";
   const q=[address,city].filter(Boolean).join(", ");
   try{const r=await fetch(base+encodeURIComponent(q));const data=await r.json();if(data&&data.length)return{lat:parseFloat(data[0].lat),lng:parseFloat(data[0].lon)};}catch(e){}
@@ -604,7 +617,7 @@ window.ptStartPinMove=function(addr,fromDrawer){
 window.ptConfirmPinMove=function(){
   if(!_ptPinMoveMarker)return;
   const ll=_ptPinMoveNewLatLng||_ptPinMoveMarker.getLatLng();
-  ptSavePin(_ptPinMoveAddr,ll.lat,ll.lng);
+  ptPersistCoords(ptTasksForAddr(_ptPinMoveAddr),ll.lat,ll.lng);
   _ptPinMoveMarker.setLatLng(ll);
   _ptPinMoveMarker.dragging.disable();
   _ptPinMoveMarker.off("dragend");
@@ -978,8 +991,16 @@ async function ptBuildMap(grouped){
   statusEl.style.display="block";
   const markers=[];let done=0;
   for(const [addr,info] of Object.entries(grouped)){
-    statusEl.textContent=`Locating ${done+1}/${addrs.length}...`;
-    const loc=await geocode(addr,info.city);done++;
+    done++;
+    // Use stored coordinates if we have them; otherwise geocode once and save them.
+    let loc=ptGroupCoords(info);
+    let persist=false;
+    if(!loc){
+      statusEl.textContent=`Locating ${done}/${addrs.length}...`;
+      loc=await geocode(addr,info.city);
+      if(loc)persist=true;
+      await sleep(1100); // Nominatim rate limit — only when we actually geocode
+    }
     if(loc){
       const sa=addr.replace(/\\/g,"\\\\").replace(/'/g,"\\'");
       const mk=L.marker([loc.lat,loc.lng],{draggable:false}).addTo(map);
@@ -992,8 +1013,8 @@ async function ptBuildMap(grouped){
         </div>
       </div>`);
       markers.push(mk);ptAllMarkers.push(mk);ptMarkerMap[addr]=mk;
+      if(persist)ptPersistCoords(info.tasks,loc.lat,loc.lng);
     }
-    if(done<addrs.length)await sleep(1100);
   }
   statusEl.style.display="none";
   if(markers.length===1)map.setView(markers[0].getLatLng(),14);
