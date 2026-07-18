@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DCR Portal — Project Board</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      html,body{height:100%;}
+      body{display:flex;flex-direction:column;overflow:hidden;}
+      .bd{
+        --acc:#2f80d8; --acc-2:#1f6fc8; --tint:rgba(47,128,216,0.12); --tint-2:rgba(47,128,216,0.22);
+        --gold:#d6a13a; --ok:#2fa679; --err:#d9614f; --purple:#8e6fd8;
+        flex:1; display:flex; flex-direction:column; min-height:0;
+      }
+      .bd-toolbar{
+        display:flex; align-items:center; gap:10px; padding:10px 16px; flex-wrap:wrap;
+        background:var(--surface); border-bottom:1px solid var(--border);
+      }
+      .bd-toolbar h2{margin:0; font-size:17px; color:var(--text); display:flex; align-items:center; gap:8px;}
+      .bd-search{
+        flex:1; min-width:160px; max-width:340px; padding:8px 12px; font-size:14px;
+        border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text);
+      }
+      .bd-search:focus{outline:none; border-color:var(--acc); box-shadow:0 0 0 3px var(--tint-2);}
+      .bd-btn{
+        padding:8px 14px; font-size:13px; font-weight:600; border-radius:8px; cursor:pointer;
+        border:1px solid var(--border); background:var(--surface); color:var(--text);
+      }
+      .bd-btn:hover{background:var(--surface-2);}
+      .bd-btn-primary{background:var(--acc); border-color:var(--acc); color:#fff;}
+      .bd-btn-primary:hover{background:var(--acc-2);}
+      .bd-note{font-size:12px; color:var(--text-muted);}
+
+      /* ── kanban ── */
+      .bd-main{flex:1; display:flex; min-height:0;}
+      .bd-cols{
+        flex:1; display:flex; gap:10px; padding:12px; overflow-x:auto; overflow-y:hidden;
+        -webkit-overflow-scrolling:touch; min-width:0;
+      }
+      .bd-col{
+        display:flex; flex-direction:column; min-width:225px; width:225px; flex-shrink:0;
+        background:var(--surface); border:1px solid var(--border); border-radius:12px;
+        border-top:3px solid var(--col-acc,var(--acc)); min-height:0;
+      }
+      .bd-col.drag-over{outline:2px dashed var(--col-acc,var(--acc)); outline-offset:-4px;}
+      .bd-col-head{
+        display:flex; align-items:center; justify-content:space-between;
+        padding:9px 12px 7px; font-size:12px; font-weight:700; text-transform:uppercase;
+        letter-spacing:.05em; color:var(--text);
+      }
+      .bd-col-count{
+        background:var(--surface-2); color:var(--text-muted); border-radius:12px;
+        padding:1px 8px; font-size:11px; font-weight:700;
+      }
+      .bd-col-body{flex:1; overflow-y:auto; padding:0 8px 10px; display:flex; flex-direction:column; gap:7px;}
+
+      .bd-card{
+        background:var(--surface-2); border:1px solid var(--border); border-radius:9px;
+        padding:8px 10px; cursor:pointer; transition:border-color .12s, box-shadow .12s;
+      }
+      .bd-card:hover{border-color:var(--col-acc,var(--acc));}
+      .bd-card.selected{border-color:var(--col-acc,var(--acc)); box-shadow:0 0 0 2px var(--tint-2);}
+      .bd-card.dragging{opacity:.45;}
+      .bd-card-top{display:flex; align-items:center; justify-content:space-between; gap:6px; margin-bottom:2px;}
+      .bd-card-id{font-size:11px; font-weight:800; color:var(--col-acc,var(--acc)); letter-spacing:.02em;}
+      .bd-card-date{font-size:10px; color:var(--text-muted); white-space:nowrap;}
+      .bd-card-name{font-size:13px; font-weight:600; color:var(--text); line-height:1.3;
+        display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;}
+      .bd-card-addr{font-size:11px; color:var(--text-muted); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+      .bd-card-desc{font-size:11px; color:var(--text-muted); font-style:italic; margin-top:3px;
+        white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+      .bd-flag{color:var(--gold); font-size:11px;}
+      .bd-empty-col{color:var(--text-muted); font-size:12px; text-align:center; padding:16px 4px;}
+
+      /* ── side panel ── */
+      .bd-panel{
+        width:330px; flex-shrink:0; border-left:1px solid var(--border); background:var(--surface);
+        display:none; flex-direction:column; min-height:0;
+      }
+      .bd-panel.open{display:flex;}
+      .bd-panel-head{display:flex; align-items:flex-start; justify-content:space-between; gap:8px; padding:12px 14px 0;}
+      .bd-panel-title{font-size:15px; font-weight:700; color:var(--text); line-height:1.35;}
+      .bd-panel-sub{font-size:12px; color:var(--text-muted); margin-top:2px;}
+      .bd-close{
+        width:28px; height:28px; border-radius:50%; border:none; background:var(--surface-2);
+        color:var(--text-muted); font-size:14px; cursor:pointer; flex-shrink:0;
+      }
+      .bd-panel-body{flex:1; overflow-y:auto; padding:12px 14px 20px;}
+      .bd-thumb{
+        width:100%; aspect-ratio:16/10; border-radius:10px; border:1px solid var(--border);
+        background:var(--surface-2); display:flex; align-items:center; justify-content:center;
+        overflow:hidden; margin-bottom:12px; color:var(--text-muted); font-size:12px;
+      }
+      .bd-thumb img{width:100%; height:100%; object-fit:cover;}
+      .bd-meta{font-size:13px; color:var(--text); margin-bottom:6px; display:flex; gap:8px;}
+      .bd-meta .k{color:var(--text-muted); min-width:52px;}
+      .bd-status-row{display:flex; gap:8px; margin:12px 0;}
+      .bd-status-sel{
+        flex:1; padding:8px 10px; font-size:14px; border:1px solid var(--border); border-radius:8px;
+        background:var(--surface); color:var(--text);
+      }
+      .bd-sec{font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.07em;
+        color:var(--text-muted); margin:14px 0 8px;}
+      .bd-log{background:var(--surface-2); border:1px solid var(--border); border-radius:8px;
+        padding:8px 10px; margin-bottom:7px;}
+      .bd-log-date{font-size:10px; font-weight:700; color:var(--text-muted); text-transform:uppercase; margin-bottom:3px;}
+      .bd-log-text{font-size:12.5px; color:var(--text); line-height:1.45; white-space:pre-wrap; word-break:break-word;}
+      .bd-log-user{font-size:10px; color:var(--text-muted); margin-top:3px;}
+      .bd-addlog{width:100%; box-sizing:border-box; min-height:60px; padding:9px 11px; font-size:13px;
+        border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text); resize:vertical;}
+      .bd-addlog:focus{outline:none; border-color:var(--acc);}
+      .bd-msg{font-size:12px; margin-top:6px; min-height:16px;}
+      .bd-msg.ok{color:var(--ok);} .bd-msg.err{color:var(--err);}
+
+      /* ── modal (new project) ── */
+      .bd-overlay{position:fixed; inset:0; background:rgba(0,0,0,.55); display:none;
+        align-items:center; justify-content:center; z-index:60; padding:16px;}
+      .bd-overlay.open{display:flex;}
+      .bd-modal{background:var(--surface); color:var(--text); border:1px solid var(--border);
+        border-radius:14px; width:100%; max-width:420px; padding:22px; box-shadow:0 8px 32px rgba(0,0,0,.35);}
+      .bd-modal h3{margin:0 0 14px; font-size:16px;}
+      .bd-field{margin-bottom:11px;}
+      .bd-field label{display:block; font-size:12px; font-weight:600; color:var(--text-muted); margin-bottom:4px;}
+      .bd-field input{width:100%; box-sizing:border-box; padding:9px 11px; font-size:14px;
+        border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text);}
+      .bd-field input:focus{outline:none; border-color:var(--acc); box-shadow:0 0 0 3px var(--tint-2);}
+      .bd-modal-actions{display:flex; justify-content:flex-end; gap:8px; margin-top:14px;}
+
+      /* ── mobile: panel becomes a sheet ── */
+      @media (max-width:900px){
+        .bd-panel{position:fixed; left:0; right:0; bottom:0; top:auto; width:auto; max-height:72vh;
+          border-left:none; border-top:1px solid var(--border); border-radius:16px 16px 0 0;
+          box-shadow:0 -8px 32px rgba(0,0,0,.35); z-index:50;}
+        .bd-col{min-width:200px; width:200px;}
+      }
+    </style>
+  </head>
+  <body>
+    <div class="topbar">
+      <div class="brand"><div class="brand-badge">DCR</div><h1 id="companyName">DCR Portal</h1></div>
+      <div class="top-actions">
+        <span class="pill" id="userPill">…</span>
+        <a class="btn btn-ghost btn-sm" href="dashboard.html">Dashboard</a>
+        <button class="btn btn-ghost btn-sm" id="logoutBtn">Log out</button>
+      </div>
+    </div>
+
+    <div class="bd">
+      <div class="bd-toolbar">
+        <h2>📋 Project Board</h2>
+        <input id="bdSearch" class="bd-search" type="search" placeholder="Search projects…" />
+        <button class="bd-btn bd-btn-primary" id="bdNewBtn" style="display:none">＋ New Project</button>
+        <button class="bd-btn" id="bdRefreshBtn" title="Refresh">↻</button>
+        <span class="bd-note" id="bdNote"></span>
+      </div>
+      <div class="bd-main">
+        <div class="bd-cols" id="bdCols"><div class="bd-empty-col" style="margin:auto">Loading board…</div></div>
+
+        <aside class="bd-panel" id="bdPanel">
+          <div class="bd-panel-head">
+            <div style="flex:1;min-width:0">
+              <div class="bd-panel-title" id="bdPTitle"></div>
+              <div class="bd-panel-sub" id="bdPSub"></div>
+            </div>
+            <button class="bd-close" id="bdPClose">✕</button>
+          </div>
+          <div class="bd-panel-body">
+            <div class="bd-thumb" id="bdThumb">No preview</div>
+            <div class="bd-meta"><span class="k">Client</span><span id="bdPClient">—</span></div>
+            <div class="bd-meta"><span class="k">Date</span><span id="bdPDate">—</span></div>
+            <div class="bd-meta"><span class="k">Notes</span><span id="bdPDesc">—</span></div>
+            <div class="bd-status-row" id="bdStatusRow" style="display:none">
+              <select class="bd-status-sel" id="bdStatusSel"></select>
+              <button class="bd-btn bd-btn-primary" id="bdStatusGo">Update</button>
+            </div>
+            <div class="bd-msg" id="bdPMsg"></div>
+            <div class="bd-sec">Recent Log Entries</div>
+            <div id="bdLogs"><div class="bd-note">Loading…</div></div>
+            <div id="bdAddLogWrap" style="display:none">
+              <div class="bd-sec">Add Log Entry</div>
+              <textarea id="bdAddLog" class="bd-addlog" placeholder="Write a log entry…"></textarea>
+              <button class="bd-btn bd-btn-primary" id="bdAddLogGo" style="margin-top:7px">Save entry</button>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <!-- New Project modal -->
+    <div class="bd-overlay" id="bdNewModal">
+      <div class="bd-modal">
+        <h3>New Project (starts as New Request)</h3>
+        <div class="bd-field"><label>Internal ID number *</label><input id="npId" placeholder="e.g. A055" /></div>
+        <div class="bd-field"><label>Project name *</label><input id="npName" placeholder="e.g. Smith Residence" /></div>
+        <div class="bd-field"><label>Address</label><input id="npAddr" /></div>
+        <div class="bd-field"><label>City</label><input id="npCity" /></div>
+        <div class="bd-msg err" id="npMsg"></div>
+        <div class="bd-modal-actions">
+          <button class="bd-btn" id="npCancel">Cancel</button>
+          <button class="bd-btn bd-btn-primary" id="npCreate">✓ Create project</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="common.js"></script>
+    <script src="board.js"></script>
+  </body>
+</html>
