@@ -444,7 +444,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-s
             <div style="flex:1;min-width:0;">
               <div class="pt-m1-addr" id="ptD1Title"></div>
               <div class="pt-m1-sub" id="ptD1Sub"></div>
-              <div id="ptD1DirWrap"><button class="pt-dir-btn" onclick="ptGetDirections()" style="margin:12px 0 8px;">Get Directions</button></div>
+              <div id="ptD1DirWrap" style="display:flex;gap:8px;margin:12px 0 8px;">
+                <button class="pt-dir-btn" onclick="ptGetDirections()" style="flex:1;">Get Directions</button>
+                <button class="pt-dir-btn" id="ptD1MovePinBtn" onclick="ptMovePinFromDrawer1()" style="flex:1;background:#555;">&#x1F4CD; Move Pin</button>
+              </div>
             </div>
             <button class="pt-m1-close" onclick="ptCloseDrawer1()">&#x2715;</button>
           </div>
@@ -750,12 +753,13 @@ window.ptOpenMasterDrawer=function(){
 window.ptOpenDrawer1=function(addr){
   ptMasterMode=false;
   ptCurrentAddr=addr;
-  document.getElementById("ptSortBar").style.display="none";document.getElementById("ptD1DirWrap").style.display="block";
+  document.getElementById("ptSortBar").style.display="none";document.getElementById("ptD1DirWrap").style.display="flex";
   const grouped=groupByAddr(ptFilteredRecords());
   const info=grouped[addr];
   ptCurrentAddrFull=addr+(info&&info.city?", "+info.city:"");
   document.getElementById("ptD1Title").textContent=addr;
   document.getElementById("ptD1Sub").textContent=info&&info.name?info.name:"";
+  document.getElementById("ptD1MovePinBtn").style.display=ptMarkerMap[addr]?"":"none";
   const tasks=info?[...info.tasks].filter(t=>!t.TaskCheckComplete).sort((a,b)=>priOrder(a.TaskPrioraty)-priOrder(b.TaskPrioraty)):[];
   const scroll=document.getElementById("ptTaskScroll");
   if(!tasks.length){
@@ -770,8 +774,15 @@ window.ptCloseDrawer1=function(){
   document.getElementById("ptModal1Overlay").classList.remove("open");
   ptCurrentAddr="";
   ptMasterMode=false;
-  document.getElementById("ptSortBar").style.display="none";document.getElementById("ptD1DirWrap").style.display="block";
+  document.getElementById("ptSortBar").style.display="none";document.getElementById("ptD1DirWrap").style.display="flex";
   ptNavClearActive();
+};
+
+window.ptMovePinFromDrawer1=function(){
+  const addr=ptCurrentAddr;
+  if(!addr||!ptMarkerMap[addr])return;
+  ptCloseDrawer1();
+  ptStartPinMove(addr,false);
 };
 
 let ptCurrentTaskId="";
