@@ -90,6 +90,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-s
 .pt-filter-btn .pt-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--dot-color);flex-shrink:0;}
 .pt-filter-count{background:rgba(255,255,255,0.2);color:#fff;border-radius:12px;padding:1px 6px;font-size:10px;font-weight:700;}
 
+/* person (crew) dropdown */
+.pt-person-sel{
+  background:rgba(255,255,255,.1);color:#fff;
+  border:1.5px solid rgba(255,255,255,.3);border-radius:16px;
+  padding:5px 8px;font-size:12px;font-weight:600;font-family:inherit;
+  max-width:150px;min-height:28px;cursor:pointer;flex-shrink:0;
+}
+.pt-person-sel option{color:#1a1a1a;background:#fff;}
+
 /* ═══ SIDE PANEL ═══ */
 #ptSidePanel{
   position:absolute;left:0;top:0;bottom:0;z-index:600;
@@ -326,19 +335,26 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-s
   cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;min-height:48px;
 }
 
-/* PIN MOVE BAR */
-#ptPinMoveBar{
-  display:none;position:absolute;bottom:calc(var(--safe-bottom)+16px);
-  left:50%;transform:translateX(-50%);z-index:620;
-  background:#1a1a1a;border-radius:16px;padding:12px 16px;
-  align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;
-  width:max-content;max-width:calc(100vw - 24px);
-  box-shadow:0 4px 20px rgba(0,0,0,0.5);
+/* PIN MOVE CONTROLS — float right above the pin and follow it while dragging */
+#ptPinCtl{
+  display:none;position:absolute;z-index:620;
+  transform:translate(-50%,-100%);
+  flex-direction:column;align-items:center;gap:6px;
+  pointer-events:none;
 }
-#ptPinMoveBar span{color:#fff;font-size:13px;font-weight:600;width:100%;text-align:center;}
-#ptPinMoveBar button{padding:11px 18px;border-radius:10px;border:none;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;flex:1 1 auto;min-width:120px;min-height:44px;-webkit-tap-highlight-color:transparent;}
-#ptPinMoveSave{background:#2e7d32;color:#fff;}
-#ptPinMoveCancel{background:rgba(255,255,255,.14);color:#fff;}
+#ptPinCtl .pt-pinctl-tip{
+  pointer-events:none;background:rgba(26,26,26,.92);color:#fff;
+  font-size:11px;font-weight:600;padding:5px 12px;border-radius:10px;white-space:nowrap;
+  box-shadow:0 2px 10px rgba(0,0,0,.35);
+}
+#ptPinCtl .pt-pinctl-row{display:flex;gap:8px;pointer-events:auto;}
+#ptPinCtl button{
+  padding:11px 18px;border-radius:12px;border:none;font-size:14px;font-weight:700;
+  cursor:pointer;font-family:inherit;min-height:44px;min-width:96px;
+  box-shadow:0 4px 14px rgba(0,0,0,.45);-webkit-tap-highlight-color:transparent;
+}
+#ptPinCtlSave{background:#2e7d32;color:#fff;}
+#ptPinCtlCancel{background:#1a1a1a;color:#fff;border:1px solid rgba(255,255,255,.25);}
 
 /* TOAST */
 #ptPriorityToast{
@@ -391,6 +407,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-s
       <div class="pt-top-left">
         <img src="https://images.squarespace-cdn.com/content/62d99cb9f61a1a1ab61df5b3/b0c22d61-35f1-4aa4-bde5-17d8999f66c6/logo+black.png?content-type=image%2Fpng" alt="DCR">
         <span class="pt-app-title">Tasks on Map</span>
+        <select id="ptPersonSel" class="pt-person-sel" style="display:none;" onchange="ptSetPerson(this.value)" title="Show tasks for"></select>
         <div id="ptFilterFloat" style="display:none;">
           <button class="pt-filter-btn pt-active-all" data-f="all" onclick="ptSetFilter('all')"><span class="pt-dot"></span> All <span class="pt-filter-count" id="ptCntAll"></span></button>
           <button class="pt-filter-btn" data-f="urgent" onclick="ptSetFilter('urgent')"><span class="pt-dot"></span> Urgent <span class="pt-filter-count" id="ptCntUrgent"></span></button>
@@ -400,6 +417,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-s
       </div>
       <div class="pt-user-pill">
         <span id="ptHeaderName"></span>
+        <button class="pt-switch-btn" onclick="ptRefreshTasks()" title="Refresh tasks">&#8635;</button>
         <button class="pt-switch-btn" onclick="location.href='dashboard.html'">Menu</button>
         <button class="pt-switch-btn" onclick="ptLogout()">Log out</button>
       </div>
@@ -429,10 +447,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-s
 
     <div id="ptPriorityToast"></div>
     <div id="ptGeocodeStatus"></div>
-    <div id="ptPinMoveBar">
-      <span>&#x1F4CD; Drag pin to correct location</span>
-      <button id="ptPinMoveSave" onclick="ptConfirmPinMove()">&#x2713; Save</button>
-      <button id="ptPinMoveCancel" onclick="ptCancelPinMove()">Cancel</button>
+    <div id="ptPinCtl">
+      <div class="pt-pinctl-tip">&#x1F4CD; Drag the pin, then save</div>
+      <div class="pt-pinctl-row">
+        <button id="ptPinCtlSave" onclick="ptConfirmPinMove()">&#x2713; Save</button>
+        <button id="ptPinCtlCancel" onclick="ptCancelPinMove()">Cancel</button>
+      </div>
     </div>
 
     <!-- MODAL 1: TASK LIST -->
@@ -518,6 +538,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-s
 const TASKS_EP="/api/portal?action=tasks";
 let ptUser="",ptRecords=[],ptFilter="all",ptSearch="",ptMap=null,ptAllMarkers=[],ptMarkerMap={};
 let ptCurrentAddr="",ptCurrentAddrFull="";
+let ptPersonFilter="all",ptMultiPerson=false;
+
+// Records limited to the person chosen in the dropdown ("all" = everyone in my scope).
+function ptPersonRecords(){
+  if(ptPersonFilter==="all")return[...ptRecords];
+  return ptRecords.filter(t=>((t.TaskAssignedPerson||"Unassigned").trim()||"Unassigned")===ptPersonFilter);
+}
 
 function esc(v){if(!v)return"";return String(v).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");}
 function cleanAddr(v){return(v||"").replace(/[\r\n]+/g,", ").trim();}
@@ -579,12 +606,50 @@ async function geocode(address,city){
 
 function ptUpdateCount(){}
 function ptUpdateFilterCounts(){
+  const base=ptPersonRecords();
   const sc=(id,n)=>{const el=document.getElementById(id);if(el)el.textContent=n>0?n:"";};
-  sc("ptCntAll",ptRecords.length);
-  sc("ptCntUrgent",ptRecords.filter(t=>priKey(t.TaskPrioraty)==="urgent").length);
-  sc("ptCntMedium",ptRecords.filter(t=>priKey(t.TaskPrioraty)==="medium").length);
-  sc("ptCntLow",ptRecords.filter(t=>priKey(t.TaskPrioraty)==="low").length);
+  sc("ptCntAll",base.length);
+  sc("ptCntUrgent",base.filter(t=>priKey(t.TaskPrioraty)==="urgent").length);
+  sc("ptCntMedium",base.filter(t=>priKey(t.TaskPrioraty)==="medium").length);
+  sc("ptCntLow",base.filter(t=>priKey(t.TaskPrioraty)==="low").length);
 }
+
+/* ── person (crew) dropdown ── */
+function ptBuildPersonSel(){
+  const sel=document.getElementById("ptPersonSel");
+  const counts={};
+  ptRecords.forEach(t=>{const n=(t.TaskAssignedPerson||"Unassigned").trim()||"Unassigned";counts[n]=(counts[n]||0)+1;});
+  const names=Object.keys(counts).sort();
+  ptMultiPerson=names.length>1;
+  if(!ptMultiPerson){sel.style.display="none";ptPersonFilter="all";return;}
+  sel.innerHTML='<option value="all">&#x1F465; Everyone ('+ptRecords.length+')</option>'
+    +names.map(n=>'<option value="'+esc(n)+'">'+esc(n)+' ('+counts[n]+')</option>').join("");
+  sel.value=(ptPersonFilter==="all"||counts[ptPersonFilter])?ptPersonFilter:"all";
+  if(sel.value!==ptPersonFilter)ptPersonFilter=sel.value;
+  sel.style.display="";
+}
+
+window.ptSetPerson=function(p){
+  ptPersonFilter=p||"all";
+  ptUpdateFilterCounts();ptRefreshChips();ptUpdateMapPins();
+  if(ptMasterMode)ptOpenMasterDrawer();
+  else if(ptCurrentAddr){
+    const g=groupByAddr(ptFilteredRecords());
+    if(g[ptCurrentAddr])ptOpenDrawer1(ptCurrentAddr);else ptCloseDrawer1();
+  }
+  // fly the map to this person's locations
+  const addrs=new Set(ptPersonRecords().map(t=>cleanAddr(t.TaskProjectAddress)||t.TaskProjectName||"No Address"));
+  const mks=Object.entries(ptMarkerMap).filter(([a])=>addrs.has(a)).map(([,m])=>m);
+  if(ptMap&&mks.length>1)ptMap.flyToBounds(L.featureGroup(mks).getBounds().pad(0.3),{animate:true,duration:1.0,maxZoom:13});
+  else if(ptMap&&mks.length===1)ptMap.flyTo(mks[0].getLatLng(),14,{animate:true,duration:1.0});
+};
+
+window.ptRefreshTasks=async function(){
+  const toast=document.getElementById("ptPriorityToast");
+  toast.textContent="Refreshing…";toast.style.background="#1a1a1a";toast.style.display="block";
+  await ptLoadTasks();
+  toast.style.display="none";
+};
 
 /* BOTTOM NAV */
 window.ptNavTo=function(tab){
@@ -602,6 +667,32 @@ window.ptNavClearActive=function(){
 };
 
 let _ptPinMoveAddr=null,_ptPinMoveMarker=null,_ptPinMoveOrigLatLng=null,_ptPinMoveNewLatLng=null;
+
+// Keep the Save/Cancel controls glued just above the pin, clamped on-screen.
+function ptPositionPinCtl(){
+  if(!_ptPinMoveMarker||!ptMap)return;
+  const el=document.getElementById("ptPinCtl");
+  const pt=ptMap.latLngToContainerPoint(_ptPinMoveMarker.getLatLng());
+  const vp=document.getElementById("ptMapViewport");
+  const w=vp.clientWidth,h=vp.clientHeight;
+  let topSafe=70;
+  const tb=document.getElementById("ptTopBar");
+  const nav=document.getElementById("ptBottomNav");
+  if(tb&&tb.style.display!=="none")topSafe=tb.getBoundingClientRect().bottom+8;
+  if(nav&&getComputedStyle(nav).display!=="none")topSafe=nav.getBoundingClientRect().bottom+8;
+  let x=Math.min(Math.max(pt.x,110),w-110);
+  let y=pt.y-50;                 // just above the marker icon
+  y=Math.max(y,topSafe+86);      // never under the bars
+  y=Math.min(y,h-16);
+  el.style.left=x+"px";
+  el.style.top=y+"px";
+}
+function ptHidePinCtl(){
+  document.getElementById("ptPinCtl").style.display="none";
+  if(_ptPinMoveMarker)_ptPinMoveMarker.off("drag",ptPositionPinCtl);
+  if(ptMap)ptMap.off("move zoom",ptPositionPinCtl);
+}
+
 window.ptStartPinMove=function(addr,fromDrawer){
   const mk=ptMarkerMap[addr];
   if(!mk)return;
@@ -615,7 +706,11 @@ window.ptStartPinMove=function(addr,fromDrawer){
   mk.off("dragend").on("dragend",function(e){_ptPinMoveNewLatLng=e.target.getLatLng();});
   mk.setOpacity(0.85);
   ptMap.panTo(mk.getLatLng(),{animate:true,duration:0.5});
-  document.getElementById("ptPinMoveBar").style.display="flex";
+  document.getElementById("ptPinCtl").style.display="flex";
+  mk.on("drag",ptPositionPinCtl);
+  ptMap.on("move zoom",ptPositionPinCtl);
+  ptPositionPinCtl();
+  setTimeout(ptPositionPinCtl,600); // reposition after the pan settles
   ptMap.getContainer().style.cursor="crosshair";
 };
 window.ptConfirmPinMove=function(){
@@ -626,7 +721,7 @@ window.ptConfirmPinMove=function(){
   _ptPinMoveMarker.dragging.disable();
   _ptPinMoveMarker.off("dragend");
   _ptPinMoveMarker.setOpacity(1);
-  document.getElementById("ptPinMoveBar").style.display="none";
+  ptHidePinCtl();
   if(ptMap)ptMap.getContainer().style.cursor="";
   const toast=document.getElementById("ptPriorityToast");
   toast.textContent="📍 Pin location saved";toast.style.background="#1a1a1a";
@@ -640,7 +735,7 @@ window.ptCancelPinMove=function(){
   _ptPinMoveMarker.dragging.disable();
   _ptPinMoveMarker.off("dragend");
   _ptPinMoveMarker.setOpacity(1);
-  document.getElementById("ptPinMoveBar").style.display="none";
+  ptHidePinCtl();
   if(ptMap)ptMap.getContainer().style.cursor="";
   _ptPinMoveAddr=null;_ptPinMoveMarker=null;_ptPinMoveOrigLatLng=null;_ptPinMoveNewLatLng=null;
 };
@@ -655,7 +750,7 @@ window.ptSetFilter=function(f){
       if(ptAllMarkers.length>1)ptMap.flyToBounds(L.featureGroup(ptAllMarkers).getBounds().pad(0.3),{animate:true,duration:1.2,maxZoom:13});
       else if(ptAllMarkers.length===1)ptMap.flyTo(ptAllMarkers[0].getLatLng(),14,{animate:true,duration:1.0});
     } else {
-      const matchingAddrs=new Set(ptRecords.filter(t=>priKey(t.TaskPrioraty)===f).map(t=>cleanAddr(t.TaskProjectAddress)||t.TaskProjectName||"No Address"));
+      const matchingAddrs=new Set(ptPersonRecords().filter(t=>priKey(t.TaskPrioraty)===f).map(t=>cleanAddr(t.TaskProjectAddress)||t.TaskProjectName||"No Address"));
       const matchingMarkers=Object.entries(ptMarkerMap).filter(([addr])=>matchingAddrs.has(addr)).map(([,mk])=>mk);
       if(matchingMarkers.length===0){
         const colors={urgent:"#c62828",medium:"#ef6c00",low:"#2e7d32"};
@@ -676,7 +771,7 @@ window.ptSetFilter=function(f){
 };
 
 function ptFilteredRecords(){
-  let r=[...ptRecords];
+  let r=ptPersonRecords();
   if(ptFilter!=="all")r=r.filter(t=>priKey(t.TaskPrioraty)===ptFilter);
   if(ptSearch){const q=ptSearch.toLowerCase();r=r.filter(t=>(cleanAddr(t.TaskProjectAddress).toLowerCase().includes(q)||(t.TaskProjectCity||"").toLowerCase().includes(q)||(t.TaskProjectName||"").toLowerCase().includes(q)||(t.TaskName||"").toLowerCase().includes(q)||(t.TaskDescription||"").toLowerCase().includes(q)));}
   return r;
@@ -699,7 +794,7 @@ function ptMakeTaskCard(t){
     <span class="pt-pri-dot pt-pri-dot-${dk}"></span>
     <div class="pt-mini-info">
       <div class="pt-mini-name">${esc(t.TaskName||t.Title||"")}</div>
-      <div class="pt-mini-status">Pending &middot; ${taskAge(t.TaskDateRequested||t.Created)}</div>
+      <div class="pt-mini-status">Pending &middot; ${taskAge(t.TaskDateRequested||t.Created)}${ptMultiPerson&&t.TaskAssignedPerson?` &middot; &#x1F464; ${esc(t.TaskAssignedPerson)}`:""}</div>
     </div>
     <div class="pt-mini-btns">
       <button class="pt-btn-details" onclick="ptOpenDrawer2('${id}')">Details</button>
@@ -709,7 +804,7 @@ function ptMakeTaskCard(t){
 }
 
 function ptRenderMasterList(){
-  const tasks=ptRecords.filter(t=>!t.TaskCheckComplete);
+  const tasks=ptPersonRecords().filter(t=>!t.TaskCheckComplete);
   const scroll=document.getElementById("ptTaskScroll");
   if(!tasks.length){scroll.innerHTML=`<div style="color:#aaa;font-size:15px;padding:32px;text-align:center;">No open tasks</div>`;return;}
   if(ptMasterSort==="project"){
@@ -741,9 +836,10 @@ window.ptSetSort=function(s){
 window.ptOpenMasterDrawer=function(){
   ptMasterMode=true;
   ptCurrentAddr="";
-  const total=ptRecords.filter(t=>!t.TaskCheckComplete).length;
-  const locs=Object.keys(groupByAddr(ptRecords.filter(t=>!t.TaskCheckComplete))).length;
-  document.getElementById("ptD1Title").textContent="All Tasks";
+  const base=ptPersonRecords().filter(t=>!t.TaskCheckComplete);
+  const total=base.length;
+  const locs=Object.keys(groupByAddr(base)).length;
+  document.getElementById("ptD1Title").textContent=ptPersonFilter==="all"?"All Tasks":ptPersonFilter;
   document.getElementById("ptD1Sub").textContent=total+" open across "+locs+" location"+(locs===1?"":"s");
   document.getElementById("ptSortBar").style.display="flex";document.getElementById("ptD1DirWrap").style.display="none";
   ptRenderMasterList();
@@ -812,6 +908,7 @@ window.ptOpenDrawer2=function(id){
     <hr class="pt-d2-divider">
     ${t.TaskCategory?`<div class="pt-d2-meta"><span class="pt-d2-meta-icon">🏷</span>${esc(t.TaskCategory)}${t.TaskSubCategory?" / "+esc(t.TaskSubCategory):""}</div>`:""}
     <div class="pt-d2-meta"><span class="pt-d2-meta-icon">🕐</span>${formatDate(t.TaskDateRequested||t.Created)} &middot; ${taskAge(t.TaskDateRequested||t.Created)}</div>
+    ${t.TaskAssignedPerson?`<div class="pt-d2-meta"><span class="pt-d2-meta-icon">👤</span>Assigned to: ${esc(t.TaskAssignedPerson)}</div>`:""}
     ${t.TaskWebSiteDetails?`<div class="pt-d2-meta"><span class="pt-d2-meta-icon">🔗</span>${esc(t.TaskWebSiteDetails)}</div>`:""}
     ${em}
     <hr class="pt-d2-divider">
@@ -937,7 +1034,7 @@ window.ptToggleSide=function(){document.getElementById("ptSidePanel").classList.
 window.ptCloseSide=function(){document.getElementById("ptSidePanel").classList.remove("open");document.getElementById("ptSideOverlay").classList.remove("open");ptNavClearActive();};
 
 function ptRefreshChips(){
-  const grouped=groupByAddr(ptRecords);
+  const grouped=groupByAddr(ptPersonRecords());
   const addrs=Object.keys(grouped);
   const el=document.getElementById("ptAddrList");
   if(!addrs.length){el.innerHTML=`<p style="color:#777;font-size:14px;">No projects found.</p>`;return;}
@@ -1019,6 +1116,7 @@ async function ptBuildMap(grouped){
       mk.bindPopup(`<div style="min-width:180px;">
         <strong style="font-size:14px;display:block;margin-bottom:4px;">${addr}</strong>
         ${info.city?`<span style="color:#666;font-size:12px;">${info.city}</span><br>`:""}
+        <span style="color:#1565c0;font-size:12px;font-weight:600;">${info.tasks.length} open task${info.tasks.length===1?"":"s"}</span><br>
         <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
           <button onclick="ptChipClick('${sa}')" style="flex:1;padding:10px;background:#1a1a1a;color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;">View Tasks</button>
           <button onclick="window.open('https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent('${sa}'),'_blank')" style="flex:1;padding:10px;background:#1565c0;color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;">Directions</button>
@@ -1037,9 +1135,9 @@ async function ptLoadTasks(){
   try{
     const data=await DCR.api(TASKS_EP);
     ptRecords=Array.isArray(data.tasks)?data.tasks.filter(t=>!t.TaskCheckComplete):[];
-    ptUpdateCount();ptUpdateFilterCounts();ptRefreshChips();
+    ptUpdateCount();ptBuildPersonSel();ptUpdateFilterCounts();ptRefreshChips();
     const grouped=groupByAddr(ptRecords);
-    if(Object.keys(grouped).length)ptBuildMap(grouped);
+    if(Object.keys(grouped).length){await ptBuildMap(grouped);ptUpdateMapPins();}
     else document.getElementById("ptAddrList").innerHTML='<p style="color:#777;font-size:14px;">No tasks assigned to you right now.</p>';
   }catch(e){
     document.getElementById("ptAddrList").innerHTML='<p style="color:#e57373;font-size:14px;">'+esc(e&&e.message?e.message:"Error loading tasks.")+'</p>';
