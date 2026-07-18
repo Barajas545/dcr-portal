@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DCR Portal — Vehicles</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      .vb{
+        --acc:#2f80d8; --acc-2:#1f6fc8; --tint:rgba(47,128,216,0.12); --tint-2:rgba(47,128,216,0.22);
+        --gold:#d6a13a; --warm:rgba(214,161,58,0.16); --ok:#2fa679; --err:#d9614f;
+        max-width:1160px; margin:0 auto; padding:14px 16px 60px;
+      }
+      .vb-head{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px;}
+      .vb-head h2{margin:0; font-size:19px; color:var(--text);}
+      .vb-search{flex:1; min-width:150px; max-width:300px; padding:8px 12px; font-size:14px;
+        border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text);}
+      .vb-search:focus{outline:none; border-color:var(--acc);}
+      .vb-btn{padding:8px 14px; font-size:13px; font-weight:600; border-radius:8px; cursor:pointer;
+        border:1px solid var(--border); background:var(--surface); color:var(--text);}
+      .vb-btn:hover{background:var(--surface-2);}
+      .vb-btn-primary{background:var(--acc); border-color:var(--acc); color:#fff;}
+      .vb-btn-primary:hover{background:var(--acc-2);}
+      .vb-btn-sm{padding:5px 10px; font-size:12px;}
+      .vb-main{display:grid; grid-template-columns:1fr 340px; gap:14px; align-items:start;}
+      @media (max-width:900px){ .vb-main{grid-template-columns:1fr;} }
+
+      .vb-sec{background:var(--surface); border:1px solid var(--border); border-radius:12px;
+        padding:14px; margin-bottom:14px;}
+      .vb-sec h3{margin:0 0 10px; font-size:13px; text-transform:uppercase; letter-spacing:.05em;
+        color:var(--text-muted); display:flex; align-items:center; gap:8px;}
+      .vb-count{background:var(--surface-2); color:var(--text-muted); border-radius:12px;
+        padding:1px 9px; font-size:11px; font-weight:700;}
+      .vb-row{display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:8px;
+        cursor:pointer; color:var(--text); font-size:13.5px; border:1px solid transparent;}
+      .vb-row:hover{background:var(--surface-2);}
+      .vb-row.sel{background:var(--tint); border-color:var(--acc);}
+      .vb-row .due{margin-left:auto; font-size:11.5px; font-weight:700; white-space:nowrap;}
+      .vb-row .due.over{color:var(--err);} .vb-row .due.soon{color:var(--gold);}
+      .vb-empty{padding:14px; color:var(--text-muted); font-size:13px; text-align:center;}
+
+      .vb-panel{background:var(--surface); border:1px solid var(--border); border-radius:12px;
+        padding:16px; position:sticky; top:70px;}
+      .vb-panel h3{margin:0 0 4px; font-size:16px; color:var(--text);}
+      .vb-sub{font-size:12px; color:var(--text-muted);}
+      .vb-kv{display:flex; gap:8px; font-size:13px; margin:5px 0; color:var(--text);}
+      .vb-kv .k{color:var(--text-muted); min-width:105px;}
+      .vb-sec2{font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em;
+        color:var(--text-muted); margin:14px 0 8px;}
+      .vb-maint{background:var(--surface-2); border:1px solid var(--border); border-radius:8px;
+        padding:9px 11px; margin-bottom:7px; font-size:12.5px; color:var(--text);}
+      .vb-maint .d{font-size:10.5px; font-weight:700; color:var(--text-muted); text-transform:uppercase;}
+      .vb-msg{font-size:12px; min-height:15px;}
+      .vb-msg.ok{color:var(--ok);} .vb-msg.err{color:var(--err);}
+
+      .vb-overlay{position:fixed; inset:0; background:rgba(0,0,0,.55); display:none;
+        align-items:center; justify-content:center; z-index:60; padding:14px;}
+      .vb-overlay.open{display:flex;}
+      .vb-modal{background:var(--surface); color:var(--text); border:1px solid var(--border);
+        border-radius:14px; width:100%; max-width:440px; padding:20px; box-shadow:0 8px 32px rgba(0,0,0,.4);}
+      .vb-modal h3{margin:0 0 14px; font-size:16px;}
+      .vb-f{margin-bottom:10px;}
+      .vb-f label{display:block; font-size:12px; font-weight:600; color:var(--text-muted); margin-bottom:4px;}
+      .vb-f input,.vb-f textarea,.vb-f select{width:100%; box-sizing:border-box; padding:9px 11px; font-size:14px;
+        border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text); color-scheme:light dark;}
+      .vb-f input:focus,.vb-f textarea:focus{outline:none; border-color:var(--acc);}
+      .vb-check{display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text); cursor:pointer;}
+      .vb-check input{width:16px; height:16px; accent-color:var(--acc);}
+      .vb-modal-actions{display:flex; justify-content:flex-end; gap:8px; margin-top:14px;}
+    </style>
+  </head>
+  <body>
+    <div class="topbar">
+      <div class="brand"><div class="brand-badge">DCR</div><h1 id="companyName">DCR Portal</h1></div>
+      <div class="top-actions">
+        <span class="pill" id="userPill">…</span>
+        <a class="btn btn-ghost btn-sm" href="dashboard.html">Dashboard</a>
+        <button class="btn btn-ghost btn-sm" id="logoutBtn">Log out</button>
+      </div>
+    </div>
+
+    <div class="vb">
+      <div class="vb-head">
+        <h2>🚚 Vehicle Board</h2>
+        <input class="vb-search" id="vbSearch" type="search" placeholder="Search vehicles…" />
+        <button class="vb-btn vb-btn-primary" id="vbSchedBtn" style="display:none">＋ Schedule service</button>
+        <button class="vb-btn" id="vbRefresh">↻</button>
+      </div>
+
+      <div class="vb-main">
+        <div>
+          <div class="vb-sec"><h3>🛢 Oil change due <span class="vb-count" id="vbOilCount">0</span></h3><div id="vbOilList"></div></div>
+          <div class="vb-sec"><h3>🔧 Service due <span class="vb-count" id="vbSvcCount">0</span></h3><div id="vbSvcList"></div></div>
+          <div class="vb-sec"><h3>🚚 All vehicles <span class="vb-count" id="vbAllCount">0</span></h3><div id="vbAllList"></div></div>
+        </div>
+        <aside class="vb-panel" id="vbPanel" style="display:none">
+          <h3 id="vpName"></h3>
+          <div class="vb-sub" id="vpSub"></div>
+          <div style="margin-top:10px" id="vpInfo"></div>
+          <div class="vb-sec2">Open maintenance</div>
+          <div id="vpOpen"></div>
+          <div class="vb-sec2">History</div>
+          <div id="vpHistory"></div>
+          <div class="vb-msg" id="vpMsg"></div>
+        </aside>
+      </div>
+    </div>
+
+    <!-- schedule service modal -->
+    <div class="vb-overlay" id="schedModal">
+      <div class="vb-modal">
+        <h3>Schedule service</h3>
+        <div class="vb-f"><label>Vehicle *</label><select id="smVehicle"></select></div>
+        <div class="vb-f"><label>Next service date</label><input type="date" id="smDate" /></div>
+        <div class="vb-f"><label>Service needed / requirements</label><textarea id="smReq" rows="3"></textarea></div>
+        <div class="vb-msg err" id="smMsg"></div>
+        <div class="vb-modal-actions">
+          <button class="vb-btn" id="smCancel">Cancel</button>
+          <button class="vb-btn vb-btn-primary" id="smSave">✓ Schedule</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- complete service modal -->
+    <div class="vb-overlay" id="doneModal">
+      <div class="vb-modal">
+        <h3>Complete service</h3>
+        <div class="vb-sub" id="dmWhat" style="margin-bottom:10px"></div>
+        <div class="vb-f"><label>Work performed</label><textarea id="dmWork" rows="3"></textarea></div>
+        <div class="vb-f"><label>Current mileage (optional)</label><input type="text" id="dmMiles" inputmode="numeric" /></div>
+        <div class="vb-f"><label class="vb-check"><input type="checkbox" id="dmOil" /> This was an oil change (update vehicle's oil-change record)</label></div>
+        <div class="vb-msg err" id="dmMsg"></div>
+        <div class="vb-modal-actions">
+          <button class="vb-btn" id="dmCancel">Cancel</button>
+          <button class="vb-btn vb-btn-primary" id="dmSave">✓ Mark complete</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="common.js"></script>
+    <script src="vehicles.js"></script>
+  </body>
+</html>

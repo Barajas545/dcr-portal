@@ -355,66 +355,181 @@
     } catch (e) { alert(e.message || "Delete failed"); }
   }
 
-  /* ── takeoffs ── */
+  /* ── takeoffs (editable) ── */
+  var TO_DEFS = [
+    ["takeoffName","Takeoff (group)","text","toGroups"],["itemSortingNumber","Sorting #","num"],
+    ["itemName","Item name","text"],["itemCategory","Category","text","toCats"],
+    ["itemSubCategory","Sub-category","text","toSubs"],["itemLocation","Location","text","toLocs"],
+    ["itemPurpose","Purpose","text"],["itemQty","Qty","text"],["itemPrice","Price each $","num"],
+    ["itemHiperLink","Link","text"],
+  ];
+  var EXP_DEFS = [
+    ["gropingName","Grouping name","text","expGroups"],["gropingNumber","Grouping #","num"],
+    ["expenseDate","Date","date"],["description","Description","text"],
+    ["estimate","Estimate $","num"],["changeOrder","Change order $","num"],
+    ["invoice","Invoice $","num"],["materials","Materials $","num"],
+    ["contractors","Contractors $","num"],["laborExpenseHours","Labor hours","num"],
+    ["laborExpenseRatePerHour","Labor rate $/hr","text"],["laborExpenseDescription","Labor description","text"],
+    ["materialExpenseDescription","Material description","text"],["remarks","Remarks","text"],
+  ];
+  var SUB_CFG = {
+    to:  { defs:TO_DEFS,  title:"Takeoff item",  rowsKey:"toRows",  reload:function(){loadTakeoffs();} },
+    exp: { defs:EXP_DEFS, title:"Expense record", rowsKey:"expRows", reload:function(){loadExpenses();} },
+  };
+
   async function loadTakeoffs() {
     var pane = el("pane-takeoffs");
     pane.innerHTML = '<div class="pj-empty">Loading takeoffs…</div>';
     try {
       var d = await DCR.api("/api/portal?action=project&id="+PID+"&part=takeoffs");
-      var rows = d.rows||[];
-      if (!rows.length) { pane.innerHTML = '<div class="pj-empty">No takeoff items for this project.</div>'; return; }
-      var bar = '<div class="pj-bar"><input class="pj-search" id="toSearch" placeholder="Search items…"><span class="pj-sub">'+rows.length+' items</span></div>';
-      pane.innerHTML = bar + '<div id="toTable"></div>';
+      var rows = d.rows||[]; var canEdit = !!d.canEdit;
+      state.toRows = rows; state.toCanEdit = canEdit;
+      var bar = '<div class="pj-bar">' +
+        (canEdit?'<button class="pj-btn pj-btn-primary pj-btn-sm" id="toAddBtn">＋ New item</button>':"") +
+        '<input class="pj-search" id="toSearch" placeholder="Search items…"><span class="pj-sub">'+rows.length+' items</span></div>';
+      pane.innerHTML = bar + '<div id="toTable"></div>' + (rows.length?"":'<div class="pj-empty">No takeoff items for this project.</div>');
+      var cols = canEdit ? 7 : 6;
       var render = function(){
+        if (!rows.length) { el("toTable").innerHTML=""; return; }
         var q = (el("toSearch").value||"").toLowerCase();
         var f = q ? rows.filter(function(r){ return [r.itemName,r.itemCategory,r.itemSubCategory,r.takeoffName,r.itemLocation].join(" ").toLowerCase().indexOf(q)!==-1; }) : rows;
         var groups = {}; f.forEach(function(r){ var g=r.takeoffName||"(no takeoff)"; (groups[g]=groups[g]||[]).push(r); });
         var grand=0, body="";
         Object.keys(groups).forEach(function(g){
           var gt=0;
-          body += '<tr class="pj-grp"><td colspan="6">'+esc(g)+'</td></tr>';
+          body += '<tr class="pj-grp"><td colspan="'+cols+'">'+esc(g)+'</td></tr>';
           groups[g].forEach(function(r){
             var tot = num(r.itemQty)*num(r.itemPrice); gt+=tot;
             body += '<tr><td>'+esc(r.itemName||"—")+'</td><td>'+esc([r.itemCategory,r.itemSubCategory].filter(Boolean).join(" / "))+'</td><td>'+esc(r.itemLocation||"")+'</td>' +
-              '<td class="num">'+(num(r.itemQty)||"")+'</td><td class="num">'+(num(r.itemPrice)?fmtMoney(r.itemPrice):"")+'</td><td class="num">'+(tot?fmtMoney(tot):"")+'</td></tr>';
+              '<td class="num">'+(num(r.itemQty)||"")+'</td><td class="num">'+(num(r.itemPrice)?fmtMoney(r.itemPrice):"")+'</td><td class="num">'+(tot?fmtMoney(tot):"")+'</td>' +
+              (canEdit?'<td><div class="pj-rowbtns"><button class="pj-btn pj-btn-sm" data-sub-edit="to:'+r.id+'">✎</button><button class="pj-btn pj-btn-sm" data-sub-del="to:'+r.id+'">🗑</button></div></td>':"") + '</tr>';
           });
           grand+=gt;
-          body += '<tr class="pj-grpTot"><td colspan="5">Subtotal — '+esc(g)+'</td><td class="num">'+fmtMoney(gt)+'</td></tr>';
+          body += '<tr class="pj-grpTot"><td colspan="'+(cols-1)+'">Subtotal — '+esc(g)+'</td><td class="num">'+fmtMoney(gt)+'</td>'+(canEdit?'<td></td>':"")+'</tr>';
         });
-        body += '<tr class="pj-grand"><td colspan="5">GRAND TOTAL</td><td class="num">'+fmtMoney(grand)+'</td></tr>';
-        el("toTable").innerHTML = '<div class="pj-tblwrap"><table class="pj-tbl"><thead><tr><th>Item</th><th>Category</th><th>Location</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Total</th></tr></thead><tbody>'+body+'</tbody></table></div>';
+        body += '<tr class="pj-grand"><td colspan="'+(cols-1)+'">GRAND TOTAL</td><td class="num">'+fmtMoney(grand)+'</td>'+(canEdit?'<td></td>':"")+'</tr>';
+        el("toTable").innerHTML = '<div class="pj-tblwrap"><table class="pj-tbl"><thead><tr><th>Item</th><th>Category</th><th>Location</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Total</th>'+(canEdit?'<th></th>':"")+'</tr></thead><tbody>'+body+'</tbody></table></div>';
+        wireSubButtons(el("toTable"));
       };
       el("toSearch").addEventListener("input", render);
+      var ab = el("toAddBtn"); if (ab) ab.onclick = function(){ openSubModal("to", null); };
       render();
     } catch (e) { pane.innerHTML = '<div class="pj-empty">'+esc(e.message)+'</div>'; }
   }
 
-  /* ── expenses ── */
+  /* ── sub-list modal (takeoffs + expenses) ── */
+  function subDatalists(kind) {
+    var rows = state[SUB_CFG[kind].rowsKey] || [];
+    var lists = {};
+    if (kind==="to") {
+      lists.toGroups = {}; lists.toCats = {}; lists.toSubs = {}; lists.toLocs = {};
+      rows.forEach(function(r){
+        if(r.takeoffName)lists.toGroups[r.takeoffName]=1; if(r.itemCategory)lists.toCats[r.itemCategory]=1;
+        if(r.itemSubCategory)lists.toSubs[r.itemSubCategory]=1; if(r.itemLocation)lists.toLocs[r.itemLocation]=1;
+      });
+    } else {
+      lists.expGroups = {};
+      rows.forEach(function(r){ if(r.gropingName)lists.expGroups[r.gropingName]=1; });
+    }
+    return Object.keys(lists).map(function(id){
+      return '<datalist id="'+id+'">'+Object.keys(lists[id]).map(function(v){ return '<option value="'+esc(v)+'">'; }).join("")+'</datalist>';
+    }).join("");
+  }
+
+  function openSubModal(kind, rowId) {
+    var cfg = SUB_CFG[kind];
+    state.subKind = kind;
+    state.subEditing = rowId ? (state[cfg.rowsKey]||[]).find(function(r){ return String(r.id)===String(rowId); }) : null;
+    el("subModalTitle").textContent = (rowId?"Edit ":"New ") + cfg.title.toLowerCase();
+    el("subMsg").textContent = "";
+    el("subFields").innerHTML = cfg.defs.map(function(d){
+      var v = state.subEditing ? state.subEditing[d[0]] : "";
+      if (d[2]==="date") return '<div class="pj-f"><label>'+d[1]+'</label><input type="date" id="sf_'+d[0]+'" value="'+dateInputVal(v)+'"></div>';
+      var t = d[2]==="num" ? ' type="number" step="any"' : ' type="text"';
+      var dl = d[3] ? ' list="'+d[3]+'"' : "";
+      return '<div class="pj-f"><label>'+d[1]+'</label><input'+t+dl+' id="sf_'+d[0]+'" value="'+esc(v==null?"":v)+'"></div>';
+    }).join("") + subDatalists(kind);
+    el("subModal").classList.add("open");
+  }
+
+  async function saveSubModal() {
+    var kind = state.subKind, cfg = SUB_CFG[kind];
+    var fields = {};
+    cfg.defs.forEach(function(d){
+      var inp = el("sf_"+d[0]); if (!inp) return;
+      var v = inp.value;
+      if (v==="") return;
+      if (d[2]==="num") fields[d[0]] = Number(v);
+      else if (d[2]==="date") fields[d[0]] = v + "T12:00:00Z";
+      else fields[d[0]] = v;
+    });
+    if (!Object.keys(fields).length) { el("subMsg").textContent = "Nothing to save."; return; }
+    el("subSave").disabled = true;
+    try {
+      var body = state.subEditing
+        ? { op: kind+"Update", itemId: state.subEditing.id, fields: fields }
+        : { op: kind+"Add", projectId: PID, fields: fields };
+      await DCR.api("/api/portal?action=project", { method:"POST", body: body });
+      el("subModal").classList.remove("open");
+      cfg.reload();
+    } catch (e) { el("subMsg").textContent = e.message || "Save failed"; }
+    el("subSave").disabled = false;
+  }
+
+  function wireSubButtons(scope) {
+    scope.querySelectorAll("[data-sub-edit]").forEach(function(b){
+      b.onclick = function(){ var p=b.getAttribute("data-sub-edit").split(":"); openSubModal(p[0], p[1]); };
+    });
+    scope.querySelectorAll("[data-sub-del]").forEach(function(b){
+      b.onclick = async function(){
+        var p=b.getAttribute("data-sub-del").split(":");
+        if (!confirm("Delete this record? This cannot be undone.")) return;
+        try {
+          await DCR.api("/api/portal?action=project", { method:"POST", body:{ op:p[0]+"Delete", itemId:p[1] } });
+          SUB_CFG[p[0]].reload();
+        } catch (e) { alert(e.message||"Delete failed"); }
+      };
+    });
+  }
+
+  /* ── expenses (editable) ── */
   async function loadExpenses() {
     var pane = el("pane-expenses");
     pane.innerHTML = '<div class="pj-empty">Loading expenses…</div>';
     try {
       var d = await DCR.api("/api/portal?action=project&id="+PID+"&part=expenses");
-      var rows = d.rows||[];
-      if (!rows.length) { pane.innerHTML = '<div class="pj-empty">No expense records for this project.</div>'; return; }
+      var rows = d.rows||[]; var canEdit = !!d.canEdit;
+      state.expRows = rows;
+      var cols = canEdit ? 7 : 6;
+      var bar = '<div class="pj-bar">' +
+        (canEdit?'<button class="pj-btn pj-btn-primary pj-btn-sm" id="expAddBtn">＋ New expense</button>':"") +
+        '<span class="pj-sub">'+rows.length+' records</span></div>';
+      if (!rows.length) {
+        pane.innerHTML = bar + '<div class="pj-empty">No expense records for this project.</div>';
+        var ab0 = el("expAddBtn"); if (ab0) ab0.onclick = function(){ openSubModal("exp", null); };
+        return;
+      }
       var groups = {}; rows.forEach(function(r){ var g=r.gropingName||"(no group)"; (groups[g]=groups[g]||[]).push(r); });
       var grand={est:0,inv:0,mat:0,con:0}, body="";
       Object.keys(groups).forEach(function(g){
         var t={est:0,inv:0,mat:0,con:0};
-        body += '<tr class="pj-grp"><td colspan="6">'+esc(g)+'</td></tr>';
+        body += '<tr class="pj-grp"><td colspan="'+cols+'">'+esc(g)+'</td></tr>';
         groups[g].forEach(function(r){
           var desc = r.description || r.laborExpenseDescription || r.materialExpenseDescription || r.estimateDescription || "";
           t.est+=num(r.estimate); t.inv+=num(r.invoice); t.mat+=num(r.materials); t.con+=num(r.contractors);
           body += '<tr><td>'+fmtDate(r.expenseDate)+'</td><td>'+esc(desc)+'</td>' +
             '<td class="num">'+(num(r.estimate)?fmtMoney(r.estimate):"")+'</td><td class="num">'+(num(r.invoice)?fmtMoney(r.invoice):"")+'</td>' +
-            '<td class="num">'+(num(r.materials)?fmtMoney(r.materials):"")+'</td><td class="num">'+(num(r.contractors)?fmtMoney(r.contractors):"")+'</td></tr>';
+            '<td class="num">'+(num(r.materials)?fmtMoney(r.materials):"")+'</td><td class="num">'+(num(r.contractors)?fmtMoney(r.contractors):"")+'</td>' +
+            (canEdit?'<td><div class="pj-rowbtns"><button class="pj-btn pj-btn-sm" data-sub-edit="exp:'+r.id+'">✎</button><button class="pj-btn pj-btn-sm" data-sub-del="exp:'+r.id+'">🗑</button></div></td>':"") + '</tr>';
         });
         Object.keys(t).forEach(function(k){ grand[k]+=t[k]; });
-        body += '<tr class="pj-grpTot"><td colspan="2">Subtotal — '+esc(g)+'</td><td class="num">'+fmtMoney(t.est)+'</td><td class="num">'+fmtMoney(t.inv)+'</td><td class="num">'+fmtMoney(t.mat)+'</td><td class="num">'+fmtMoney(t.con)+'</td></tr>';
+        body += '<tr class="pj-grpTot"><td colspan="2">Subtotal — '+esc(g)+'</td><td class="num">'+fmtMoney(t.est)+'</td><td class="num">'+fmtMoney(t.inv)+'</td><td class="num">'+fmtMoney(t.mat)+'</td><td class="num">'+fmtMoney(t.con)+'</td>'+(canEdit?'<td></td>':"")+'</tr>';
       });
-      body += '<tr class="pj-grand"><td colspan="2">GRAND TOTAL</td><td class="num">'+fmtMoney(grand.est)+'</td><td class="num">'+fmtMoney(grand.inv)+'</td><td class="num">'+fmtMoney(grand.mat)+'</td><td class="num">'+fmtMoney(grand.con)+'</td></tr>';
-      pane.innerHTML = '<div class="pj-bar"><span class="pj-sub">'+rows.length+' records (read-only this phase)</span></div>' +
-        '<div class="pj-tblwrap"><table class="pj-tbl"><thead><tr><th>Date</th><th>Description</th><th class="num">Estimate</th><th class="num">Invoice</th><th class="num">Materials</th><th class="num">Contractors</th></tr></thead><tbody>'+body+'</tbody></table></div>';
+      body += '<tr class="pj-grand"><td colspan="2">GRAND TOTAL</td><td class="num">'+fmtMoney(grand.est)+'</td><td class="num">'+fmtMoney(grand.inv)+'</td><td class="num">'+fmtMoney(grand.mat)+'</td><td class="num">'+fmtMoney(grand.con)+'</td>'+(canEdit?'<td></td>':"")+'</tr>';
+      pane.innerHTML = bar +
+        '<div class="pj-tblwrap"><table class="pj-tbl"><thead><tr><th>Date</th><th>Description</th><th class="num">Estimate</th><th class="num">Invoice</th><th class="num">Materials</th><th class="num">Contractors</th>'+(canEdit?'<th></th>':"")+'</tr></thead><tbody>'+body+'</tbody></table></div>';
+      var ab = el("expAddBtn"); if (ab) ab.onclick = function(){ openSubModal("exp", null); };
+      wireSubButtons(pane);
     } catch (e) { pane.innerHTML = '<div class="pj-empty">'+esc(e.message)+'</div>'; }
   }
 
@@ -680,7 +795,9 @@
     el("estSave").onclick = saveEstModal;
     el("tkCancel").onclick = function(){ el("taskModal").classList.remove("open"); };
     el("tkSave").onclick = saveTask;
-    [el("estModal"), el("taskModal")].forEach(function(m){ m.addEventListener("click", function(e){ if(e.target===m) m.classList.remove("open"); }); });
+    el("subCancel").onclick = function(){ el("subModal").classList.remove("open"); };
+    el("subSave").onclick = saveSubModal;
+    [el("estModal"), el("taskModal"), el("subModal")].forEach(function(m){ m.addEventListener("click", function(e){ if(e.target===m) m.classList.remove("open"); }); });
     window.addEventListener("beforeunload", function(e){ if (Object.keys(state.dirty).length) { e.preventDefault(); e.returnValue=""; } });
 
     try { await loadRecord(); } catch (e) { el("pjTitle").textContent = "Error"; el("pane-overview").innerHTML = '<div class="pj-empty">'+esc(e.message)+'</div>'; return; }
