@@ -81,6 +81,7 @@
     // wire cards
     wrap.querySelectorAll(".bd-card").forEach(function (c) {
       c.addEventListener("click", function () { selectProject(c.getAttribute("data-id")); });
+      c.addEventListener("dblclick", function () { location.href = "project.html?id=" + encodeURIComponent(c.getAttribute("data-id")); });
       if (state.canWrite) {
         c.addEventListener("dragstart", function (e) {
           state.dragging = true;
@@ -133,6 +134,7 @@
     if (!p) return;
     render();
     el("bdPanel").classList.add("open");
+    el("bdOpenProject").href = "project.html?id=" + encodeURIComponent(p.id);
     el("bdPTitle").textContent = (p.internalIDNumber ? p.internalIDNumber + " — " : "") + (p.projectName || "");
     el("bdPSub").textContent = [p.projectAddress, p.projectCity].filter(Boolean).join(", ");
     el("bdPClient").textContent = p.projectClientName || "—";
