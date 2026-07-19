@@ -4,10 +4,12 @@
 // API_BASE: your Vercel deployment URL (no trailing slash).
 //
 // COMPANY: all branding + company information in one place, so a different
-// company can use this app by editing this block and replacing logo.png.
+// company can use this app by editing this block and replacing the logo file.
 // Empty fields ("") are simply hidden wherever they would appear.
-// The logo file lives at dcr-portal/logo.png — overwrite it to change the
-// logo everywhere (a higher-resolution PNG improves printed letterheads).
+// `logo` drives login, Home, and all printed report letterheads (all shown on
+// white) — point it at a high-resolution image for sharp printing. The dark
+// Tasks-on-Map top bar separately uses a transparent logo.png (it inverts the
+// artwork to white), so keep that file if you rebrand.
 // ---------------------------------------------------------------------------
 window.DCR_CONFIG = {
   API_BASE: "https://share-point-api.vercel.app",
@@ -15,7 +17,7 @@ window.DCR_CONFIG = {
   COMPANY: {
     name: "DCR Framing",
     legalName: "DCR Framing LLC",
-    logo: "logo.png",
+    logo: "logo.jpg",
     address: "7075 Morro Road, Atascadero, CA 93422",
     phone: "(805) 423-8640",
     fax: "",                     // e.g. "(805) 555-0124"
