@@ -16,12 +16,12 @@ window.DCR_CONFIG = {
     name: "DCR Framing",
     legalName: "DCR Framing LLC",
     logo: "logo.png",
-    address: "",                 // e.g. "123 Main St, Paso Robles, CA 93446"
-    phone: "",                   // e.g. "(805) 555-0123"
+    address: "7075 Morro Road, Atascadero, CA 93422",
+    phone: "(805) 423-8640",
     fax: "",                     // e.g. "(805) 555-0124"
-    email: "cristobal@dcrframing.com",
+    email: "daniel@dcrframing.com",
     website: "www.dcrframing.com",
-    license: "",                 // e.g. "CA Lic. #1234567"
+    license: "CA Lic. #1043050",
   },
 
   // Back-compat (older pages read this):
