@@ -235,6 +235,7 @@
     if (name==="estimate") loadEstimate();
     else if (name==="takeoffs") loadTakeoffs();
     else if (name==="expenses") loadExpenses();
+    else if (name==="payments") loadPayments();
     else if (name==="tasks") loadTasks();
     else if (name==="logs") loadLogs();
     else if (name==="mailing") renderMailing();
@@ -373,9 +374,16 @@
     ["laborExpenseRatePerHour","Labor rate $/hr","text"],["laborExpenseDescription","Labor description","text"],
     ["materialExpenseDescription","Material description","text"],["remarks","Remarks","text"],
   ];
+  var PAY_DEFS = [
+    ["paymentName","Payment name","text"],["paymentPaidDate","Paid date","date"],
+    ["paymentEstimateAmount","Estimate $","num"],["paymentInvoiceAmount","Invoice $","num"],
+    ["paymentExpenseAmount","Expense $","num"],["paymentDescription","Description","text"],
+    ["paymentPaidNotes","Paid notes","text"],
+  ];
   var SUB_CFG = {
     to:  { defs:TO_DEFS,  title:"Takeoff item",  rowsKey:"toRows",  reload:function(){loadTakeoffs();} },
     exp: { defs:EXP_DEFS, title:"Expense record", rowsKey:"expRows", reload:function(){loadExpenses();} },
+    pay: { defs:PAY_DEFS, title:"Payment",        rowsKey:"payRows", reload:function(){loadPayments();} },
   };
 
   async function loadTakeoffs() {
@@ -428,7 +436,7 @@
         if(r.takeoffName)lists.toGroups[r.takeoffName]=1; if(r.itemCategory)lists.toCats[r.itemCategory]=1;
         if(r.itemSubCategory)lists.toSubs[r.itemSubCategory]=1; if(r.itemLocation)lists.toLocs[r.itemLocation]=1;
       });
-    } else {
+    } else if (kind==="exp") {
       lists.expGroups = {};
       rows.forEach(function(r){ if(r.gropingName)lists.expGroups[r.gropingName]=1; });
     }
@@ -504,6 +512,7 @@
       var cols = canEdit ? 7 : 6;
       var bar = '<div class="pj-bar">' +
         (canEdit?'<button class="pj-btn pj-btn-primary pj-btn-sm" id="expAddBtn">＋ New expense</button>':"") +
+        '<a class="pj-btn pj-btn-sm" href="report-expenses.html?id='+encodeURIComponent(PID)+'">🖨 Print expenses</a>' +
         '<span class="pj-sub">'+rows.length+' records</span></div>';
       if (!rows.length) {
         pane.innerHTML = bar + '<div class="pj-empty">No expense records for this project.</div>';
@@ -531,6 +540,59 @@
         '<div class="pj-tblwrap"><table class="pj-tbl"><thead><tr><th>Date</th><th>Description</th><th class="num">Estimate</th><th class="num">Invoice</th><th class="num">Materials</th><th class="num">Contractors</th>'+(canEdit?'<th></th>':"")+'</tr></thead><tbody>'+body+'</tbody></table></div>';
       var ab = el("expAddBtn"); if (ab) ab.onclick = function(){ openSubModal("exp", null); };
       wireSubButtons(pane);
+    } catch (e) { pane.innerHTML = '<div class="pj-empty">'+esc(e.message)+'</div>'; }
+  }
+
+  /* ── payments (editable) ── */
+  async function loadPayments() {
+    var pane = el("pane-payments");
+    pane.innerHTML = '<div class="pj-empty">Loading payments…</div>';
+    try {
+      var d = await DCR.api("/api/portal?action=project&id="+PID+"&part=payments");
+      var rows = d.rows||[]; var canEdit = !!d.canEdit;
+      state.payRows = rows;
+      var cols = canEdit ? 7 : 6;
+      var bar = '<div class="pj-bar">' +
+        (canEdit?'<button class="pj-btn pj-btn-primary pj-btn-sm" id="payAddBtn">＋ New payment</button>':"") +
+        '<span class="pj-sub">'+rows.length+' payment records</span></div>';
+      if (!rows.length) {
+        pane.innerHTML = bar + '<div class="pj-empty">No payment records for this project.</div>';
+        var ab0 = el("payAddBtn"); if (ab0) ab0.onclick = function(){ openSubModal("pay", null); };
+        return;
+      }
+      var t = { est:0, inv:0, exp:0, paid:0 };
+      var body = rows.map(function(r){
+        var isPaid = r.paymentPAID===true || r.paymentPAID==="true";
+        t.est+=num(r.paymentEstimateAmount); t.inv+=num(r.paymentInvoiceAmount); t.exp+=num(r.paymentExpenseAmount);
+        if (isPaid) t.paid += num(r.paymentInvoiceAmount);
+        var paidChip = canEdit
+          ? '<span class="pj-chip'+(isPaid?" on":"")+'" style="'+(isPaid?"background:var(--ok);border-color:var(--ok);":"")+'" data-pay-tgl="'+r.id+'">'+(isPaid?"✓ PAID":"unpaid")+'</span>'
+          : (isPaid ? '<b style="color:var(--ok)">✓ PAID</b>' : '<span class="pj-sub">unpaid</span>');
+        return '<tr><td>'+esc(r.paymentName||"—")+
+          (r.paymentDescription?'<br><span class="pj-sub">'+esc(r.paymentDescription)+'</span>':"")+'</td>' +
+          '<td class="num">'+(num(r.paymentEstimateAmount)?fmtMoney(r.paymentEstimateAmount):"")+'</td>' +
+          '<td class="num">'+(num(r.paymentInvoiceAmount)?fmtMoney(r.paymentInvoiceAmount):"")+'</td>' +
+          '<td class="num">'+(num(r.paymentExpenseAmount)?fmtMoney(r.paymentExpenseAmount):"")+'</td>' +
+          '<td>'+paidChip+(r.paymentPaidDate?'<br><span class="pj-sub">'+fmtDate(r.paymentPaidDate)+'</span>':"")+'</td>' +
+          '<td>'+esc(r.paymentPaidNotes||"")+'</td>' +
+          (canEdit?'<td><div class="pj-rowbtns"><button class="pj-btn pj-btn-sm" data-sub-edit="pay:'+r.id+'">✎</button><button class="pj-btn pj-btn-sm" data-sub-del="pay:'+r.id+'">🗑</button></div></td>':"") + '</tr>';
+      }).join("");
+      body += '<tr class="pj-grand"><td>TOTALS &nbsp;<span class="pj-sub" style="font-weight:400">collected '+fmtMoney(t.paid)+' · outstanding '+fmtMoney(t.inv-t.paid)+'</span></td>' +
+        '<td class="num">'+fmtMoney(t.est)+'</td><td class="num">'+fmtMoney(t.inv)+'</td><td class="num">'+fmtMoney(t.exp)+'</td><td></td><td></td>'+(canEdit?'<td></td>':"")+'</tr>';
+      pane.innerHTML = bar +
+        '<div class="pj-tblwrap"><table class="pj-tbl"><thead><tr><th>Payment</th><th class="num">Estimate</th><th class="num">Invoice</th><th class="num">Expense</th><th>Status</th><th>Notes</th>'+(canEdit?'<th></th>':"")+'</tr></thead><tbody>'+body+'</tbody></table></div>';
+      var ab = el("payAddBtn"); if (ab) ab.onclick = function(){ openSubModal("pay", null); };
+      wireSubButtons(pane);
+      pane.querySelectorAll("[data-pay-tgl]").forEach(function(b){
+        b.onclick = async function(){
+          var row = rows.find(function(r){ return String(r.id)===b.getAttribute("data-pay-tgl"); });
+          var newVal = !(row.paymentPAID===true || row.paymentPAID==="true");
+          try {
+            await DCR.api("/api/portal?action=project", { method:"POST", body:{ op:"payUpdate", itemId:row.id, fields:{ paymentPAID:newVal } } });
+            loadPayments();
+          } catch (e) { alert(e.message||"Update failed"); }
+        };
+      });
     } catch (e) { pane.innerHTML = '<div class="pj-empty">'+esc(e.message)+'</div>'; }
   }
 
