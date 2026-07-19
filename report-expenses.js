@@ -4,7 +4,18 @@
 (function () {
   var qs = new URLSearchParams(location.search);
   var PID = qs.get("id");
-  var LOGO = "https://images.squarespace-cdn.com/content/62d99cb9f61a1a1ab61df5b3/b0c22d61-35f1-4aa4-bde5-17d8999f66c6/logo+black.png?content-type=image%2Fpng";
+  var CO = DCR.companyInfo;
+  var LOGO = CO.logo;
+
+  function coBlock() {
+    var lines = ["<b>" + DCR.esc(CO.legalName || CO.name) + "</b>"];
+    if (CO.address) lines.push(DCR.esc(CO.address));
+    var pf = [CO.phone ? "Ph " + CO.phone : "", CO.fax ? "Fax " + CO.fax : ""].filter(Boolean).join(" · ");
+    if (pf) lines.push(DCR.esc(pf));
+    if (CO.license) lines.push(DCR.esc(CO.license));
+    if (CO.website) lines.push(DCR.esc(CO.website));
+    return lines.join("<br>");
+  }
 
   var el = function (id) { return document.getElementById(id); };
   var esc = function (v) { return DCR.esc(v); };
@@ -41,7 +52,9 @@
     }).join("");
 
     el("rpSheet").innerHTML =
-      '<div class="lh"><img src="' + LOGO + '" alt="DCR Framing" /><h1>EXPENSE REPORT</h1></div>' +
+      '<div class="lh"><img src="' + LOGO + '" alt="' + esc(CO.name) + '" />' +
+      '<div style="font-size:9.5px;color:#333;line-height:1.5;text-align:center">' + coBlock() + "</div>" +
+      "<h1>EXPENSE REPORT</h1></div>" +
       '<div class="who"><div>Project: <b>' + esc((p.internalIDNumber || "") + " — " + (p.projectName || "")) + "</b><br>" +
         esc([p.projectAddress, p.projectCity].filter(Boolean).join(", ")) + "</div>" +
       "<div style='text-align:right'>Client: <b>" + esc(p.projectClientName || "—") + "</b><br>Date: " + today() + "</div></div>" +
@@ -51,7 +64,7 @@
         '<tbody><tr class="grand"><td colspan="2">GRAND TOTAL</td>' +
         '<td class="amt">' + money(grand.est) + '</td><td class="amt">' + money(grand.inv) + "</td>" +
         '<td class="amt">' + money(grand.mat) + '</td><td class="amt">' + money(grand.con) + "</td></tr></tbody></table>" +
-      '<div class="foot">Generated ' + today() + " · DCR Framing · " + rows.length + " expense records</div>";
+      '<div class="foot">Generated ' + today() + " · " + esc(CO.name) + " · " + rows.length + " expense records</div>";
   }
 
   document.addEventListener("DOMContentLoaded", async function () {

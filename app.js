@@ -66,6 +66,7 @@
     el("logoutBtn").onclick = function () { DCR.logout(); };
     var name = (profile.displayName || profile.email || "").split(" ")[0].split("@")[0];
     el("hmGreeting").textContent = "Welcome, " + name;
+    el("hmLogo").src = DCR.companyInfo.logo;
     el("hmGo").onclick = goSearch;
     el("hmSearch").addEventListener("keydown", function (e) { if (e.key === "Enter") goSearch(); });
     render(profile);

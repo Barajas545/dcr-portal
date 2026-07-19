@@ -5,7 +5,21 @@
 (function () {
   var qs = new URLSearchParams(location.search);
   var PID = qs.get("id");
-  var LOGO = "https://images.squarespace-cdn.com/content/62d99cb9f61a1a1ab61df5b3/b0c22d61-35f1-4aa4-bde5-17d8999f66c6/logo+black.png?content-type=image%2Fpng";
+  var CO = DCR.companyInfo;
+  var LOGO = CO.logo;
+
+  // Letterhead company block from config.js — empty fields are hidden.
+  function coBlock() {
+    var lines = [];
+    lines.push("<b>" + DCR.esc(CO.legalName || CO.name) + "</b>");
+    if (CO.address) lines.push(DCR.esc(CO.address));
+    var pf = [CO.phone ? "Ph " + CO.phone : "", CO.fax ? "Fax " + CO.fax : ""].filter(Boolean).join(" · ");
+    if (pf) lines.push(DCR.esc(pf));
+    if (CO.license) lines.push(DCR.esc(CO.license));
+    if (CO.website) lines.push(DCR.esc(CO.website));
+    if (CO.email) lines.push(DCR.esc(CO.email));
+    return lines.join("<br>");
+  }
   var DEFAULT_TERMS = "Estimate valid for 30 days. Prices include labor and materials as listed. " +
     "Any changes to the scope of work may affect the final price. A signed copy of this estimate " +
     "is required to schedule work.";
@@ -54,8 +68,8 @@
     }).join("");
 
     el("rpSheet").innerHTML =
-      '<div class="lh"><img src="' + LOGO + '" alt="DCR Framing" />' +
-      '<div class="co"><b>DCR Framing</b><br>www.dcrframing.com<br>cristobal@dcrframing.com</div></div>' +
+      '<div class="lh"><img src="' + LOGO + '" alt="' + esc(CO.name) + '" />' +
+      '<div class="co">' + coBlock() + "</div></div>" +
       '<div class="rp-title"><h1>ESTIMATE</h1><div class="meta">' +
         "Project #: <b>" + esc(p.internalIDNumber || "—") + "</b><br>Date: " + today() + "</div></div>" +
       '<div class="blocks">' +
@@ -70,7 +84,7 @@
         '<tbody><tr class="grand"><td>GRAND TOTAL</td><td class="amt">' + money(grand) + "</td></tr></tbody></table>" +
       '<div class="terms" contenteditable="true" spellcheck="false"><h4>Terms &amp; Notes</h4>' +
         esc(p.estimateTerms || p.estimateWording || DEFAULT_TERMS).replace(/\n/g, "<br>") + "</div>" +
-      '<div class="sig"><div>Client signature / date</div><div>DCR Framing / date</div></div>' +
+      '<div class="sig"><div>Client signature / date</div><div>' + esc(CO.name) + ' / date</div></div>' +
       '<div class="foot">Generated ' + today() + " · " + esc(p.internalIDNumber || "") + " — " + esc(p.projectName || "") + "</div>";
   }
 

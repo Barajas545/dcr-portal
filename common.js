@@ -7,7 +7,13 @@
 
   const DCR = {
     API_BASE,
-    company: cfg.COMPANY_NAME || "DCR",
+    company: (cfg.COMPANY && cfg.COMPANY.name) || cfg.COMPANY_NAME || "DCR",
+    // Full company block for letterheads etc. — missing fields come back "".
+    companyInfo: Object.assign(
+      { name: "DCR", legalName: "", logo: "logo.png", address: "", phone: "",
+        fax: "", email: "", website: "", license: "" },
+      cfg.COMPANY || {}
+    ),
 
     getToken() {
       return localStorage.getItem(TOKEN_KEY) || "";

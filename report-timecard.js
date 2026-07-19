@@ -4,7 +4,17 @@
 
 (function () {
   var qs = new URLSearchParams(location.search);
-  var LOGO = "https://images.squarespace-cdn.com/content/62d99cb9f61a1a1ab61df5b3/b0c22d61-35f1-4aa4-bde5-17d8999f66c6/logo+black.png?content-type=image%2Fpng";
+  var CO = DCR.companyInfo;
+  var LOGO = CO.logo;
+
+  function coBlock() {
+    var lines = ["<b>" + DCR.esc(CO.legalName || CO.name) + "</b>"];
+    if (CO.address) lines.push(DCR.esc(CO.address));
+    var pf = [CO.phone ? "Ph " + CO.phone : "", CO.fax ? "Fax " + CO.fax : ""].filter(Boolean).join(" · ");
+    if (pf) lines.push(DCR.esc(pf));
+    if (CO.license) lines.push(DCR.esc(CO.license));
+    return lines.join("<br>");
+  }
   var LEAVE_TYPES = ["Holiday", "Vacation", "Sick", "Day Off"];
   var state = { items: [], employees: [], emp: qs.get("emp") || "", week: "this" };
 
@@ -63,7 +73,9 @@
     }
 
     el("tcSheet").innerHTML =
-      '<div class="lh"><img src="' + LOGO + '" alt="DCR Framing" /><h1>TIME CARD</h1></div>' +
+      '<div class="lh"><img src="' + LOGO + '" alt="' + esc(CO.name) + '" />' +
+      '<div style="font-size:9.5px;color:#333;line-height:1.5;text-align:center">' + coBlock() + "</div>" +
+      "<h1>TIME CARD</h1></div>" +
       '<div class="who"><div>Employee: <b>' + esc(emp) + "</b></div>" +
       "<div>Week: <b>" + niceDate(start) + " – " + niceDate(end) + ", " + end.getFullYear() + "</b></div></div>" +
       '<table class="tc"><thead><tr><th>Day</th><th>Project / schedule / work</th><th>Hours</th></tr></thead><tbody>' +
@@ -71,7 +83,7 @@
       '<tr class="tot"><td colspan="2">WEEK TOTAL</td><td class="num">' + total + "</td></tr>" +
       "</tbody></table>" +
       '<div class="sig"><div>Employee signature / date</div><div>Supervisor signature / date</div></div>' +
-      '<div class="foot">Generated ' + new Date().toLocaleDateString("en-US") + " · DCR Framing</div>";
+      '<div class="foot">Generated ' + new Date().toLocaleDateString("en-US") + " · " + esc(CO.name) + "</div>";
   }
 
   function buildEmpSelect() {
