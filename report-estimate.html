@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DCR — Estimate</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      .rp-controls{
+        display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+        padding:10px 16px; background:var(--surface); border-bottom:1px solid var(--border);
+        position:sticky; top:0; z-index:10;
+      }
+      .rp-btn{padding:8px 14px; font-size:13px; font-weight:600; border-radius:8px; cursor:pointer;
+        border:1px solid var(--border); background:var(--surface); color:var(--text); text-decoration:none;}
+      .rp-btn:hover{background:var(--surface-2);}
+      .rp-btn-primary{background:#2f80d8; border-color:#2f80d8; color:#fff;}
+      .rp-check{display:flex; align-items:center; gap:6px; font-size:13px; color:var(--text); cursor:pointer;}
+      .rp-check input{accent-color:#2f80d8;}
+      .rp-note{font-size:12px; color:var(--text-muted);}
+
+      /* ── the sheet: always paper-like, even on dark screens ── */
+      .sheet{
+        max-width:8.5in; margin:18px auto; background:#fff; color:#111;
+        padding:0.7in 0.75in; box-shadow:0 3px 20px rgba(0,0,0,.25);
+        font-family:Georgia,"Times New Roman",serif; font-size:13px; line-height:1.45;
+      }
+      .sheet a{color:#111; text-decoration:none;}
+      .lh{display:flex; align-items:center; justify-content:space-between; gap:14px;
+        border-bottom:3px solid #111; padding-bottom:14px; margin-bottom:18px;}
+      .lh img{height:52px; width:auto;}
+      .lh .co{font-size:11px; text-align:right; color:#333; line-height:1.5;}
+      .rp-title{display:flex; align-items:baseline; justify-content:space-between; margin-bottom:14px;}
+      .rp-title h1{margin:0; font-size:26px; letter-spacing:.14em; font-weight:700;}
+      .rp-title .meta{font-size:12px; text-align:right; color:#333;}
+      .blocks{display:flex; gap:24px; margin-bottom:18px;}
+      .blk{flex:1; border:1px solid #999; border-radius:4px; padding:9px 12px;}
+      .blk h4{margin:0 0 5px; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:#555;}
+      .blk div{font-size:12.5px;}
+
+      table.est{width:100%; border-collapse:collapse; margin-bottom:16px;}
+      .est th{border-bottom:2px solid #111; padding:6px 8px; text-align:left; font-size:10.5px;
+        letter-spacing:.08em; text-transform:uppercase;}
+      .est th.amt, .est td.amt{text-align:right; white-space:nowrap; width:110px;}
+      .est td{padding:6px 8px; border-bottom:1px solid #ddd; vertical-align:top;}
+      .est tr.grp td{background:#f0f0f0; font-weight:700; font-size:12.5px; border-bottom:1px solid #999;
+        padding-top:9px;}
+      .est tr.sub td{font-weight:700; border-bottom:2px solid #999; background:#fafafa;}
+      .est tr.grand td{font-weight:700; font-size:15px; border-top:3px double #111; border-bottom:none; padding-top:10px;}
+      .lineb{font-size:11px; color:#555;}
+      .group-block{break-inside:avoid;}
+
+      .terms{border:1px solid #999; border-radius:4px; padding:10px 13px; font-size:11.5px; margin-bottom:22px; min-height:40px;}
+      .terms:focus{outline:2px solid #2f80d8;}
+      .terms h4{margin:0 0 5px; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:#555;}
+      .sig{display:flex; gap:40px; margin-top:34px;}
+      .sig div{flex:1; border-top:1px solid #111; padding-top:5px; font-size:11px; color:#333;}
+      .foot{margin-top:26px; font-size:10px; color:#777; text-align:center;}
+      .rp-loading{text-align:center; color:var(--text-muted); padding:60px 0;}
+
+      .noprices .amt, .noprices tr.sub, .noprices tr.grand, .noprices .terms{display:none;}
+      .nodetail .lineb.labor-detail{display:none;}
+
+      @media print{
+        .rp-controls{display:none !important;}
+        body{background:#fff !important;}
+        .sheet{box-shadow:none; margin:0; max-width:none; padding:0;}
+        @page{margin:0.6in 0.65in;}
+      }
+    </style>
+  </head>
+  <body>
+    <div class="rp-controls">
+      <a class="rp-btn" id="rpBack" href="board.html">← Back</a>
+      <label class="rp-check"><input type="checkbox" id="rpNoPrices" /> Hide prices (worksite copy)</label>
+      <label class="rp-check"><input type="checkbox" id="rpNoDetail" /> Hide labor detail</label>
+      <span class="rp-note">Terms box is editable before printing (edits are not saved).</span>
+      <button class="rp-btn rp-btn-primary" style="margin-left:auto" onclick="window.print()">🖨 Print / Save PDF</button>
+    </div>
+
+    <div id="rpSheet" class="sheet"><div class="rp-loading">Loading estimate…</div></div>
+
+    <script src="config.js"></script>
+    <script src="common.js"></script>
+    <script src="report-estimate.js"></script>
+  </body>
+</html>

@@ -269,6 +269,7 @@
     var bar = '<div class="pj-bar">' +
       (canEdit ? '<button class="pj-btn pj-btn-primary pj-btn-sm" id="estAddBtn">＋ New line</button>' : "") +
       '<button class="pj-btn pj-btn-sm" id="estReload">↻</button>' +
+      '<a class="pj-btn pj-btn-sm" href="report-estimate.html?id='+encodeURIComponent(PID)+'">🖨 Print estimate</a>' +
       '<span class="pj-sub">'+rows.length+' lines</span></div>';
     if (!rows.length) { pane.innerHTML = bar + '<div class="pj-empty">No estimate lines yet.</div>'; wireEstBar(canEdit); return; }
 

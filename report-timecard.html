@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DCR — Time Card</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      .rp-controls{
+        display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+        padding:10px 16px; background:var(--surface); border-bottom:1px solid var(--border);
+        position:sticky; top:0; z-index:10;
+      }
+      .rp-btn{padding:8px 14px; font-size:13px; font-weight:600; border-radius:8px; cursor:pointer;
+        border:1px solid var(--border); background:var(--surface); color:var(--text); text-decoration:none;}
+      .rp-btn:hover{background:var(--surface-2);}
+      .rp-btn-primary{background:#2f80d8; border-color:#2f80d8; color:#fff;}
+      .rp-sel{padding:8px 11px; font-size:13px; border:1px solid var(--border); border-radius:8px;
+        background:var(--surface); color:var(--text);}
+
+      .sheet{
+        max-width:8.5in; margin:18px auto; background:#fff; color:#111;
+        padding:0.6in 0.7in; box-shadow:0 3px 20px rgba(0,0,0,.25);
+        font-family:Arial,Helvetica,sans-serif; font-size:12.5px; line-height:1.4;
+      }
+      .lh{display:flex; align-items:center; justify-content:space-between; gap:14px;
+        border-bottom:3px solid #111; padding-bottom:12px; margin-bottom:14px;}
+      .lh img{height:44px; width:auto;}
+      .lh h1{margin:0; font-size:22px; letter-spacing:.12em;}
+      .who{display:flex; justify-content:space-between; margin-bottom:12px; font-size:13px;}
+      .who b{font-size:15px;}
+      table.tc{width:100%; border-collapse:collapse;}
+      .tc th{border:1px solid #111; background:#f0f0f0; padding:6px 8px; font-size:10.5px;
+        text-transform:uppercase; letter-spacing:.06em;}
+      .tc td{border:1px solid #555; padding:6px 8px; vertical-align:top;}
+      .tc td.num{text-align:right; white-space:nowrap; width:70px;}
+      .tc tr.tot td{font-weight:700; background:#f0f0f0; border-top:2px solid #111; font-size:13.5px;}
+      .tc .sub{font-size:10.5px; color:#555;}
+      .leave{font-style:italic; color:#444;}
+      .sig{display:flex; gap:40px; margin-top:36px;}
+      .sig div{flex:1; border-top:1px solid #111; padding-top:5px; font-size:11px; color:#333;}
+      .foot{margin-top:20px; font-size:10px; color:#777; text-align:center;}
+      .rp-loading{text-align:center; color:var(--text-muted); padding:60px 0;}
+
+      @media print{
+        .rp-controls{display:none !important;}
+        body{background:#fff !important;}
+        .sheet{box-shadow:none; margin:0; max-width:none; padding:0;}
+        @page{margin:0.6in 0.65in;}
+      }
+    </style>
+  </head>
+  <body>
+    <div class="rp-controls">
+      <a class="rp-btn" href="timesheet-manager.html">← Back</a>
+      <select id="tcEmp" class="rp-sel"></select>
+      <select id="tcWeek" class="rp-sel">
+        <option value="this">This week</option>
+        <option value="last">Last week</option>
+      </select>
+      <button class="rp-btn rp-btn-primary" style="margin-left:auto" onclick="window.print()">🖨 Print / Save PDF</button>
+    </div>
+
+    <div id="tcSheet" class="sheet"><div class="rp-loading">Loading…</div></div>
+
+    <script src="config.js"></script>
+    <script src="common.js"></script>
+    <script src="report-timecard.js"></script>
+  </body>
+</html>
