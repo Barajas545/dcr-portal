@@ -242,60 +242,72 @@
     else if (name==="files") loadFiles();
   }
 
-  /* ── estimate ── */
-  var EST_FIELDS = [
-    ["taskGroupingName","Grouping","text"],["taskSortingNumber","Sorting #","num"],
-    ["taskLaborName","Labor item","text"],["taskLaborNumberOfGuys","Guys","num"],
-    ["taskLaborDaysToComplete","Days","num"],["taskLaborPricePerHour","Rate $/hr","num"],
-    ["taskLaborMarkup","Labor markup (×)","num"],["taskLaborQty","Labor qty","num"],
-    ["taskLaborPrice","Labor price (per qty)","num"],["taskLaborSurfaceArea","Surface area","num"],
-    ["taskMaterialName","Material item","text"],["taskMaterialQty","Material qty","num"],
-    ["taskMaterialUnitPrice","Material unit $","num"],["taskMaterialMarkup","Material markup (×)","num"],
-    ["taskQuotedPrice","Quoted price $","num"],
-  ];
-
+  /* ── estimate (grouped: estimate name → grouping name → sorting number) ── */
   async function loadEstimate() {
     var pane = el("pane-estimate");
     pane.innerHTML = '<div class="pj-empty">Loading estimate…</div>';
     try {
       var d = await DCR.api("/api/portal?action=project&id="+PID+"&part=estimate");
       state.estRows = d.rows||[];
+      state.estCanEdit = !!d.canEdit;
       renderEstimate(d.canEdit);
     } catch (e) { pane.innerHTML = '<div class="pj-empty">'+esc(e.message)+'</div>'; }
+  }
+
+  function estLineHtml(r) {
+    var lines = [];
+    if (r.title) lines.push('<b>'+esc(r.title)+'</b>');
+    if (r.taskLaborName) lines.push(esc(r.taskLaborName) + (r.taskLaborNumberOfGuys?' <span class="pj-sub">('+r.taskLaborNumberOfGuys+' guys × '+(r.taskLaborDaysToComplete||0)+' days @ '+fmtMoney(r.taskLaborPricePerHour)+'/hr)</span>':"") + (num(r.taskLaborPrice)?' <span class="pj-sub">('+(r.taskLaborQty||1)+' × '+fmtMoney(r.taskLaborPrice)+')</span>':""));
+    if (r.taskMaterialName) lines.push(esc(r.taskMaterialName) + (num(r.taskMaterialQty)?' <span class="pj-sub">('+r.taskMaterialQty+' × '+fmtMoney(r.taskMaterialUnitPrice)+')</span>':""));
+    if (r.taskEstimateNotes) lines.push('<span class="pj-sub">'+esc(r.taskEstimateNotes)+'</span>');
+    return lines.join("<br>")||"—";
   }
 
   function renderEstimate(canEdit) {
     var pane = el("pane-estimate");
     var rows = state.estRows;
     var bar = '<div class="pj-bar">' +
-      (canEdit ? '<button class="pj-btn pj-btn-primary pj-btn-sm" id="estAddBtn">＋ New line</button>' : "") +
+      (canEdit ? '<button class="pj-btn pj-btn-primary pj-btn-sm" id="estAddBtn">＋ New item</button>' : "") +
       '<button class="pj-btn pj-btn-sm" id="estReload">↻</button>' +
       '<a class="pj-btn pj-btn-sm" href="report-estimate.html?id='+encodeURIComponent(PID)+'">🖨 Print estimate</a>' +
       '<span class="pj-sub">'+rows.length+' lines</span></div>';
     if (!rows.length) { pane.innerHTML = bar + '<div class="pj-empty">No estimate lines yet.</div>'; wireEstBar(canEdit); return; }
 
-    var groups = {};
-    rows.forEach(function(r){ var g=r.taskGroupingName||"(no group)"; (groups[g]=groups[g]||[]).push(r); });
+    // Rows arrive server-sorted (estimate name → grouping → sorting number);
+    // build the section/group structure preserving that order.
+    var secs = [], secIdx = {};
+    rows.forEach(function(r){
+      var sn = r.taskEstimateName || "(no estimate name)";
+      if (!(sn in secIdx)) { secIdx[sn] = secs.length; secs.push({ name:sn, groups:[], gIdx:{}, labor:0, mat:0, tot:0 }); }
+      var s = secs[secIdx[sn]];
+      var g = r.taskGroupingName || "(no group)";
+      if (!(g in s.gIdx)) { s.gIdx[g] = s.groups.length; s.groups.push({ name:g, rows:[] }); }
+      s.groups[s.gIdx[g]].rows.push(r);
+    });
+
+    var cols = canEdit ? 5 : 4;
     var grand = { labor:0, mat:0, tot:0 };
     var body = "";
-    Object.keys(groups).forEach(function(g){
-      var gr = groups[g], gl=0, gm=0, gt=0;
-      body += '<tr class="pj-grp"><td colspan="'+(canEdit?5:4)+'">'+esc(g)+'</td></tr>';
-      gr.forEach(function(r){
-        var labor = r.TaskLaborTotalPrice + r.TaskLaborTotalPricePerQty;
-        var mat = r.TaskMaterialTotalPrice;
-        gl+=labor; gm+=mat; gt+=r.TaskGrandTotalMaterialAndLabor;
-        var lines = [];
-        if (r.taskLaborName) lines.push(esc(r.taskLaborName) + (r.taskLaborNumberOfGuys?' <span class="pj-sub">('+r.taskLaborNumberOfGuys+' guys × '+(r.taskLaborDaysToComplete||0)+' days @ '+fmtMoney(r.taskLaborPricePerHour)+'/hr)</span>':"") + (num(r.taskLaborPrice)?' <span class="pj-sub">('+(r.taskLaborQty||1)+' × '+fmtMoney(r.taskLaborPrice)+')</span>':""));
-        if (r.taskMaterialName) lines.push(esc(r.taskMaterialName) + (num(r.taskMaterialQty)?' <span class="pj-sub">('+r.taskMaterialQty+' × '+fmtMoney(r.taskMaterialUnitPrice)+')</span>':""));
-        if (r.taskEstimateNotes) lines.push('<span class="pj-sub">'+esc(r.taskEstimateNotes)+'</span>');
-        body += '<tr><td>'+ (lines.join("<br>")||"—") +'</td>' +
-          '<td class="num">'+fmtMoney(labor)+'</td><td class="num">'+fmtMoney(mat)+'</td>' +
-          '<td class="num"><b>'+fmtMoney(r.TaskGrandTotalMaterialAndLabor)+'</b></td>' +
-          (canEdit?'<td><div class="pj-rowbtns"><button class="pj-btn pj-btn-sm" data-est-edit="'+r.id+'">✎</button><button class="pj-btn pj-btn-sm" data-est-del="'+r.id+'">🗑</button></div></td>':"") + '</tr>';
+    secs.forEach(function(s){
+      body += '<tr class="pj-est"><td colspan="'+cols+'">📄 '+esc(s.name)+
+        (canEdit?' <button class="pj-btn pj-btn-sm" data-est-addto="'+esc(s.name===("(no estimate name)")?"":s.name)+'" style="margin-left:8px">＋</button>':"")+'</td></tr>';
+      s.groups.forEach(function(gr){
+        var gl=0, gm=0, gt=0;
+        body += '<tr class="pj-grp"><td colspan="'+cols+'">'+esc(gr.name)+'</td></tr>';
+        gr.rows.forEach(function(r){
+          var labor = r.TaskLaborTotalPrice + r.TaskLaborTotalPricePerQty;
+          var mat = r.TaskMaterialTotalPrice;
+          gl+=labor; gm+=mat; gt+=r.TaskGrandTotalMaterialAndLabor;
+          body += '<tr'+(canEdit?' data-est-open="'+r.id+'" style="cursor:pointer"':"")+'><td>'+ estLineHtml(r) +'</td>' +
+            '<td class="num">'+fmtMoney(labor)+'</td><td class="num">'+fmtMoney(mat)+'</td>' +
+            '<td class="num"><b>'+fmtMoney(r.TaskGrandTotalMaterialAndLabor)+'</b></td>' +
+            (canEdit?'<td><div class="pj-rowbtns"><button class="pj-btn pj-btn-sm" data-est-edit="'+r.id+'">✎</button><button class="pj-btn pj-btn-sm" data-est-del="'+r.id+'">🗑</button></div></td>':"") + '</tr>';
+        });
+        s.labor+=gl; s.mat+=gm; s.tot+=gt;
+        body += '<tr class="pj-grpTot"><td>Subtotal — '+esc(gr.name)+'</td><td class="num">'+fmtMoney(gl)+'</td><td class="num">'+fmtMoney(gm)+'</td><td class="num">'+fmtMoney(gt)+'</td>'+(canEdit?'<td></td>':"")+'</tr>';
       });
-      grand.labor+=gl; grand.mat+=gm; grand.tot+=gt;
-      body += '<tr class="pj-grpTot"><td>Subtotal — '+esc(g)+'</td><td class="num">'+fmtMoney(gl)+'</td><td class="num">'+fmtMoney(gm)+'</td><td class="num">'+fmtMoney(gt)+'</td>'+(canEdit?'<td></td>':"")+'</tr>';
+      grand.labor+=s.labor; grand.mat+=s.mat; grand.tot+=s.tot;
+      body += '<tr class="pj-estTot"><td>Estimate total — '+esc(s.name)+'</td><td class="num">'+fmtMoney(s.labor)+'</td><td class="num">'+fmtMoney(s.mat)+'</td><td class="num">'+fmtMoney(s.tot)+'</td>'+(canEdit?'<td></td>':"")+'</tr>';
     });
     body += '<tr class="pj-grand"><td>GRAND TOTAL</td><td class="num">'+fmtMoney(grand.labor)+'</td><td class="num">'+fmtMoney(grand.mat)+'</td><td class="num">'+fmtMoney(grand.tot)+'</td>'+(canEdit?'<td></td>':"")+'</tr>';
 
@@ -303,56 +315,285 @@
       '<th>Item</th><th class="num">Labor</th><th class="num">Material</th><th class="num">Total</th>'+(canEdit?'<th></th>':"")+'</tr></thead><tbody>'+body+'</tbody></table></div>';
     wireEstBar(canEdit);
     if (canEdit) {
-      pane.querySelectorAll("[data-est-edit]").forEach(function(b){ b.onclick=function(){ openEstModal(b.getAttribute("data-est-edit")); }; });
-      pane.querySelectorAll("[data-est-del]").forEach(function(b){ b.onclick=function(){ delEstRow(b.getAttribute("data-est-del")); }; });
+      pane.querySelectorAll("[data-est-edit]").forEach(function(b){ b.onclick=function(e){ e.stopPropagation(); ieOpen(b.getAttribute("data-est-edit")); }; });
+      pane.querySelectorAll("[data-est-del]").forEach(function(b){ b.onclick=function(e){ e.stopPropagation(); delEstRow(b.getAttribute("data-est-del")); }; });
+      pane.querySelectorAll("[data-est-addto]").forEach(function(b){ b.onclick=function(e){ e.stopPropagation(); ieOpen(null, b.getAttribute("data-est-addto")); }; });
+      pane.querySelectorAll("[data-est-open]").forEach(function(tr){ tr.ondblclick=function(){ ieOpen(tr.getAttribute("data-est-open")); }; });
     }
   }
 
   function wireEstBar(canEdit) {
     var r = el("estReload"); if (r) r.onclick = loadEstimate;
-    var a = el("estAddBtn"); if (a) a.onclick = function(){ openEstModal(null); };
+    var a = el("estAddBtn"); if (a) a.onclick = function(){ ieOpen(null, ""); };
   }
 
-  function openEstModal(rowId) {
-    state.estEditing = rowId ? state.estRows.find(function(r){ return String(r.id)===String(rowId); }) : null;
-    el("estModalTitle").textContent = rowId ? "Edit estimate line" : "New estimate line";
-    el("estMsg").textContent = "";
-    var groups = {}; state.estRows.forEach(function(r){ if(r.taskGroupingName) groups[r.taskGroupingName]=1; });
-    el("estFields").innerHTML = EST_FIELDS.map(function(d){
-      var v = state.estEditing ? state.estEditing[d[0]] : "";
-      if (d[0]==="taskGroupingName") {
-        return '<div class="pj-f full"><label>'+d[1]+'</label><input list="estGroups" id="ef_'+d[0]+'" value="'+esc(v==null?"":v)+'"><datalist id="estGroups">'+Object.keys(groups).map(function(g){return '<option value="'+esc(g)+'">';}).join("")+'</datalist></div>';
-      }
-      var t = d[2]==="num" ? ' type="number" step="any"' : ' type="text"';
-      return '<div class="pj-f"><label>'+d[1]+'</label><input'+t+' id="ef_'+d[0]+'" value="'+esc(v==null?"":v)+'"></div>';
-    }).join("") + '<div class="pj-f full"><label>Notes</label><textarea id="ef_taskEstimateNotes" rows="2">'+esc(state.estEditing?state.estEditing.taskEstimateNotes||"":"")+'</textarea></div>';
-    el("estModal").classList.add("open");
+  /* ══ Estimate item editor (Access GeneralProjectTasksSideForm port) ══
+     SharePoint formulas mirrored for the live preview:
+       MenHours = Guys×Days×8; LaborTotal = MenHours×Rate×Markup;
+       LaborPerQty = Markup×Price×Qty; MaterialTotal = Qty×Unit×Markup;
+       Grand = LaborTotal + LaborPerQty + MaterialTotal.
+     Markup is stored as a MULTIPLIER (1 = 0%, 1.3 = 30%). */
+  var IE_NUM = [
+    ["ie_sort","taskSortingNumber"],["ie_quoted","taskQuotedPrice"],
+    ["ie_lArea","taskLaborSurfaceArea"],["ie_lRate","taskLaborPricePerHour"],
+    ["ie_lGuys","taskLaborNumberOfGuys"],["ie_lDays","taskLaborDaysToComplete"],
+    ["ie_lQty","taskLaborQty"],["ie_lPrice","taskLaborPrice"],
+    ["ie_mQty","taskMaterialQty"],["ie_mPrice","taskMaterialUnitPrice"],["ie_mArea","taskMaterialSurfaceArea"],
+  ];
+  var IE_TEXT = [
+    ["ie_estName","taskEstimateName"],["ie_title","title"],["ie_laborName","taskLaborName"],
+    ["ie_matName","taskMaterialName"],["ie_assigned","taskAssignedPerson"],
+    ["ie_email","taskAssignedEmail"],["ie_notes","taskEstimateNotes"],
+  ];
+
+  function mkFill(sel, stored) {
+    var v = num(stored) || 1;
+    var opts = "";
+    var found = false;
+    for (var p=0; p<=50; p+=5) {
+      var m = Math.round((1+p/100)*100)/100;
+      if (Math.abs(m-v) < 0.001) found = true;
+      opts += '<option value="'+m+'"'+(Math.abs(m-v)<0.001?" selected":"")+'>'+p+'%</option>';
+    }
+    if (!found) opts += '<option value="'+v+'" selected>'+Math.round((v-1)*100)+'%</option>';
+    sel.innerHTML = opts;
   }
 
-  async function saveEstModal() {
+  function ieRecalc() {
+    var mk = num(el("ie_lMk").value)||1, mmk = num(el("ie_mMk").value)||1;
+    var lab1 = num(el("ie_lGuys").value)*num(el("ie_lDays").value)*8*num(el("ie_lRate").value)*mk;
+    var lab2 = mk*num(el("ie_lPrice").value)*num(el("ie_lQty").value);
+    var labT = lab1+lab2;
+    var matT = num(el("ie_mQty").value)*num(el("ie_mPrice").value)*mmk;
+    var area = num(el("ie_lArea").value), marea = num(el("ie_mArea").value);
+    el("ieLab1").textContent = fmtMoney(lab1);
+    el("ieLab2").textContent = fmtMoney(lab2);
+    el("ieLabT").textContent = fmtMoney(labT);
+    el("ieMatT").textContent = fmtMoney(matT);
+    el("ieLabSq").textContent = area>0 ? fmtMoney(labT/area)+" /F²" : "";
+    el("ieMatSq").textContent = marea>0 ? fmtMoney(matT/marea)+" /F²" : "";
+    el("ieGrand").textContent = "Total: "+fmtMoney(labT+matT);
+  }
+
+  function ieOpen(rowId, presetEstName) {
+    var r = rowId ? state.estRows.find(function(x){ return String(x.id)===String(rowId); }) : null;
+    state.ie = { id: r ? r.id : null, log: r ? (r.taskUpdateLog||"") : "", subTab: "takeoff" };
+    var names = {}; state.estRows.forEach(function(x){ if(x.taskEstimateName) names[x.taskEstimateName]=1; });
+    el("ieEstNames").innerHTML = Object.keys(names).map(function(n){ return '<option value="'+esc(n)+'">'; }).join("");
+    IE_TEXT.forEach(function(d){ el(d[0]).value = r ? (r[d[1]]||"") : ""; });
+    IE_NUM.forEach(function(d){ var v = r ? r[d[1]] : null; el(d[0]).value = (v===null||v===undefined||v==="") ? "" : v; });
+    if (!r && presetEstName) el("ie_estName").value = presetEstName;
+    mkFill(el("ie_lMk"), r ? r.taskLaborMarkup : 1);
+    mkFill(el("ie_mMk"), r ? r.taskMaterialMarkup : 1);
+    el("ieTaskId").value = r ? r.id : "(new)";
+    el("ieLogView").textContent = state.ie.log;
+    el("ieLogNote").value = "";
+    el("ieContactSearch").value = ""; el("ieContactHits").innerHTML = "";
+    el("ieMsg").textContent = ""; el("ieMsg").className = "pj-msg";
+    el("ieDelete").style.display = r ? "" : "none";
+    document.querySelectorAll(".ie-tab").forEach(function(t){ t.classList.toggle("active", t.getAttribute("data-ietab")==="takeoff"); });
+    ieRecalc();
+    renderIeSub();
+    el("ieModal").classList.add("open");
+  }
+
+  function ieCollect() {
     var fields = {};
-    EST_FIELDS.concat([["taskEstimateNotes","","text"]]).forEach(function(d){
-      var inp = el("ef_"+d[0]); if(!inp) return;
-      var v = inp.value;
-      if (v==="") { if (state.estEditing) fields[d[0]] = d[2]==="num" ? null : ""; return; }
-      fields[d[0]] = d[2]==="num" ? Number(v) : v;
-    });
-    el("estSave").disabled = true;
+    IE_TEXT.forEach(function(d){ fields[d[1]] = el(d[0]).value; });
+    IE_NUM.forEach(function(d){ var v = el(d[0]).value; if (v!=="") fields[d[1]] = Number(v); });
+    fields.taskLaborMarkup = Number(el("ie_lMk").value)||1;
+    fields.taskMaterialMarkup = Number(el("ie_mMk").value)||1;
+    fields.taskUpdateLog = state.ie.log;
+    Object.keys(fields).forEach(function(k){ if (fields[k]==="" ) delete fields[k]; });
+    return fields;
+  }
+
+  async function ieSave() {
+    el("ieSave").disabled = true;
+    el("ieMsg").textContent = "Saving…"; el("ieMsg").className = "pj-msg";
     try {
-      var body = state.estEditing
-        ? { op:"estUpdate", itemId: state.estEditing.id, fields: fields }
+      var fields = ieCollect();
+      if (!Object.keys(fields).length) throw new Error("Nothing to save.");
+      var body = state.ie.id
+        ? { op:"estUpdate", itemId: state.ie.id, fields: fields }
         : { op:"estAdd", projectId: PID, fields: fields };
-      await DCR.api("/api/portal?action=project", { method:"POST", body: body });
-      el("estModal").classList.remove("open");
+      var d = await DCR.api("/api/portal?action=project", { method:"POST", body: body });
+      if (!state.ie.id && d.id) { state.ie.id = d.id; el("ieTaskId").value = d.id; el("ieDelete").style.display=""; renderIeSub(); }
+      el("ieMsg").textContent = "Saved ✓"; el("ieMsg").className = "pj-msg ok";
       loadEstimate();
-    } catch (e) { el("estMsg").textContent = e.message || "Save failed"; }
-    el("estSave").disabled = false;
+    } catch (e) { el("ieMsg").textContent = e.message||"Save failed"; el("ieMsg").className = "pj-msg err"; }
+    el("ieSave").disabled = false;
+  }
+
+  /* contacts search for Assigned-to */
+  async function ieContactLookup(q) {
+    var box = el("ieContactHits");
+    if (q.length < 2) { box.innerHTML = ""; return; }
+    if (!state.contacts) {
+      try {
+        var d = await DCR.api("/api/portal?action=data&list=contacts&top=999");
+        state.contacts = d.value||[];
+      } catch (e) { box.innerHTML = '<div class="pj-sub">'+esc(e.message)+'</div>'; return; }
+    }
+    var ql = q.toLowerCase();
+    var hits = state.contacts.filter(function(c){
+      return [c.contactName,c.contactCompany,c.contactTrade,c.contactPhone].join(" ").toLowerCase().indexOf(ql)!==-1;
+    }).slice(0,6);
+    box.innerHTML = hits.map(function(c,i){
+      return '<div class="ie-contact-hit" data-ci="'+i+'"><b>'+esc(c.contactName||"")+'</b> <span class="pj-sub">'+esc([c.contactCompany,c.contactTrade,c.contactPhone].filter(Boolean).join(" · "))+'</span></div>';
+    }).join("");
+    box.querySelectorAll("[data-ci]").forEach(function(h){
+      h.onclick = function(){
+        var c = hits[Number(h.getAttribute("data-ci"))];
+        el("ie_assigned").value = [c.contactName, c.contactCompany, c.contactPhone].filter(Boolean).join("\n");
+        if (c.contactEMail) el("ie_email").value = c.contactEMail;
+        box.innerHTML = ""; el("ieContactSearch").value = "";
+      };
+    });
+  }
+
+  function ieMailto(kind) {
+    var email = el("ie_email").value.trim();
+    if (!email) { alert("No e-mail address set."); return; }
+    var p = state.project||{};
+    var title = el("ie_title").value || "estimate item";
+    var subj = (kind==="quote" ? "Quote request — " : "Following up — ") +
+      (p.internalIDNumber||"") + " " + (p.projectName||"") + " — " + title;
+    var lines = [];
+    if (kind==="quote") {
+      lines.push("Hello,", "", "Could you give us a quote for the following work on " + (p.projectAddress||p.projectName||"our project") + ":", "");
+      if (el("ie_laborName").value) lines.push("Labor: " + el("ie_laborName").value, "");
+      if (el("ie_matName").value) lines.push("Material: " + el("ie_matName").value, "");
+      lines.push("Thank you,", DCR.companyInfo.name);
+    } else {
+      lines.push("Hello,", "", "Just following up on the quote request for " + title + " (" + (p.projectAddress||p.projectName||"") + "). Let us know if you need anything.", "", "Thank you,", DCR.companyInfo.name);
+    }
+    location.href = "mailto:"+encodeURIComponent(email)+"?subject="+encodeURIComponent(subj)+"&body="+encodeURIComponent(lines.join("\n"));
+  }
+
+  /* right-side sub-tabs: takeoff / expenses / files */
+  function renderIeSub() {
+    var box = el("ieSub");
+    var tab = state.ie.subTab;
+    if (tab !== "files" && !state.ie.id) {
+      box.innerHTML = '<div class="pj-empty">Save the item first to attach '+(tab==="takeoff"?"takeoff lines":"expenses")+'.</div>';
+      return;
+    }
+    box.innerHTML = '<div class="pj-empty">Loading…</div>';
+    if (tab === "takeoff") ieSubTakeoff();
+    else if (tab === "expenses") ieSubExpenses();
+    else ieSubFiles();
+  }
+
+  async function ieSubTakeoff() {
+    var box = el("ieSub");
+    try {
+      var d = await DCR.api("/api/portal?action=project&id="+PID+"&part=takeoffs");
+      var rows = (d.rows||[]).filter(function(r){ return String(r.itemGeneralProjectTasksID||"")===String(state.ie.id); });
+      var tot = 0;
+      var body = rows.map(function(r){
+        var t = num(r.itemQty)*num(r.itemPrice); tot+=t;
+        return '<tr><td>'+esc(r.itemName||r.itemPurpose||"—")+'</td><td class="num">'+(num(r.itemQty)||"")+'</td>' +
+          '<td class="num">'+(num(r.itemPrice)?fmtMoney(r.itemPrice):"")+'</td><td class="num">'+(t?fmtMoney(t):"")+'</td>' +
+          '<td><button class="pj-btn pj-btn-sm" data-iet-del="'+r.id+'">✗</button></td></tr>';
+      }).join("");
+      box.innerHTML = '<table class="ie-mini"><thead><tr><th>Purpose / name</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Total</th><th></th></tr></thead><tbody>' +
+        body + '<tr><td colspan="3" style="text-align:right;font-weight:700">Total takeoff:</td><td class="num" style="font-weight:700">'+fmtMoney(tot)+'</td><td></td></tr></tbody></table>' +
+        '<div class="ie-calcrow" style="margin-top:10px">' +
+          '<div class="pj-f" style="flex:1;min-width:110px"><label>Item</label><input id="ietName" /></div>' +
+          '<div class="pj-f"><label>Qty</label><input id="ietQty" type="number" step="any" style="width:64px" /></div>' +
+          '<div class="pj-f"><label>Price $</label><input id="ietPrice" type="number" step="any" style="width:80px" /></div>' +
+          '<button class="pj-btn pj-btn-sm" id="ietAdd">＋</button></div>';
+      el("ietAdd").onclick = async function(){
+        var name = el("ietName").value.trim();
+        if (!name) return;
+        try {
+          var fields = { itemName: name, itemGeneralProjectTasksID: Number(state.ie.id),
+            takeoffName: el("ie_title").value || ("Item "+state.ie.id) };
+          if (el("ietQty").value!=="") fields.itemQty = el("ietQty").value;
+          if (el("ietPrice").value!=="") fields.itemPrice = Number(el("ietPrice").value);
+          await DCR.api("/api/portal?action=project", { method:"POST", body:{ op:"toAdd", projectId: PID, fields: fields } });
+          ieSubTakeoff();
+        } catch (e) { alert(e.message||"Add failed"); }
+      };
+      box.querySelectorAll("[data-iet-del]").forEach(function(b){
+        b.onclick = async function(){
+          if (!confirm("Delete this takeoff line?")) return;
+          try { await DCR.api("/api/portal?action=project", { method:"POST", body:{ op:"toDelete", itemId: b.getAttribute("data-iet-del") } }); ieSubTakeoff(); }
+          catch (e) { alert(e.message||"Delete failed"); }
+        };
+      });
+    } catch (e) { box.innerHTML = '<div class="pj-empty">'+esc(e.message)+'</div>'; }
+  }
+
+  async function ieSubExpenses() {
+    var box = el("ieSub");
+    try {
+      var d = await DCR.api("/api/portal?action=project&id="+PID+"&part=expenses");
+      var rows = (d.rows||[]).filter(function(r){ return String(r.expenseOriginalEstimateNumber||"")===String(state.ie.id); });
+      var tot = 0;
+      var body = rows.map(function(r){
+        var amt = num(r.materials)+num(r.contractors)+num(r.invoice); tot+=amt;
+        return '<tr><td>'+fmtDate(r.expenseDate)+'<br><span class="pj-sub">'+esc(r.description||"")+'</span></td>' +
+          '<td class="num">'+fmtMoney(amt)+'</td>' +
+          '<td><button class="pj-btn pj-btn-sm" data-iee-del="'+r.id+'">✗</button></td></tr>';
+      }).join("");
+      box.innerHTML = '<table class="ie-mini"><thead><tr><th>Expense</th><th class="num">Amount</th><th></th></tr></thead><tbody>' +
+        body + '<tr><td style="text-align:right;font-weight:700">Total expenses:</td><td class="num" style="font-weight:700">'+fmtMoney(tot)+'</td><td></td></tr></tbody></table>' +
+        '<div class="ie-calcrow" style="margin-top:10px">' +
+          '<div class="pj-f" style="flex:1;min-width:110px"><label>Description</label><input id="ieeDesc" /></div>' +
+          '<div class="pj-f"><label>Materials $</label><input id="ieeMat" type="number" step="any" style="width:84px" /></div>' +
+          '<div class="pj-f"><label>Contractors $</label><input id="ieeCon" type="number" step="any" style="width:84px" /></div>' +
+          '<button class="pj-btn pj-btn-sm" id="ieeAdd">＋</button></div>';
+      el("ieeAdd").onclick = async function(){
+        var desc = el("ieeDesc").value.trim();
+        if (!desc) return;
+        try {
+          var fields = { description: desc, expenseDate: new Date().toISOString().slice(0,10)+"T12:00:00Z",
+            expenseOriginalEstimateNumber: String(state.ie.id),
+            gropingName: el("ie_title").value || ("Item "+state.ie.id) };
+          if (el("ieeMat").value!=="") fields.materials = Number(el("ieeMat").value);
+          if (el("ieeCon").value!=="") fields.contractors = Number(el("ieeCon").value);
+          await DCR.api("/api/portal?action=project", { method:"POST", body:{ op:"expAdd", projectId: PID, fields: fields } });
+          ieSubExpenses();
+        } catch (e) { alert(e.message||"Add failed"); }
+      };
+      box.querySelectorAll("[data-iee-del]").forEach(function(b){
+        b.onclick = async function(){
+          if (!confirm("Delete this expense?")) return;
+          try { await DCR.api("/api/portal?action=project", { method:"POST", body:{ op:"expDelete", itemId: b.getAttribute("data-iee-del") } }); ieSubExpenses(); }
+          catch (e) { alert(e.message||"Delete failed"); }
+        };
+      });
+    } catch (e) { box.innerHTML = '<div class="pj-empty">'+esc(e.message)+'</div>'; }
+  }
+
+  async function ieSubFiles() {
+    var box = el("ieSub");
+    if (!state.driveReady) { box.innerHTML = '<div class="pj-empty">Google Drive is not connected.</div>'; return; }
+    try {
+      var d = await DCR.api("/api/portal?action=drive&projectId="+encodeURIComponent(PID));
+      var items = d.items||[];
+      box.innerHTML = '<div style="margin-bottom:8px"><a class="pj-btn pj-btn-sm" target="_blank" href="https://drive.google.com/drive/folders/'+esc(d.folderId||"")+'">Open project folder in Drive ↗</a></div>' +
+        (items.map(function(f){
+          return '<div class="ie-contact-hit" data-ief="'+esc(f.id)+'" data-folder="'+(f.isFolder?1:0)+'" data-link="'+esc(f.webViewLink||"")+'">'+fileIcon(f)+' '+esc(f.name)+'</div>';
+        }).join("") || '<div class="pj-empty">Empty folder.</div>');
+      box.querySelectorAll("[data-ief]").forEach(function(row){
+        row.onclick = function(){
+          if (row.getAttribute("data-folder")==="1") {
+            var link = row.getAttribute("data-link");
+            window.open(link || ("https://drive.google.com/drive/folders/"+row.getAttribute("data-ief")), "_blank");
+          } else openFile(row.getAttribute("data-ief"), row.getAttribute("data-link"));
+        };
+      });
+    } catch (e) { box.innerHTML = '<div class="pj-empty">'+esc(e.message)+'</div>'; }
   }
 
   async function delEstRow(rowId) {
     if (!confirm("Delete this estimate line? This cannot be undone.")) return;
     try {
       await DCR.api("/api/portal?action=project", { method:"POST", body:{ op:"estDelete", itemId: rowId } });
+      if (state.ie && String(state.ie.id)===String(rowId)) el("ieModal").classList.remove("open");
       loadEstimate();
     } catch (e) { alert(e.message || "Delete failed"); }
   }
@@ -854,13 +1095,44 @@
 
     document.querySelectorAll(".pj-tab").forEach(function(t){ t.onclick = function(){ switchTab(t.getAttribute("data-tab")); }; });
     el("pjSave").onclick = saveOverview;
-    el("estCancel").onclick = function(){ el("estModal").classList.remove("open"); };
-    el("estSave").onclick = saveEstModal;
     el("tkCancel").onclick = function(){ el("taskModal").classList.remove("open"); };
     el("tkSave").onclick = saveTask;
     el("subCancel").onclick = function(){ el("subModal").classList.remove("open"); };
     el("subSave").onclick = saveSubModal;
-    [el("estModal"), el("taskModal"), el("subModal")].forEach(function(m){ m.addEventListener("click", function(e){ if(e.target===m) m.classList.remove("open"); }); });
+    [el("taskModal"), el("subModal")].forEach(function(m){ m.addEventListener("click", function(e){ if(e.target===m) m.classList.remove("open"); }); });
+
+    // item editor wiring (no backdrop-close: large form, avoid accidental loss)
+    el("ieExit").onclick = function(){ el("ieModal").classList.remove("open"); };
+    el("ieSave").onclick = ieSave;
+    el("ieDelete").onclick = function(){ if (state.ie && state.ie.id) delEstRow(state.ie.id); };
+    el("ieLogAdd").onclick = function(){
+      var note = el("ieLogNote").value.trim(); if (!note) return;
+      state.ie.log = new Date().toLocaleDateString("en-US") + " - " + note + (state.ie.log ? "\n" + state.ie.log : "");
+      el("ieLogView").textContent = state.ie.log;
+      el("ieLogNote").value = "";
+    };
+    el("ieQuoteBtn").onclick = function(){ ieMailto("quote"); };
+    el("ieFollowBtn").onclick = function(){ ieMailto("follow"); };
+    el("ieContactSearch").addEventListener("input", function(){ ieContactLookup(this.value.trim()); });
+    document.querySelectorAll(".ie-tab").forEach(function(t){
+      t.onclick = function(){
+        state.ie.subTab = t.getAttribute("data-ietab");
+        document.querySelectorAll(".ie-tab").forEach(function(x){ x.classList.toggle("active", x===t); });
+        renderIeSub();
+      };
+    });
+    document.querySelectorAll("[data-step]").forEach(function(b){
+      b.onclick = function(){
+        var p = b.getAttribute("data-step").split(":");
+        var inp = el(p[0]);
+        inp.value = Math.max(0, num(inp.value) + Number(p[1]));
+        ieRecalc();
+      };
+    });
+    ["ie_lArea","ie_lRate","ie_lGuys","ie_lDays","ie_lQty","ie_lPrice","ie_lMk","ie_mQty","ie_mPrice","ie_mMk","ie_mArea"].forEach(function(id){
+      el(id).addEventListener("input", ieRecalc);
+      el(id).addEventListener("change", ieRecalc);
+    });
     window.addEventListener("beforeunload", function(e){ if (Object.keys(state.dirty).length) { e.preventDefault(); e.returnValue=""; } });
 
     try { await loadRecord(); } catch (e) { el("pjTitle").textContent = "Error"; el("pane-overview").innerHTML = '<div class="pj-empty">'+esc(e.message)+'</div>'; return; }

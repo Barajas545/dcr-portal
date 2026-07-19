@@ -53,18 +53,38 @@
     document.title = "DCR Estimate — " + (p.internalIDNumber || "") + " " + (p.projectName || "");
     el("rpBack").href = "project.html?id=" + encodeURIComponent(PID) + "&tab=estimate";
 
-    var groups = {};
-    rows.forEach(function (r) { var g = r.taskGroupingName || "General"; (groups[g] = groups[g] || []).push(r); });
+    // Sections per estimate name → groups → (server-sorted by sorting number).
+    var secs = [], secIdx = {};
+    rows.forEach(function (r) {
+      var sn = r.taskEstimateName || "";
+      if (!(sn in secIdx)) { secIdx[sn] = secs.length; secs.push({ name: sn, groups: [], gIdx: {} }); }
+      var s = secs[secIdx[sn]];
+      var g = r.taskGroupingName || "General";
+      if (!(g in s.gIdx)) { s.gIdx[g] = s.groups.length; s.groups.push({ name: g, rows: [] }); }
+      s.groups[s.gIdx[g]].rows.push(r);
+    });
+    var showSecHead = secs.length > 1 || (secs.length === 1 && secs[0].name);
     var grand = 0;
-    var bodyHtml = Object.keys(groups).map(function (g) {
-      var gt = 0;
-      var lines = groups[g].map(function (r) {
-        gt += r.TaskGrandTotalMaterialAndLabor;
-        return "<tr><td>" + lineDesc(r) + '</td><td class="amt">' + money(r.TaskGrandTotalMaterialAndLabor) + "</td></tr>";
+    var bodyHtml = secs.map(function (s) {
+      var st = 0;
+      var groupsHtml = s.groups.map(function (gr) {
+        var gt = 0;
+        var lines = gr.rows.map(function (r) {
+          gt += r.TaskGrandTotalMaterialAndLabor;
+          return "<tr><td>" + lineDesc(r) + '</td><td class="amt">' + money(r.TaskGrandTotalMaterialAndLabor) + "</td></tr>";
+        }).join("");
+        st += gt;
+        return '<tbody class="group-block"><tr class="grp"><td colspan="2">' + esc(gr.name) + "</td></tr>" + lines +
+          '<tr class="sub"><td>Subtotal — ' + esc(gr.name) + '</td><td class="amt">' + money(gt) + "</td></tr></tbody>";
       }).join("");
-      grand += gt;
-      return '<tbody class="group-block"><tr class="grp"><td colspan="2">' + esc(g) + "</td></tr>" + lines +
-        '<tr class="sub"><td>Subtotal — ' + esc(g) + '</td><td class="amt">' + money(gt) + "</td></tr></tbody>";
+      grand += st;
+      var head = showSecHead
+        ? '<tbody><tr class="grp" style="background:#e3e3e3;font-size:13.5px"><td colspan="2">' + esc(s.name || "Estimate") + "</td></tr></tbody>"
+        : "";
+      var foot = showSecHead && secs.length > 1
+        ? '<tbody><tr class="sub"><td>Estimate total — ' + esc(s.name || "Estimate") + '</td><td class="amt">' + money(st) + "</td></tr></tbody>"
+        : "";
+      return head + groupsHtml + foot;
     }).join("");
 
     el("rpSheet").innerHTML =
@@ -98,7 +118,26 @@
         DCR.api("/api/portal?action=project&id=" + encodeURIComponent(PID)),
         DCR.api("/api/portal?action=project&id=" + encodeURIComponent(PID) + "&part=estimate"),
       ]);
-      render(results[0].project, results[1].rows || []);
+      var proj = results[0].project;
+      var allRows = results[1].rows || [];
+      // Estimate picker: print one named estimate (e.g. a change order) or all.
+      var names = [];
+      allRows.forEach(function (r) {
+        var n = r.taskEstimateName || "";
+        if (names.indexOf(n) === -1) names.push(n);
+      });
+      var sel = el("rpEstSel");
+      if (names.length > 1) {
+        sel.style.display = "";
+        sel.innerHTML = '<option value="*">All estimates</option>' + names.map(function (n) {
+          return '<option value="' + esc(n) + '">' + esc(n || "(no name)") + "</option>";
+        }).join("");
+        sel.onchange = function () {
+          var v = sel.value;
+          render(proj, v === "*" ? allRows : allRows.filter(function (r) { return (r.taskEstimateName || "") === v; }));
+        };
+      }
+      render(proj, allRows);
     } catch (e) {
       el("rpSheet").innerHTML = '<div class="rp-loading">' + esc(e.message || "Could not load estimate.") + "</div>";
     }

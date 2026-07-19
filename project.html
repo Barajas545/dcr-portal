@@ -117,6 +117,59 @@
       .pj-modal-actions{display:flex; justify-content:flex-end; gap:8px; margin-top:14px;}
 
       @media (max-width:700px){ .pj-switch input{width:130px;} }
+      .pj-msg.ok{color:var(--ok,#2fa679);}
+      /* ── estimate section rows ── */
+      .pj-est td{background:var(--tint-2,rgba(47,128,216,.25)); font-weight:800; font-size:13px; color:var(--text);}
+      .pj-estTot td{font-weight:800; border-top:2px solid var(--border); background:var(--tint,rgba(47,128,216,.12));}
+
+      /* ── estimate item editor (Access SideForm port) ── */
+      .ie-overlay{position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; z-index:70; padding:10px;}
+      .ie-overlay.open{display:flex; align-items:center; justify-content:center;}
+      .ie-panel{--err:#d9614f; --ok:#2fa679; background:var(--surface); color:var(--text);
+        border:1px solid var(--border); border-radius:14px; width:min(1240px,98vw); height:min(880px,96vh);
+        display:flex; flex-direction:column; overflow:hidden; box-shadow:0 10px 40px rgba(0,0,0,.5);}
+      .ie-head{padding:10px 14px; border-bottom:1px solid var(--border);}
+      .ie-hrow{display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;}
+      .ie-hrow .pj-f{margin:0;}
+      .ie-title-band{background:#7a1f1f; color:#fff; font-weight:700; border:none; border-radius:6px;
+        padding:8px 12px; font-size:15px; flex:1; min-width:160px;}
+      .ie-title-band::placeholder{color:rgba(255,255,255,.55);}
+      .ie-total{font-size:16px; font-weight:800; color:var(--ok,#2fa679); white-space:nowrap; padding-bottom:6px;}
+      .ie-cols{flex:1; display:grid; grid-template-columns:minmax(0,1fr) 400px; overflow:hidden;}
+      .ie-left{overflow-y:auto; padding:12px 14px; border-right:1px solid var(--border);}
+      .ie-right{overflow-y:auto; padding:12px 14px; background:var(--surface-2);}
+      .ie-sec{font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+        color:var(--text-muted); margin:16px 0 6px;}
+      .ie-left .ie-sec:first-child{margin-top:0;}
+      .ie-calcrow{display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; margin:8px 0 4px;}
+      .ie-calcrow .pj-f{margin:0; flex:0 0 auto;}
+      .ie-calcrow .pj-f input, .ie-calcrow .pj-f select{width:88px;}
+      .ie-out{font-size:13.5px; font-weight:700; color:var(--text); padding-bottom:8px; white-space:nowrap;}
+      .ie-out .sub{font-weight:400; color:var(--text-muted); font-size:11px;}
+      .ie-step{display:flex; align-items:center; gap:2px;}
+      .ie-step button{width:26px; height:35px; border:1px solid var(--border); background:var(--surface-2);
+        color:var(--text); border-radius:6px; cursor:pointer; font-weight:700;}
+      .ie-step input{width:52px !important; text-align:center;}
+      .ie-ta{width:100%; box-sizing:border-box; min-height:56px; padding:8px 10px; font-size:13px;
+        border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text); resize:vertical;}
+      .ie-log{background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:8px 10px;
+        font-size:12px; white-space:pre-wrap; max-height:150px; overflow-y:auto; color:var(--text); min-height:34px;}
+      .ie-tabs{display:flex; gap:6px; margin-bottom:10px;}
+      .ie-tab{padding:6px 13px; border-radius:8px; font-size:12.5px; font-weight:600; cursor:pointer;
+        border:1px solid var(--border); background:var(--surface); color:var(--text-muted);}
+      .ie-tab.active{background:var(--acc,#2f80d8); border-color:var(--acc,#2f80d8); color:#fff;}
+      .ie-mini{width:100%; border-collapse:collapse; font-size:12px;}
+      .ie-mini th{text-align:left; color:var(--text-muted); font-size:10px; text-transform:uppercase; padding:4px 6px; border-bottom:1px solid var(--border);}
+      .ie-mini td{padding:5px 6px; border-bottom:1px solid var(--border); color:var(--text); vertical-align:top;}
+      .ie-mini td.num{text-align:right; white-space:nowrap;}
+      .ie-contact-hit{padding:6px 9px; border:1px solid var(--border); border-radius:8px; margin-bottom:5px;
+        cursor:pointer; font-size:12.5px; background:var(--surface);}
+      .ie-contact-hit:hover{border-color:var(--acc,#2f80d8);}
+      .ie-foot{padding:10px 14px; border-top:1px solid var(--border); display:flex; gap:8px; align-items:center;}
+      @media (max-width:900px){
+        .ie-cols{grid-template-columns:1fr; overflow-y:auto;}
+        .ie-left,.ie-right{overflow:visible; border-right:none;}
+      }
     </style>
   </head>
   <body>
@@ -170,14 +223,81 @@
     </div>
 
     <!-- estimate line modal -->
-    <div class="pj-overlay" id="estModal">
-      <div class="pj-modal">
-        <h3 id="estModalTitle">Estimate line</h3>
-        <div class="pj-grid" id="estFields"></div>
-        <div class="pj-msg err" id="estMsg"></div>
-        <div class="pj-modal-actions">
-          <button class="pj-btn" id="estCancel">Cancel</button>
-          <button class="pj-btn pj-btn-primary" id="estSave">✓ Save line</button>
+    <!-- estimate item editor (Access GeneralProjectTasksSideForm port) -->
+    <div class="ie-overlay" id="ieModal">
+      <div class="ie-panel">
+        <div class="ie-head">
+          <div class="ie-hrow">
+            <div class="pj-f" style="flex:1;min-width:200px"><label>Estimate name</label><input id="ie_estName" list="ieEstNames" /><datalist id="ieEstNames"></datalist></div>
+            <div class="pj-f"><label>Task ID</label><input id="ieTaskId" readonly style="width:72px" /></div>
+            <div class="pj-f"><label>Sorting</label><input id="ie_sort" type="number" step="any" style="width:82px" /></div>
+            <div class="pj-f"><label>Quoted $</label><input id="ie_quoted" type="number" step="any" style="width:104px" /></div>
+            <span class="ie-total" id="ieGrand">Total: $0.00</span>
+          </div>
+          <div class="ie-hrow" style="margin-top:8px">
+            <input class="ie-title-band" id="ie_title" placeholder="Item name…" />
+          </div>
+        </div>
+        <div class="ie-cols">
+          <div class="ie-left">
+            <div class="ie-sec">Labor</div>
+            <textarea class="ie-ta" id="ie_laborName" placeholder="Labor description…"></textarea>
+            <div class="ie-calcrow">
+              <div class="pj-f"><label>Area F²</label><input id="ie_lArea" type="number" step="any" /></div>
+              <div class="pj-f"><label>Rate $/hr</label><input id="ie_lRate" type="number" step="any" /></div>
+              <div class="pj-f"><label>Guys</label><div class="ie-step"><button type="button" data-step="ie_lGuys:-1">−</button><input id="ie_lGuys" type="number" step="1" /><button type="button" data-step="ie_lGuys:1">＋</button></div></div>
+              <div class="pj-f"><label>Days</label><div class="ie-step"><button type="button" data-step="ie_lDays:-0.5">−</button><input id="ie_lDays" type="number" step="0.5" /><button type="button" data-step="ie_lDays:0.5">＋</button></div></div>
+              <div class="ie-out">= <span id="ieLab1">$0.00</span><br><span class="sub" id="ieLabSq"></span></div>
+            </div>
+            <div class="ie-calcrow">
+              <div class="pj-f"><label>Qty</label><input id="ie_lQty" type="number" step="any" /></div>
+              <div class="pj-f"><label>× Price $</label><input id="ie_lPrice" type="number" step="any" /></div>
+              <div class="pj-f"><label>Markup</label><select id="ie_lMk"></select></div>
+              <div class="ie-out">= <span id="ieLab2">$0.00</span><br><span class="sub">labor total <b id="ieLabT">$0.00</b></span></div>
+            </div>
+            <div class="ie-sec">Material</div>
+            <textarea class="ie-ta" id="ie_matName" placeholder="Material description…"></textarea>
+            <div class="ie-calcrow">
+              <div class="pj-f"><label>Qty</label><input id="ie_mQty" type="number" step="any" /></div>
+              <div class="pj-f"><label>× Unit $</label><input id="ie_mPrice" type="number" step="any" /></div>
+              <div class="pj-f"><label>Markup</label><select id="ie_mMk"></select></div>
+              <div class="pj-f"><label>Area F²</label><input id="ie_mArea" type="number" step="any" /></div>
+              <div class="ie-out">= <span id="ieMatT">$0.00</span><br><span class="sub" id="ieMatSq"></span></div>
+            </div>
+            <div class="ie-sec">Assigned to</div>
+            <div class="ie-calcrow" style="margin-top:0">
+              <div class="pj-f" style="flex:1"><label>Contact search</label><input id="ieContactSearch" placeholder="Search contacts…" /></div>
+            </div>
+            <div id="ieContactHits"></div>
+            <textarea class="ie-ta" id="ie_assigned" rows="2" placeholder="Assigned person / contact info…"></textarea>
+            <div class="ie-calcrow">
+              <div class="pj-f" style="flex:1"><label>E-Mail</label><input id="ie_email" type="email" /></div>
+              <button class="pj-btn pj-btn-sm" id="ieQuoteBtn" type="button">✉ Quote</button>
+              <button class="pj-btn pj-btn-sm" id="ieFollowBtn" type="button">✉ Follow</button>
+            </div>
+            <div class="ie-sec">Notes (internal)</div>
+            <textarea class="ie-ta" id="ie_notes" rows="3"></textarea>
+            <div class="ie-sec">Task log</div>
+            <div class="ie-log" id="ieLogView"></div>
+            <div class="ie-calcrow">
+              <div class="pj-f" style="flex:1"><label>New log note</label><input id="ieLogNote" /></div>
+              <button class="pj-btn pj-btn-sm" id="ieLogAdd" type="button">＋ Add time stamp</button>
+            </div>
+            <div style="margin:16px 0 6px"><button class="pj-btn pj-btn-sm" id="ieDelete" type="button" style="color:var(--err,#d9614f)">🗑 Delete item</button></div>
+          </div>
+          <div class="ie-right">
+            <div class="ie-tabs">
+              <span class="ie-tab active" data-ietab="takeoff">Takeoff</span>
+              <span class="ie-tab" data-ietab="expenses">Expenses</span>
+              <span class="ie-tab" data-ietab="files">Files</span>
+            </div>
+            <div id="ieSub"><div class="pj-empty">…</div></div>
+          </div>
+        </div>
+        <div class="ie-foot">
+          <span class="pj-msg" id="ieMsg" style="flex:1"></span>
+          <button class="pj-btn" id="ieExit">Exit</button>
+          <button class="pj-btn pj-btn-primary" id="ieSave">✓ Save</button>
         </div>
       </div>
     </div>
