@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DCR Portal — Data Browser</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="topbar">
+      <div class="brand">
+        <div class="brand-badge">DCR</div>
+        <h1 id="companyName">DCR Portal</h1>
+      </div>
+      <div class="top-actions">
+        <span class="pill" id="userPill">…</span>
+        <a class="btn btn-ghost btn-sm" href="dashboard.html">Home</a>
+        <button class="btn btn-ghost btn-sm" id="logoutBtn">Log out</button>
+      </div>
+    </div>
+
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="side-title">Your Tables</div>
+        <div id="nav"></div>
+      </aside>
+
+      <main class="content">
+        <div id="welcome" class="empty">
+          <h2>Data Browser</h2>
+          <p class="muted">Choose a table on the left to view its records.</p>
+        </div>
+
+        <div id="tableView" style="display:none">
+          <div class="page-head">
+            <h2 id="tableTitle">Table</h2>
+            <div class="toolbar">
+              <input id="search" type="search" placeholder="Search…" style="width:220px" />
+              <button class="btn btn-ghost btn-sm" id="reloadBtn">Reload</button>
+              <button class="btn btn-sm" id="addBtn" style="display:none">+ Add</button>
+            </div>
+          </div>
+          <div id="tableArea"></div>
+        </div>
+      </main>
+    </div>
+
+    <!-- Edit / Add modal -->
+    <div class="modal-backdrop" id="modal">
+      <div class="modal">
+        <h3 id="modalTitle">Edit record</h3>
+        <div id="formFields" class="field-grid"></div>
+        <div class="msg error" id="modalErr"></div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" id="cancelBtn">Cancel</button>
+          <button class="btn" id="saveBtn">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="common.js"></script>
+    <script src="data.js"></script>
+  </body>
+</html>

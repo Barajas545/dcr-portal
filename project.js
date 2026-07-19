@@ -801,6 +801,9 @@
     window.addEventListener("beforeunload", function(e){ if (Object.keys(state.dirty).length) { e.preventDefault(); e.returnValue=""; } });
 
     try { await loadRecord(); } catch (e) { el("pjTitle").textContent = "Error"; el("pane-overview").innerHTML = '<div class="pj-empty">'+esc(e.message)+'</div>'; return; }
+    // Deep-link support (e.g. search results): project.html?id=N&tab=estimate
+    var wantTab = qs.get("tab");
+    if (wantTab && document.querySelector('.pj-tab[data-tab="'+wantTab+'"]')) switchTab(wantTab);
     loadSwitcher();
   });
 })();
