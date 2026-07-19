@@ -20,16 +20,30 @@
   var el = function (id) { return document.getElementById(id); };
   var esc = function (v) { return DCR.esc(v); };
 
-  // Column rules mirror the Access Board (Completed limited to last 2 months).
-  var COLUMNS = [
-    { key: "onhold",    label: "On Hold",     status: "On Hold",     acc: "#d9614f" },
-    { key: "estim",     label: "Estimating",  status: "Estimating",  acc: "#d6a13a" },
-    { key: "recived",   label: "New Request", status: "Recived",     acc: "#2f80d8" },
-    { key: "sent",      label: "Sent",        status: "Sent",        acc: "#8e6fd8", desc: true },
-    { key: "aproved",   label: "Aproved",     status: "Aproved",     acc: "#2fa679" },
-    { key: "inprog",    label: "In Progress", status: "In Progress", acc: "#1f6fc8" },
-    { key: "completed", label: "Completed",   status: "Completed",   acc: "#6b7c6f", recentOnly: true },
-  ];
+  // Column definitions. Each view mirrors its Access board form exactly
+  // (statuses, sort fields, and Completed time-windows).
+  function col(status, label, acc, opts) {
+    var c = { key: status.toLowerCase().replace(/\s/g, ""), label: label, status: status, acc: acc };
+    if (opts) for (var k in opts) c[k] = opts[k];
+    return c;
+  }
+  var C = {
+    onhold:  function(){ return col("On Hold","On Hold","#d9614f"); },
+    estim:   function(){ return col("Estimating","Estimating","#d6a13a"); },
+    recived: function(){ return col("Recived","New Request","#2f80d8"); },
+    sent:    function(o){ return col("Sent","Sent","#8e6fd8", o||{desc:true}); },
+    aproved: function(){ return col("Aproved","Aproved","#2fa679"); },
+    inprog:  function(){ return col("In Progress","In Progress","#1f6fc8"); },
+    completed: function(months, o){ var c=col("Completed","Completed","#6b7c6f",o||{}); c.recentMonths=months; return c; },
+  };
+  var VIEWS = {
+    main: { label: "Main Board", cols: [C.onhold(), C.estim(), C.recived(), C.sent(), C.aproved(), C.inprog(), C.completed(2)] },
+    sales: { label: "Sales", cols: [C.estim(), C.sent({desc:true, sortField:"projectDateLastModified"}), C.aproved(), C.inprog(), C.completed(24, {desc:true, sortField:"projectCompletedDate"})] },
+    marketing: { label: "Marketing", cols: [C.aproved(), C.inprog(), C.completed(5, {desc:true, sortField:"projectCompletedDate"})] },
+    accounting: { label: "Accounting", cols: [C.aproved(), C.inprog(), C.completed(2, {desc:true, sortField:"projectCompletedDate"})] },
+  };
+  state.view = (function(){ var v = new URLSearchParams(location.search).get("view"); return VIEWS[v] ? v : "main"; })();
+  function activeColumns(){ return VIEWS[state.view].cols; }
 
   function fmtDate(v) {
     if (!v) return "";
@@ -43,7 +57,7 @@
     var d = new Date(v);
     return isNaN(d) ? "—" : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   }
-  function twoMonthsAgo() { var d = new Date(); d.setMonth(d.getMonth() - 2); return d; }
+  function monthsAgo(m) { var d = new Date(); d.setMonth(d.getMonth() - m); return d; }
 
   function matchesSearch(p, q) {
     if (!q) return true;
@@ -54,14 +68,19 @@
 
   function columnProjects(col) {
     var q = state.search.trim().toLowerCase();
-    var cutoff = twoMonthsAgo();
+    var cutoff = col.recentMonths ? monthsAgo(col.recentMonths) : null;
+    var winField = col.sortField || "projectDate";
     var rows = state.projects.filter(function (p) {
       if ((p.estimateStatus || "") !== col.status) return false;
-      if (col.recentOnly && (!p.projectDate || new Date(p.projectDate) < cutoff)) return false;
+      if (cutoff) {
+        var wd = p[winField] || p.projectDate;
+        if (!wd || new Date(wd) < cutoff) return false;
+      }
       return matchesSearch(p, q);
     });
+    var sf = col.sortField || "projectDate";
     rows.sort(function (a, b) {
-      var da = new Date(a.projectDate || 0), db = new Date(b.projectDate || 0);
+      var da = new Date(a[sf] || a.projectDate || 0), db = new Date(b[sf] || b.projectDate || 0);
       return col.desc ? db - da : da - db;
     });
     return rows;
@@ -70,7 +89,7 @@
   /* ── render ── */
   function render() {
     var wrap = el("bdCols");
-    wrap.innerHTML = COLUMNS.map(function (col) {
+    wrap.innerHTML = activeColumns().map(function (col) {
       var rows = columnProjects(col);
       var cards = rows.map(function (p) { return cardHtml(p, col); }).join("");
       return '<div class="bd-col" data-status="' + esc(col.status) + '" style="--col-acc:' + col.acc + '">' +
@@ -285,6 +304,13 @@
     el("userPill").textContent = (state.profile.displayName || state.profile.email) + " · " + state.profile.role;
     el("logoutBtn").onclick = function () { DCR.logout(); };
 
+    var vs = el("bdView");
+    vs.innerHTML = Object.keys(VIEWS).map(function(k){ return '<option value="'+k+'"'+(k===state.view?" selected":"")+'>'+VIEWS[k].label+'</option>'; }).join("");
+    vs.onchange = function(){
+      state.view = this.value;
+      var u = new URL(location.href); u.searchParams.set("view", state.view); history.replaceState(null, "", u);
+      render();
+    };
     el("bdSearch").addEventListener("input", function () { state.search = this.value; render(); });
     el("bdRefreshBtn").onclick = function () { load(); if (state.selectedId) loadLogs(state.selectedId); };
     el("bdPClose").onclick = function () { el("bdPanel").classList.remove("open"); state.selectedId = null; render(); };

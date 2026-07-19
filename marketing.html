@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DCR Portal — Marketing Tasks</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      .mk{
+        --acc:#2f80d8; --acc-2:#1f6fc8; --tint:rgba(47,128,216,0.12); --tint-2:rgba(47,128,216,0.22);
+        --gold:#d6a13a; --ok:#2fa679; --err:#d9614f;
+        max-width:1060px; margin:0 auto; padding:14px 16px 60px;
+      }
+      .mk-head{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px;}
+      .mk-head h2{margin:0; font-size:19px; color:var(--text);}
+      .mk-search{flex:1; min-width:150px; max-width:280px; padding:8px 12px; font-size:14px;
+        border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text);}
+      .mk-search:focus{outline:none; border-color:var(--acc);}
+      .mk-btn{padding:8px 14px; font-size:13px; font-weight:600; border-radius:8px; cursor:pointer;
+        border:1px solid var(--border); background:var(--surface); color:var(--text);}
+      .mk-btn:hover{background:var(--surface-2);}
+      .mk-btn-primary{background:var(--acc); border-color:var(--acc); color:#fff;}
+      .mk-btn-primary:hover{background:var(--acc-2);}
+      .mk-btn-sm{padding:4px 9px; font-size:12px;}
+      .mk-chips{display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;}
+      .mk-chip{padding:6px 13px; border-radius:15px; font-size:12.5px; font-weight:600; cursor:pointer;
+        border:1px solid var(--border); background:var(--surface); color:var(--text-muted);}
+      .mk-chip.on{background:var(--acc); border-color:var(--acc); color:#fff;}
+      .mk-totals{display:flex; gap:14px; flex-wrap:wrap; margin-bottom:12px; font-size:12.5px; color:var(--text-muted);}
+      .mk-totals b{color:var(--text);}
+      .mk-tblwrap{overflow-x:auto; border:1px solid var(--border); border-radius:10px; background:var(--surface);}
+      table.mk-tbl{border-collapse:collapse; width:100%; font-size:12.5px;}
+      .mk-tbl th{background:var(--surface-2); padding:7px 10px; text-align:left; font-size:11px;
+        text-transform:uppercase; letter-spacing:.04em; color:var(--text-muted); white-space:nowrap;}
+      .mk-tbl td{padding:7px 10px; border-top:1px solid var(--border); color:var(--text); vertical-align:middle;}
+      .mk-tbl td.num,.mk-tbl th.num{text-align:right; white-space:nowrap;}
+      .mk-grp td{background:var(--tint); font-weight:700; color:var(--acc);}
+      .mk-tgl{padding:3px 10px; border-radius:12px; font-size:11px; font-weight:700; cursor:pointer;
+        border:1px solid var(--border); background:var(--surface-2); color:var(--text-muted); user-select:none;}
+      .mk-tgl.on{background:rgba(47,166,121,.18); border-color:var(--ok); color:var(--ok);}
+      .mk-tgl.ro{cursor:default;}
+      .mk-empty{padding:28px; text-align:center; color:var(--text-muted);}
+      .mk-msg{font-size:12px; min-height:15px;}
+      .mk-msg.err{color:var(--err);}
+
+      .mk-overlay{position:fixed; inset:0; background:rgba(0,0,0,.55); display:none;
+        align-items:center; justify-content:center; z-index:60; padding:14px;}
+      .mk-overlay.open{display:flex;}
+      .mk-modal{background:var(--surface); color:var(--text); border:1px solid var(--border);
+        border-radius:14px; width:100%; max-width:520px; max-height:90vh; overflow-y:auto;
+        padding:20px; box-shadow:0 8px 32px rgba(0,0,0,.4);}
+      .mk-modal h3{margin:0 0 14px; font-size:16px;}
+      .mk-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+      .mk-f label{display:block; font-size:12px; font-weight:600; color:var(--text-muted); margin-bottom:4px;}
+      .mk-f input,.mk-f textarea{width:100%; box-sizing:border-box; padding:9px 11px; font-size:14px;
+        border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text); color-scheme:light dark;}
+      .mk-f input:focus,.mk-f textarea:focus{outline:none; border-color:var(--acc);}
+      .mk-f.full{grid-column:1/-1;}
+      .mk-modal-actions{display:flex; justify-content:flex-end; gap:8px; margin-top:14px;}
+    </style>
+  </head>
+  <body>
+    <div class="topbar">
+      <div class="brand"><div class="brand-badge">DCR</div><h1 id="companyName">DCR Portal</h1></div>
+      <div class="top-actions">
+        <span class="pill" id="userPill">…</span>
+        <a class="btn btn-ghost btn-sm" href="board.html?view=marketing">Marketing Board</a>
+        <a class="btn btn-ghost btn-sm" href="dashboard.html">Dashboard</a>
+        <button class="btn btn-ghost btn-sm" id="logoutBtn">Log out</button>
+      </div>
+    </div>
+
+    <div class="mk">
+      <div class="mk-head">
+        <h2>📣 Marketing Tasks</h2>
+        <input class="mk-search" id="mkSearch" type="search" placeholder="Search tasks…" />
+        <button class="mk-btn mk-btn-primary" id="mkNewBtn" style="display:none">＋ New task</button>
+        <button class="mk-btn" id="mkRefresh">↻</button>
+      </div>
+      <div class="mk-chips" id="mkChips"></div>
+      <div class="mk-totals" id="mkTotals"></div>
+      <div id="mkList"><div class="mk-empty">Loading tasks…</div></div>
+    </div>
+
+    <!-- task modal -->
+    <div class="mk-overlay" id="mkModal">
+      <div class="mk-modal">
+        <h3 id="mkModalTitle">Marketing task</h3>
+        <div class="mk-grid">
+          <div class="mk-f full"><label>Task name *</label><input id="mf_marketingTaskName" /></div>
+          <div class="mk-f"><label>Project</label><input id="mf_project" list="mkProjects" placeholder="ID — name (optional)" /><datalist id="mkProjects"></datalist></div>
+          <div class="mk-f"><label>Category</label><input id="mf_marketingTaskCaterogy" list="mkCats" /><datalist id="mkCats"></datalist></div>
+          <div class="mk-f"><label>Date</label><input type="date" id="mf_marketingTaskDate" /></div>
+          <div class="mk-f"><label>Price $</label><input type="number" step="any" id="mf_marketingTaskPrice" /></div>
+          <div class="mk-f full"><label>Description</label><textarea id="mf_marketingTaskDescripiton" rows="3"></textarea></div>
+          <div class="mk-f full"><label>Completed work</label><textarea id="mf_marketingTaskCompletedWork" rows="2"></textarea></div>
+        </div>
+        <div class="mk-msg err" id="mkModalMsg"></div>
+        <div class="mk-modal-actions">
+          <button class="mk-btn" id="mkCancel">Cancel</button>
+          <button class="mk-btn mk-btn-primary" id="mkSave">✓ Save task</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="common.js"></script>
+    <script src="marketing.js"></script>
+  </body>
+</html>

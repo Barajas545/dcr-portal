@@ -25,6 +25,9 @@
       el("teamLink").style.display = "";
       el("batchLink").style.display = "";
     }
+    var pp = state.profile.permissions || {};
+    if (pp.leads) el("leadsLink").style.display = "";
+    if (pp.marketingTasks) el("marketingLink").style.display = "";
     el("logoutBtn").onclick = () => DCR.logout();
 
     buildNav(state.profile.permissions || {});
