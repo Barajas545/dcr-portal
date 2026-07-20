@@ -266,11 +266,22 @@
   function renderEstimate(canEdit) {
     var pane = el("pane-estimate");
     var rows = state.estRows;
+
+    // All estimate names (for the filter list) — from every row, always.
+    var allNames = [];
+    rows.forEach(function(r){ var n = r.taskEstimateName || "(no estimate name)"; if (allNames.indexOf(n)===-1) allNames.push(n); });
+    if (!allNames.length || allNames.indexOf(state.estFilter)===-1) state.estFilter = "*";
+
+    var filterSel = allNames.length > 1
+      ? '<select class="pj-btn pj-btn-sm" id="estFilter" style="cursor:pointer"><option value="*">All estimates ('+allNames.length+')</option>' +
+        allNames.map(function(n){ return '<option value="'+esc(n)+'"'+(state.estFilter===n?" selected":"")+'>'+esc(n)+'</option>'; }).join("") + '</select>'
+      : "";
     var bar = '<div class="pj-bar">' +
       (canEdit ? '<button class="pj-btn pj-btn-primary pj-btn-sm" id="estAddBtn">＋ New item</button>' : "") +
       '<button class="pj-btn pj-btn-sm" id="estReload">↻</button>' +
+      filterSel +
       '<a class="pj-btn pj-btn-sm" href="report-estimate.html?id='+encodeURIComponent(PID)+'">🖨 Print estimate</a>' +
-      '<span class="pj-sub">'+rows.length+' lines</span></div>';
+      '<span class="pj-sub">'+rows.length+' lines'+(canEdit?' · double-click an item to edit':"")+'</span></div>';
     if (!rows.length) { pane.innerHTML = bar + '<div class="pj-empty">No estimate lines yet.</div>'; wireEstBar(canEdit); return; }
 
     // Rows arrive server-sorted (estimate name → grouping → sorting number);
@@ -278,6 +289,7 @@
     var secs = [], secIdx = {};
     rows.forEach(function(r){
       var sn = r.taskEstimateName || "(no estimate name)";
+      if (state.estFilter !== "*" && sn !== state.estFilter) return;
       if (!(sn in secIdx)) { secIdx[sn] = secs.length; secs.push({ name:sn, groups:[], gIdx:{}, labor:0, mat:0, tot:0 }); }
       var s = secs[secIdx[sn]];
       var g = r.taskGroupingName || "(no group)";
@@ -285,12 +297,13 @@
       s.groups[s.gIdx[g]].rows.push(r);
     });
 
-    var cols = canEdit ? 5 : 4;
+    var cols = 4;
     var grand = { labor:0, mat:0, tot:0 };
     var body = "";
-    secs.forEach(function(s){
+    secs.forEach(function(s, si){
+      if (si > 0) body += '<tr class="pj-gap"><td colspan="'+cols+'"></td></tr>';
       body += '<tr class="pj-est"><td colspan="'+cols+'">📄 '+esc(s.name)+
-        (canEdit?' <button class="pj-btn pj-btn-sm" data-est-addto="'+esc(s.name===("(no estimate name)")?"":s.name)+'" style="margin-left:8px">＋</button>':"")+'</td></tr>';
+        (canEdit?' <button class="pj-btn pj-btn-sm" data-est-addto="'+esc(s.name===("(no estimate name)")?"":s.name)+'" style="margin-left:8px">＋ Add item</button>':"")+'</td></tr>';
       s.groups.forEach(function(gr){
         var gl=0, gm=0, gt=0;
         body += '<tr class="pj-grp"><td colspan="'+cols+'">'+esc(gr.name)+'</td></tr>';
@@ -298,25 +311,25 @@
           var labor = r.TaskLaborTotalPrice + r.TaskLaborTotalPricePerQty;
           var mat = r.TaskMaterialTotalPrice;
           gl+=labor; gm+=mat; gt+=r.TaskGrandTotalMaterialAndLabor;
-          body += '<tr'+(canEdit?' data-est-open="'+r.id+'" style="cursor:pointer"':"")+'><td>'+ estLineHtml(r) +'</td>' +
+          body += '<tr'+(canEdit?' data-est-open="'+r.id+'" style="cursor:pointer" title="Double-click to edit"':"")+'><td class="pj-il">'+ estLineHtml(r) +'</td>' +
             '<td class="num">'+fmtMoney(labor)+'</td><td class="num">'+fmtMoney(mat)+'</td>' +
-            '<td class="num"><b>'+fmtMoney(r.TaskGrandTotalMaterialAndLabor)+'</b></td>' +
-            (canEdit?'<td><div class="pj-rowbtns"><button class="pj-btn pj-btn-sm" data-est-edit="'+r.id+'">✎</button><button class="pj-btn pj-btn-sm" data-est-del="'+r.id+'">🗑</button></div></td>':"") + '</tr>';
+            '<td class="num"><b>'+fmtMoney(r.TaskGrandTotalMaterialAndLabor)+'</b></td></tr>';
         });
         s.labor+=gl; s.mat+=gm; s.tot+=gt;
-        body += '<tr class="pj-grpTot"><td>Subtotal — '+esc(gr.name)+'</td><td class="num">'+fmtMoney(gl)+'</td><td class="num">'+fmtMoney(gm)+'</td><td class="num">'+fmtMoney(gt)+'</td>'+(canEdit?'<td></td>':"")+'</tr>';
+        body += '<tr class="pj-grpTot"><td>Subtotal — '+esc(gr.name)+'</td><td class="num">'+fmtMoney(gl)+'</td><td class="num">'+fmtMoney(gm)+'</td><td class="num">'+fmtMoney(gt)+'</td></tr>';
       });
       grand.labor+=s.labor; grand.mat+=s.mat; grand.tot+=s.tot;
-      body += '<tr class="pj-estTot"><td>Estimate total — '+esc(s.name)+'</td><td class="num">'+fmtMoney(s.labor)+'</td><td class="num">'+fmtMoney(s.mat)+'</td><td class="num">'+fmtMoney(s.tot)+'</td>'+(canEdit?'<td></td>':"")+'</tr>';
+      body += '<tr class="pj-estTot"><td>Estimate total — '+esc(s.name)+'</td><td class="num">'+fmtMoney(s.labor)+'</td><td class="num">'+fmtMoney(s.mat)+'</td><td class="num">'+fmtMoney(s.tot)+'</td></tr>';
     });
-    body += '<tr class="pj-grand"><td>GRAND TOTAL</td><td class="num">'+fmtMoney(grand.labor)+'</td><td class="num">'+fmtMoney(grand.mat)+'</td><td class="num">'+fmtMoney(grand.tot)+'</td>'+(canEdit?'<td></td>':"")+'</tr>';
+    if (state.estFilter === "*") {
+      body += '<tr class="pj-gap"><td colspan="'+cols+'"></td></tr>';
+      body += '<tr class="pj-grand"><td>GRAND TOTAL</td><td class="num">'+fmtMoney(grand.labor)+'</td><td class="num">'+fmtMoney(grand.mat)+'</td><td class="num">'+fmtMoney(grand.tot)+'</td></tr>';
+    }
 
     pane.innerHTML = bar + '<div class="pj-tblwrap"><table class="pj-tbl"><thead><tr>' +
-      '<th>Item</th><th class="num">Labor</th><th class="num">Material</th><th class="num">Total</th>'+(canEdit?'<th></th>':"")+'</tr></thead><tbody>'+body+'</tbody></table></div>';
+      '<th>Item</th><th class="num">Labor</th><th class="num">Material</th><th class="num">Total</th></tr></thead><tbody>'+body+'</tbody></table></div>';
     wireEstBar(canEdit);
     if (canEdit) {
-      pane.querySelectorAll("[data-est-edit]").forEach(function(b){ b.onclick=function(e){ e.stopPropagation(); ieOpen(b.getAttribute("data-est-edit")); }; });
-      pane.querySelectorAll("[data-est-del]").forEach(function(b){ b.onclick=function(e){ e.stopPropagation(); delEstRow(b.getAttribute("data-est-del")); }; });
       pane.querySelectorAll("[data-est-addto]").forEach(function(b){ b.onclick=function(e){ e.stopPropagation(); ieOpen(null, b.getAttribute("data-est-addto")); }; });
       pane.querySelectorAll("[data-est-open]").forEach(function(tr){ tr.ondblclick=function(){ ieOpen(tr.getAttribute("data-est-open")); }; });
     }
@@ -325,6 +338,7 @@
   function wireEstBar(canEdit) {
     var r = el("estReload"); if (r) r.onclick = loadEstimate;
     var a = el("estAddBtn"); if (a) a.onclick = function(){ ieOpen(null, ""); };
+    var f = el("estFilter"); if (f) f.onchange = function(){ state.estFilter = this.value; renderEstimate(state.estCanEdit); };
   }
 
   /* ══ Estimate item editor (Access GeneralProjectTasksSideForm port) ══
