@@ -1038,9 +1038,10 @@
         '<span>'+fileIcon(f)+'</span><span>'+esc(f.name)+'</span>' +
         '<span class="meta">'+fmtSize(f.size)+(f.modifiedTime?' · '+fmtDate(f.modifiedTime):"")+'</span></div>';
     }).join("") || '<div class="pj-empty">Empty folder.</div>';
-    pane.innerHTML = '<div class="pj-crumb">'+crumbs+
+    pane.innerHTML = capBarHtml() + '<div class="pj-crumb">'+crumbs+
       '<a class="pj-btn pj-btn-sm" style="margin-left:auto" target="_blank" href="https://drive.google.com/drive/folders/'+esc(top.id)+'">Open in Drive ↗</a></div>' +
       '<div class="pj-tblwrap">'+rows+'</div>';
+    wireCapBar();
     pane.querySelectorAll("[data-crumb]").forEach(function(a){
       a.onclick = function(){
         var i = Number(a.getAttribute("data-crumb"));
@@ -1078,6 +1079,213 @@
       msg("err", e.message||"Open failed");
       if (webViewLink) window.open(webViewLink, "_blank");
     }
+  }
+
+  /* ══ Site documentation capture (photos w/ markup, video, voice, notes → Drive) ══
+     Upload path: portal mints a Drive resumable-session URL; the browser PUTs the
+     bytes DIRECTLY to Google (no serverless body limit; session URL is
+     self-authorizing). Photos/videos → Pictures; audio/transcripts/notes → Site Notes. */
+
+  function capBarHtml() {
+    if (!state.driveReady) return "";
+    return '<div class="cap-bar"><span class="cap-title">📸 Site documentation</span>' +
+      '<button class="pj-btn pj-btn-sm" id="capPhoto">📷 Photo</button>' +
+      '<button class="pj-btn pj-btn-sm" id="capVideo">🎬 Video</button>' +
+      '<button class="pj-btn pj-btn-sm" id="capVoice">🎙 Voice note</button>' +
+      '<button class="pj-btn pj-btn-sm" id="capNote">📝 Note</button>' +
+      '<span class="cap-prog" id="capProgEl"></span></div>';
+  }
+  function wireCapBar() {
+    var b;
+    b = el("capPhoto"); if (b) b.onclick = function(){ el("capPhotoInput").value=""; el("capPhotoInput").click(); };
+    b = el("capVideo"); if (b) b.onclick = function(){ el("capVideoInput").value=""; el("capVideoInput").click(); };
+    b = el("capVoice"); if (b) b.onclick = recOpen;
+    b = el("capNote"); if (b) b.onclick = function(){ el("noteTitle").value=""; el("noteBody").value=""; el("noteMsg").textContent=""; el("noteModal").classList.add("open"); el("noteBody").focus(); };
+  }
+  function capProg(txt) { var p = el("capProgEl"); if (p) p.textContent = txt; }
+  function capStamp() {
+    var d = new Date(), p2 = function(n){ return String(n).padStart(2,"0"); };
+    return d.getFullYear()+"-"+p2(d.getMonth()+1)+"-"+p2(d.getDate())+" "+p2(d.getHours())+"."+p2(d.getMinutes())+"."+p2(d.getSeconds());
+  }
+
+  async function uploadToDrive(blob, target, name, mime) {
+    var s = await DCR.api("/api/portal?action=drive", { method:"POST",
+      body:{ op:"uploadSession", projectId: PID, target: target, name: name, mimeType: mime } });
+    await new Promise(function(resolve, reject){
+      var x = new XMLHttpRequest();
+      x.open("PUT", s.uploadUrl);
+      x.upload.onprogress = function(e){ if (e.lengthComputable) capProg("Uploading "+name+" — "+Math.round(e.loaded/e.total*100)+"%"); };
+      x.onload = function(){ if (x.status===200 || x.status===201) resolve(); else reject(new Error("Upload failed ("+x.status+")")); };
+      x.onerror = function(){ reject(new Error("Upload failed — check your connection.")); };
+      x.send(blob);
+    });
+    capProg("✓ Saved "+name);
+    setTimeout(function(){ capProg(""); }, 4000);
+  }
+
+  /* ── photo annotator (pen / highlighter / arrow / text) ── */
+  var an = { queue: [], img: null, ops: [], cur: null, tool: "pen", color: "#e53935", width: 6, origFile: null };
+  var AN_COLORS = ["#e53935","#fdd835","#2f80d8","#2fa679","#ffffff","#111111"];
+
+  function anNext() {
+    if (!an.queue.length) { el("anModal").classList.remove("open"); loadFiles(); return; }
+    var f = an.queue.shift();
+    an.origFile = f; an.ops = []; an.cur = null;
+    el("anQueue").textContent = an.queue.length ? (an.queue.length+" more queued") : "";
+    var url = URL.createObjectURL(f);
+    var img = new Image();
+    img.onload = function(){
+      URL.revokeObjectURL(url);
+      an.img = img;
+      var c = el("anCanvas");
+      var MAX = 2200; // cap canvas size — keeps annotated JPEGs a sane size
+      var sc = Math.min(1, MAX/Math.max(img.naturalWidth||1, img.naturalHeight||1));
+      c.width = Math.round((img.naturalWidth||800)*sc);
+      c.height = Math.round((img.naturalHeight||600)*sc);
+      anRender();
+      el("anModal").classList.add("open");
+    };
+    img.onerror = function(){ alert("Could not read that image."); anNext(); };
+    img.src = url;
+  }
+
+  function anRender() {
+    var c = el("anCanvas"), ctx = c.getContext("2d");
+    ctx.clearRect(0,0,c.width,c.height);
+    ctx.drawImage(an.img, 0, 0, c.width, c.height);
+    an.ops.concat(an.cur?[an.cur]:[]).forEach(function(op){ anDraw(ctx, op, c); });
+  }
+
+  function anDraw(ctx, op, c) {
+    ctx.save();
+    if (op.tool==="pen" || op.tool==="hl") {
+      ctx.strokeStyle = op.color;
+      ctx.lineWidth = op.tool==="hl" ? op.width*4 : op.width;
+      ctx.globalAlpha = op.tool==="hl" ? 0.35 : 1;
+      ctx.lineCap = "round"; ctx.lineJoin = "round";
+      ctx.beginPath();
+      op.pts.forEach(function(p,i){ i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]); });
+      ctx.stroke();
+    } else if (op.tool==="arrow") {
+      ctx.strokeStyle = op.color; ctx.fillStyle = op.color; ctx.lineWidth = op.width; ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(op.x1,op.y1); ctx.lineTo(op.x2,op.y2); ctx.stroke();
+      var ang = Math.atan2(op.y2-op.y1, op.x2-op.x1), hl = Math.max(16, op.width*4);
+      ctx.beginPath();
+      ctx.moveTo(op.x2,op.y2);
+      ctx.lineTo(op.x2-hl*Math.cos(ang-0.45), op.y2-hl*Math.sin(ang-0.45));
+      ctx.lineTo(op.x2-hl*Math.cos(ang+0.45), op.y2-hl*Math.sin(ang+0.45));
+      ctx.closePath(); ctx.fill();
+    } else if (op.tool==="text") {
+      var size = Math.max(22, Math.round(c.width*0.03));
+      ctx.font = "bold "+size+"px Arial";
+      ctx.strokeStyle = "rgba(0,0,0,.7)"; ctx.lineWidth = Math.max(2, size/8);
+      ctx.fillStyle = op.color;
+      ctx.strokeText(op.text, op.x, op.y);
+      ctx.fillText(op.text, op.x, op.y);
+    }
+    ctx.restore();
+  }
+
+  function anPos(e) {
+    var c = el("anCanvas"), r = c.getBoundingClientRect();
+    return [ (e.clientX-r.left)*(c.width/r.width), (e.clientY-r.top)*(c.height/r.height) ];
+  }
+
+  /* ── voice notes w/ live browser transcription ── */
+  var rec = { mr: null, chunks: [], stream: null, timer: null, t0: 0, sr: null, tx: "" };
+
+  function recOpen() {
+    rec.tx = "";
+    var supported = window.SpeechRecognition || window.webkitSpeechRecognition;
+    el("recTranscript").textContent = supported ? "" : "(Live transcription isn't supported on this device — the audio will still be saved.)";
+    el("recTimer").textContent = "0:00";
+    el("recState").textContent = "Ready to record";
+    el("recMsg").textContent = "";
+    el("recBtn").textContent = "● Start recording";
+    el("recBtn").disabled = false;
+    el("recModal").classList.add("open");
+  }
+
+  async function recToggle() {
+    if (rec.mr && rec.mr.state === "recording") {
+      clearInterval(rec.timer);
+      if (rec.sr) { try { rec.sr.onend = null; rec.sr.stop(); } catch(e){} }
+      el("recState").textContent = "Saving…";
+      el("recBtn").disabled = true;
+      try { rec.mr.stop(); } catch(e){}
+      return;
+    }
+    try { rec.stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+    catch (e) { el("recMsg").textContent = "Microphone access was denied."; return; }
+    var mime = (window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) ? "audio/webm;codecs=opus"
+      : ((window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported("audio/mp4")) ? "audio/mp4" : "");
+    rec.chunks = [];
+    rec.mr = mime ? new MediaRecorder(rec.stream, { mimeType: mime }) : new MediaRecorder(rec.stream);
+    rec.mr.ondataavailable = function(e){ if (e.data && e.data.size) rec.chunks.push(e.data); };
+    rec.mr.onstop = recFinish;
+    rec.mr.start();
+    rec.t0 = Date.now();
+    rec.timer = setInterval(function(){
+      var s = Math.floor((Date.now()-rec.t0)/1000);
+      el("recTimer").textContent = Math.floor(s/60)+":"+String(s%60).padStart(2,"0");
+    }, 500);
+    el("recState").textContent = "Recording…";
+    el("recBtn").textContent = "■ Stop & save";
+    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SR) {
+      rec.sr = new SR();
+      rec.sr.continuous = true; rec.sr.interimResults = true;
+      rec.sr.lang = navigator.language || "en-US";
+      rec.sr.onresult = function(ev){
+        var interim = "";
+        for (var i = ev.resultIndex; i < ev.results.length; i++) {
+          if (ev.results[i].isFinal) rec.tx += ev.results[i][0].transcript + " ";
+          else interim += ev.results[i][0].transcript;
+        }
+        el("recTranscript").textContent = (rec.tx + interim).trim();
+      };
+      rec.sr.onend = function(){ if (rec.mr && rec.mr.state==="recording") { try { rec.sr.start(); } catch(e){} } };
+      try { rec.sr.start(); } catch(e) {}
+    }
+  }
+
+  async function recFinish() {
+    if (rec.stream) rec.stream.getTracks().forEach(function(t){ t.stop(); });
+    var type = (rec.mr && rec.mr.mimeType) || "audio/webm";
+    var ext = type.indexOf("mp4") !== -1 ? "m4a" : "webm";
+    var blob = new Blob(rec.chunks, { type: type });
+    var base = "AUD " + capStamp();
+    try {
+      await uploadToDrive(blob, "notes", base+"."+ext, type);
+      var txt = (rec.tx || "").trim();
+      if (txt && el("recSaveTx").checked) {
+        await uploadToDrive(new Blob(["Voice note transcript — "+base+"\n\n"+txt], { type: "text/plain" }),
+          "notes", base+" - transcript.txt", "text/plain");
+      }
+      el("recModal").classList.remove("open");
+      loadFiles();
+    } catch (e) {
+      el("recMsg").textContent = e.message || "Upload failed";
+      el("recBtn").disabled = false;
+      el("recBtn").textContent = "● Start recording";
+      el("recState").textContent = "Ready to record";
+    }
+  }
+
+  /* ── text notes ── */
+  async function noteSave() {
+    var body = el("noteBody").value.trim();
+    if (!body) { el("noteMsg").textContent = "Write something first."; return; }
+    var title = el("noteTitle").value.trim();
+    var name = "NOTE "+capStamp()+(title ? " - "+title : "")+".txt";
+    el("noteSave").disabled = true;
+    try {
+      var content = (title ? title+"\n" : "") + new Date().toLocaleString("en-US") + "\n\n" + body;
+      await uploadToDrive(new Blob([content], { type: "text/plain" }), "notes", name, "text/plain");
+      el("noteModal").classList.remove("open");
+      loadFiles();
+    } catch (e) { el("noteMsg").textContent = e.message || "Upload failed"; }
+    el("noteSave").disabled = false;
   }
 
   /* ── project switcher ── */
@@ -1147,6 +1355,88 @@
       el(id).addEventListener("input", ieRecalc);
       el(id).addEventListener("change", ieRecalc);
     });
+
+    // site documentation capture wiring
+    el("capPhotoInput").addEventListener("change", function(){
+      an.queue = Array.prototype.slice.call(this.files || []);
+      if (an.queue.length) anNext();
+    });
+    el("capVideoInput").addEventListener("change", async function(){
+      var f = this.files && this.files[0]; if (!f) return;
+      var ext = (f.name.split(".").pop() || "mp4").toLowerCase();
+      try { await uploadToDrive(f, "pictures", "VID "+capStamp()+"."+ext, f.type || "video/mp4"); loadFiles(); }
+      catch (e) { alert(e.message || "Upload failed"); capProg(""); }
+    });
+    document.querySelectorAll("[data-antool]").forEach(function(b){
+      b.onclick = function(){
+        an.tool = b.getAttribute("data-antool");
+        document.querySelectorAll("[data-antool]").forEach(function(x){ x.classList.toggle("active", x===b); });
+      };
+    });
+    el("anColors").innerHTML = AN_COLORS.map(function(c,i){
+      return '<span class="an-color'+(i===0?" active":"")+'" data-ancolor="'+c+'" style="background:'+c+'"></span>';
+    }).join("");
+    document.querySelectorAll("[data-ancolor]").forEach(function(s){
+      s.onclick = function(){
+        an.color = s.getAttribute("data-ancolor");
+        document.querySelectorAll("[data-ancolor]").forEach(function(x){ x.classList.toggle("active", x===s); });
+      };
+    });
+    el("anWidth").onchange = function(){ an.width = Number(this.value)||6; };
+    el("anUndo").onclick = function(){ an.ops.pop(); anRender(); };
+    el("anClear").onclick = function(){ an.ops = []; an.cur = null; anRender(); };
+    el("anCancel").onclick = function(){ an.queue = []; el("anModal").classList.remove("open"); };
+    el("anSave").onclick = function(){
+      el("anSave").disabled = true;
+      el("anCanvas").toBlob(async function(blob){
+        try { await uploadToDrive(blob, "pictures", "IMG "+capStamp()+".jpg", "image/jpeg"); }
+        catch (e) { alert(e.message || "Upload failed"); }
+        el("anSave").disabled = false;
+        anNext();
+      }, "image/jpeg", 0.9);
+    };
+    el("anOrig").onclick = async function(){
+      var f = an.origFile; if (!f) return;
+      var ext = (f.name.split(".").pop() || "jpg").toLowerCase();
+      el("anOrig").disabled = true;
+      try { await uploadToDrive(f, "pictures", "IMG "+capStamp()+"."+ext, f.type || "image/jpeg"); }
+      catch (e) { alert(e.message || "Upload failed"); }
+      el("anOrig").disabled = false;
+      anNext();
+    };
+    var cv = el("anCanvas");
+    cv.addEventListener("pointerdown", function(e){
+      e.preventDefault();
+      try { cv.setPointerCapture(e.pointerId); } catch(ex){}
+      var p = anPos(e);
+      if (an.tool === "text") {
+        var t = prompt("Text:");
+        if (t) { an.ops.push({ tool:"text", x:p[0], y:p[1], text:t, color:an.color }); anRender(); }
+        return;
+      }
+      if (an.tool === "arrow") an.cur = { tool:"arrow", x1:p[0], y1:p[1], x2:p[0], y2:p[1], color:an.color, width:an.width };
+      else an.cur = { tool:an.tool, pts:[p], color:an.color, width:an.width };
+    });
+    cv.addEventListener("pointermove", function(e){
+      if (!an.cur) return;
+      e.preventDefault();
+      var p = anPos(e);
+      if (an.cur.tool === "arrow") { an.cur.x2 = p[0]; an.cur.y2 = p[1]; }
+      else an.cur.pts.push(p);
+      anRender();
+    });
+    cv.addEventListener("pointerup", function(){ if (an.cur) { an.ops.push(an.cur); an.cur = null; anRender(); } });
+    el("recBtn").onclick = recToggle;
+    el("recCancel").onclick = function(){
+      clearInterval(rec.timer);
+      if (rec.sr) { try { rec.sr.onend = null; rec.sr.stop(); } catch(e){} }
+      if (rec.mr && rec.mr.state === "recording") { rec.mr.onstop = null; try { rec.mr.stop(); } catch(e){} }
+      if (rec.stream) rec.stream.getTracks().forEach(function(t){ t.stop(); });
+      rec.mr = null;
+      el("recModal").classList.remove("open");
+    };
+    el("noteSave").onclick = noteSave;
+    el("noteCancel").onclick = function(){ el("noteModal").classList.remove("open"); };
     window.addEventListener("beforeunload", function(e){ if (Object.keys(state.dirty).length) { e.preventDefault(); e.returnValue=""; } });
 
     try { await loadRecord(); } catch (e) { el("pjTitle").textContent = "Error"; el("pane-overview").innerHTML = '<div class="pj-empty">'+esc(e.message)+'</div>'; return; }

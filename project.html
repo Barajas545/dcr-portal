@@ -175,6 +175,27 @@
         .ie-cols{grid-template-columns:1fr; overflow-y:auto;}
         .ie-left,.ie-right{overflow:visible; border-right:none;}
       }
+
+      /* ── site documentation capture (Files tab) ── */
+      .cap-bar{display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:10px;
+        padding:10px 12px; border:1px dashed var(--border); border-radius:10px; background:var(--surface);}
+      .cap-bar .cap-title{font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em;
+        color:var(--text-muted); margin-right:4px;}
+      .cap-prog{font-size:12px; color:var(--text-muted); min-height:15px;}
+
+      /* photo annotator */
+      .an-overlay{position:fixed; inset:0; background:#111; display:none; z-index:90; flex-direction:column;}
+      .an-overlay.open{display:flex;}
+      .an-top{display:flex; gap:6px; align-items:center; padding:8px 10px; background:#1c1c1e; flex-wrap:wrap;}
+      .an-tool{width:40px; height:36px; border-radius:8px; border:1px solid #444; background:#2a2a2c;
+        color:#fff; cursor:pointer; font-size:15px; font-weight:700;}
+      .an-tool.active{background:#2f80d8; border-color:#2f80d8;}
+      .an-color{width:26px; height:26px; border-radius:50%; border:2px solid transparent; cursor:pointer;}
+      .an-color.active{border-color:#fff; box-shadow:0 0 0 2px rgba(255,255,255,.4);}
+      .an-canvaswrap{flex:1; display:flex; align-items:center; justify-content:center; overflow:hidden; padding:8px;}
+      #anCanvas{max-width:100%; max-height:100%; touch-action:none; background:#000; border-radius:4px;}
+      .an-top .pj-btn{background:#2a2a2c; border-color:#444; color:#fff;}
+      .an-top .pj-btn-primary{background:#2f80d8; border-color:#2f80d8;}
     </style>
   </head>
   <body>
@@ -316,6 +337,66 @@
         <div class="pj-modal-actions">
           <button class="pj-btn" id="subCancel">Cancel</button>
           <button class="pj-btn pj-btn-primary" id="subSave">✓ Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- site documentation: hidden capture inputs -->
+    <input type="file" id="capPhotoInput" accept="image/*" capture="environment" multiple style="display:none" />
+    <input type="file" id="capVideoInput" accept="video/*" capture="environment" style="display:none" />
+
+    <!-- photo annotator -->
+    <div class="an-overlay" id="anModal">
+      <div class="an-top">
+        <button class="an-tool active" data-antool="pen" title="Pen">✏</button>
+        <button class="an-tool" data-antool="hl" title="Highlighter">🖍</button>
+        <button class="an-tool" data-antool="arrow" title="Arrow">➤</button>
+        <button class="an-tool" data-antool="text" title="Text">T</button>
+        <span id="anColors" style="display:flex;gap:5px;align-items:center;margin:0 4px"></span>
+        <select id="anWidth" class="pj-btn pj-btn-sm" style="cursor:pointer">
+          <option value="3">Thin</option><option value="6" selected>Medium</option><option value="12">Thick</option>
+        </select>
+        <button class="pj-btn pj-btn-sm" id="anUndo">↶ Undo</button>
+        <button class="pj-btn pj-btn-sm" id="anClear">Clear</button>
+        <span style="flex:1"></span>
+        <span id="anQueue" style="color:#999;font-size:12px"></span>
+        <button class="pj-btn pj-btn-sm" id="anCancel">✗ Cancel</button>
+        <button class="pj-btn pj-btn-sm" id="anOrig">⬆ Original</button>
+        <button class="pj-btn pj-btn-sm pj-btn-primary" id="anSave">⬆ Save to Pictures</button>
+      </div>
+      <div class="an-canvaswrap"><canvas id="anCanvas"></canvas></div>
+    </div>
+
+    <!-- voice note recorder -->
+    <div class="pj-overlay" id="recModal">
+      <div class="pj-modal" style="max-width:460px">
+        <h3>🎙 Voice note</h3>
+        <div style="text-align:center;margin:10px 0">
+          <div id="recTimer" style="font-size:30px;font-weight:700;color:var(--text)">0:00</div>
+          <div class="pj-sub" id="recState">Ready to record</div>
+        </div>
+        <div class="ie-log" id="recTranscript" style="max-height:130px;min-height:56px"></div>
+        <label style="display:flex;gap:7px;align-items:center;margin-top:9px;font-size:12.5px;color:var(--text);cursor:pointer">
+          <input type="checkbox" id="recSaveTx" checked style="accent-color:#2f80d8" /> Also save transcript as a text file
+        </label>
+        <div class="pj-msg err" id="recMsg"></div>
+        <div class="pj-modal-actions">
+          <button class="pj-btn" id="recCancel">Cancel</button>
+          <button class="pj-btn pj-btn-primary" id="recBtn">● Start recording</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- site note modal -->
+    <div class="pj-overlay" id="noteModal">
+      <div class="pj-modal" style="max-width:540px">
+        <h3>📝 Site note</h3>
+        <div class="pj-f"><label>Title (optional)</label><input id="noteTitle" /></div>
+        <div class="pj-f" style="margin-top:8px"><label>Note</label><textarea id="noteBody" rows="7"></textarea></div>
+        <div class="pj-msg err" id="noteMsg"></div>
+        <div class="pj-modal-actions">
+          <button class="pj-btn" id="noteCancel">Cancel</button>
+          <button class="pj-btn pj-btn-primary" id="noteSave">⬆ Save to Drive</button>
         </div>
       </div>
     </div>
