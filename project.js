@@ -588,7 +588,7 @@
     try {
       var d = await DCR.api("/api/portal?action=drive&projectId="+encodeURIComponent(PID));
       var items = d.items||[];
-      box.innerHTML = '<div style="margin-bottom:8px"><a class="pj-btn pj-btn-sm" target="_blank" href="https://drive.google.com/drive/folders/'+esc(d.folderId||"")+'">Open project folder in Drive ↗</a></div>' +
+      box.innerHTML = (d.folderUrl ? '<div style="margin-bottom:8px"><a class="pj-btn pj-btn-sm" target="_blank" href="'+esc(d.folderUrl)+'">Open project folder in SharePoint ↗</a></div>' : "") +
         (items.map(function(f){
           return '<div class="ie-contact-hit" data-ief="'+esc(f.id)+'" data-folder="'+(f.isFolder?1:0)+'" data-link="'+esc(f.webViewLink||"")+'">'+fileIcon(f)+' '+esc(f.name)+'</div>';
         }).join("") || '<div class="pj-empty">Empty folder.</div>');
@@ -1018,7 +1018,7 @@
       if (folderId) d = await DCR.api("/api/portal?action=drive&folderId="+encodeURIComponent(folderId));
       else {
         d = await DCR.api("/api/portal?action=drive&projectId="+encodeURIComponent(PID));
-        state.files.stack = [{ id: d.folderId, name: "Project folder" }];
+        state.files.stack = [{ id: d.folderId, name: "Project folder", url: d.folderUrl || "" }];
       }
       renderFiles(d.items||[]);
     } catch (e) { pane.innerHTML = '<div class="pj-empty">'+esc(e.message)+'</div>'; }
@@ -1039,7 +1039,7 @@
         '<span class="meta">'+fmtSize(f.size)+(f.modifiedTime?' · '+fmtDate(f.modifiedTime):"")+'</span></div>';
     }).join("") || '<div class="pj-empty">Empty folder.</div>';
     pane.innerHTML = capBarHtml() + '<div class="pj-crumb">'+crumbs+
-      '<a class="pj-btn pj-btn-sm" style="margin-left:auto" target="_blank" href="https://drive.google.com/drive/folders/'+esc(top.id)+'">Open in Drive ↗</a></div>' +
+      (top.url ? '<a class="pj-btn pj-btn-sm" style="margin-left:auto" target="_blank" href="'+esc(top.url)+'">Open in SharePoint ↗</a>' : "")+'</div>' +
       '<div class="pj-tblwrap">'+rows+'</div>';
     wireCapBar();
     pane.querySelectorAll("[data-crumb]").forEach(function(a){
@@ -1052,7 +1052,7 @@
     pane.querySelectorAll(".pj-file").forEach(function(row){
       row.onclick = function(){
         if (row.getAttribute("data-folder")==="1") {
-          state.files.stack.push({ id: row.getAttribute("data-fid"), name: row.getAttribute("data-name") });
+          state.files.stack.push({ id: row.getAttribute("data-fid"), name: row.getAttribute("data-name"), url: row.getAttribute("data-link") || "" });
           loadFiles(row.getAttribute("data-fid"));
         } else openFile(row.getAttribute("data-fid"), row.getAttribute("data-link"));
       };
@@ -1108,17 +1108,27 @@
     return d.getFullYear()+"-"+p2(d.getMonth()+1)+"-"+p2(d.getDate())+" "+p2(d.getHours())+"."+p2(d.getMinutes())+"."+p2(d.getSeconds());
   }
 
+  // SharePoint upload sessions require chunked PUTs in 320KiB multiples.
   async function uploadToDrive(blob, target, name, mime) {
+    if (!blob.size) throw new Error("Nothing to upload (empty file).");
     var s = await DCR.api("/api/portal?action=drive", { method:"POST",
       body:{ op:"uploadSession", projectId: PID, target: target, name: name, mimeType: mime } });
-    await new Promise(function(resolve, reject){
-      var x = new XMLHttpRequest();
-      x.open("PUT", s.uploadUrl);
-      x.upload.onprogress = function(e){ if (e.lengthComputable) capProg("Uploading "+name+" — "+Math.round(e.loaded/e.total*100)+"%"); };
-      x.onload = function(){ if (x.status===200 || x.status===201) resolve(); else reject(new Error("Upload failed ("+x.status+")")); };
-      x.onerror = function(){ reject(new Error("Upload failed — check your connection.")); };
-      x.send(blob);
-    });
+    var CHUNK = 320 * 1024 * 24; // 7.5 MiB, 320KiB-aligned
+    var pos = 0, total = blob.size;
+    while (pos < total) {
+      var end = Math.min(pos + CHUNK, total);
+      await new Promise(function(resolve, reject){
+        var x = new XMLHttpRequest();
+        x.open("PUT", s.uploadUrl);
+        x.setRequestHeader("Content-Range", "bytes "+pos+"-"+(end-1)+"/"+total);
+        var base = pos;
+        x.upload.onprogress = function(e){ if (e.lengthComputable) capProg("Uploading "+name+" — "+Math.round((base+e.loaded)/total*100)+"%"); };
+        x.onload = function(){ if (x.status===200 || x.status===201 || x.status===202) resolve(); else reject(new Error("Upload failed ("+x.status+")")); };
+        x.onerror = function(){ reject(new Error("Upload failed — check your connection.")); };
+        x.send(blob.slice(pos, end));
+      });
+      pos = end;
+    }
     capProg("✓ Saved "+name);
     setTimeout(function(){ capProg(""); }, 4000);
   }
