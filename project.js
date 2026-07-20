@@ -596,7 +596,7 @@
         row.onclick = function(){
           if (row.getAttribute("data-folder")==="1") {
             var link = row.getAttribute("data-link");
-            window.open(link || ("https://drive.google.com/drive/folders/"+row.getAttribute("data-ief")), "_blank");
+            if (link) window.open(link, "_blank");
           } else openFile(row.getAttribute("data-ief"), row.getAttribute("data-link"));
         };
       });
