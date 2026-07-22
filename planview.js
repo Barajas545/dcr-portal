@@ -437,13 +437,15 @@
     });
   }
   function fitWidth() {
+    if (!state.baseW) return;
     var vpt = el("viewport");
-    state.zoom = Math.max(0.15, (vpt.clientWidth - 40) / state.baseW);
+    state.zoom = Math.min(8, Math.max(0.15, (vpt.clientWidth - 40) / state.baseW));
     renderPage();
   }
   function fitPage() {
+    if (!state.baseW || !state.baseH) return;
     var vpt = el("viewport");
-    state.zoom = Math.max(0.15, Math.min((vpt.clientWidth - 40) / state.baseW, (vpt.clientHeight - 40) / state.baseH));
+    state.zoom = Math.min(8, Math.max(0.15, Math.min((vpt.clientWidth - 40) / state.baseW, (vpt.clientHeight - 40) / state.baseH)));
     renderPage();
   }
 
@@ -714,6 +716,10 @@
       pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.worker.min.js";
       state.pdf = await pdfjsLib.getDocument({ data: buf }).promise;
       state.pages = state.pdf.numPages;
+      // seed base dimensions BEFORE the first fit (fitWidth divides by baseW)
+      var p1 = await state.pdf.getPage(1);
+      var v1 = p1.getViewport({ scale: 1 });
+      state.baseW = v1.width; state.baseH = v1.height;
       el("pvLoad").style.display = "none";
       await loadNotes();
       fitWidth();
