@@ -261,15 +261,33 @@
       var d = await DCR.api("/api/portal?action=project&id="+PID+"&part=estimate");
       state.estRows = d.rows||[];
       state.estCanEdit = !!d.canEdit;
+      state.estPricesHidden = !!d.pricesHidden;
       renderEstimate(d.canEdit);
     } catch (e) { pane.innerHTML = '<div class="pj-empty">'+esc(e.message)+'</div>'; }
   }
 
   function estLineHtml(r) {
+    // Money parentheticals are skipped when their fields are absent (e.g. the
+    // server stripped prices for a Lead) — "(4 guys × 2 days)" reads fine alone.
     var lines = [];
     if (r.title) lines.push('<b>'+esc(r.title)+'</b>');
-    if (r.taskLaborName) lines.push(esc(r.taskLaborName) + (r.taskLaborNumberOfGuys?' <span class="pj-sub">('+r.taskLaborNumberOfGuys+' guys × '+(r.taskLaborDaysToComplete||0)+' days @ '+fmtMoney(r.taskLaborPricePerHour)+'/hr)</span>':"") + (num(r.taskLaborPrice)?' <span class="pj-sub">('+(r.taskLaborQty||1)+' × '+fmtMoney(r.taskLaborPrice)+')</span>':""));
-    if (r.taskMaterialName) lines.push(esc(r.taskMaterialName) + (num(r.taskMaterialQty)?' <span class="pj-sub">('+r.taskMaterialQty+' × '+fmtMoney(r.taskMaterialUnitPrice)+')</span>':""));
+    if (r.taskLaborName) {
+      var lab = esc(r.taskLaborName);
+      if (r.taskLaborNumberOfGuys) {
+        lab += ' <span class="pj-sub">('+r.taskLaborNumberOfGuys+' guys × '+(r.taskLaborDaysToComplete||0)+' days'+
+          (r.taskLaborPricePerHour!=null && num(r.taskLaborPricePerHour) ? ' @ '+fmtMoney(r.taskLaborPricePerHour)+'/hr' : '')+')</span>';
+      }
+      if (r.taskLaborPrice!=null && num(r.taskLaborPrice)) lab += ' <span class="pj-sub">('+(r.taskLaborQty||1)+' × '+fmtMoney(r.taskLaborPrice)+')</span>';
+      lines.push(lab);
+    }
+    if (r.taskMaterialName) {
+      var mat = esc(r.taskMaterialName);
+      if (num(r.taskMaterialQty)) {
+        mat += ' <span class="pj-sub">('+r.taskMaterialQty+
+          (r.taskMaterialUnitPrice!=null && num(r.taskMaterialUnitPrice) ? ' × '+fmtMoney(r.taskMaterialUnitPrice) : ' pcs')+')</span>';
+      }
+      lines.push(mat);
+    }
     if (r.taskEstimateNotes) lines.push('<span class="pj-sub">'+esc(r.taskEstimateNotes)+'</span>');
     return lines.join("<br>")||"—";
   }
@@ -309,18 +327,21 @@
     });
 
     // Money formatting: zeros are hidden everywhere; $ shows only on totals
-    // (item Labor/Material columns show the bare number).
+    // (item Labor/Material columns show the bare number). When the server sent
+    // pricesHidden (Lead role), all money columns/totals are omitted entirely.
+    var showMoney = !state.estPricesHidden;
     var m$ = function(n){ return num(n) ? fmtMoney(n) : ""; };
     var mBare = function(n){ return num(n) ? fmtMoney(n).replace("$", "") : ""; };
+    var cols = showMoney ? 4 : 1;
 
     // Per-estimate totals, computed up front so they can sit at the TOP of each card.
     var grand = { labor:0, mat:0, tot:0 };
     secs.forEach(function(s){
       s.groups.forEach(function(gr){
         gr.rows.forEach(function(r){
-          s.labor += r.TaskLaborTotalPrice + r.TaskLaborTotalPricePerQty;
-          s.mat   += r.TaskMaterialTotalPrice;
-          s.tot   += r.TaskGrandTotalMaterialAndLabor;
+          s.labor += (r.TaskLaborTotalPrice||0) + (r.TaskLaborTotalPricePerQty||0);
+          s.mat   += (r.TaskMaterialTotalPrice||0);
+          s.tot   += (r.TaskGrandTotalMaterialAndLabor||0);
         });
       });
       grand.labor += s.labor; grand.mat += s.mat; grand.tot += s.tot;
@@ -331,27 +352,27 @@
       var addBtn = canEdit ? ' <button class="pj-btn pj-btn-sm" data-est-addto="'+esc(s.name==="(no estimate name)"?"":s.name)+'" style="margin-left:8px">＋ Add item</button>' : "";
       html += '<div class="pj-esttable"><table class="pj-tbl"><thead>' +
         '<tr class="pj-est"><td><span class="pj-estname">📄 '+esc(s.name)+'</span>'+addBtn+'</td>' +
-          '<td class="num">'+m$(s.labor)+'</td><td class="num">'+m$(s.mat)+'</td><td class="num">'+m$(s.tot)+'</td></tr>' +
-        '<tr class="pj-colhead"><th>Item</th><th class="num">Labor</th><th class="num">Material</th><th class="num">Total</th></tr>' +
+          (showMoney ? '<td class="num">'+m$(s.labor)+'</td><td class="num">'+m$(s.mat)+'</td><td class="num">'+m$(s.tot)+'</td>' : "") + '</tr>' +
+        '<tr class="pj-colhead"><th>Item</th>'+(showMoney?'<th class="num">Labor</th><th class="num">Material</th><th class="num">Total</th>':"")+'</tr>' +
         '</thead><tbody>';
       s.groups.forEach(function(gr){
-        html += '<tr class="pj-grp"><td colspan="4">'+esc(gr.name)+'</td></tr>';
+        html += '<tr class="pj-grp"><td colspan="'+cols+'">'+esc(gr.name)+'</td></tr>';
         var gl=0, gm=0, gt=0;
         gr.rows.forEach(function(r){
-          var labor = r.TaskLaborTotalPrice + r.TaskLaborTotalPricePerQty;
-          var mat = r.TaskMaterialTotalPrice;
-          gl+=labor; gm+=mat; gt+=r.TaskGrandTotalMaterialAndLabor;
+          var labor = (r.TaskLaborTotalPrice||0) + (r.TaskLaborTotalPricePerQty||0);
+          var mat = (r.TaskMaterialTotalPrice||0);
+          gl+=labor; gm+=mat; gt+=(r.TaskGrandTotalMaterialAndLabor||0);
           html += '<tr'+(canEdit?' data-est-open="'+r.id+'" style="cursor:pointer" title="Double-click to edit"':"")+'><td class="pj-il">'+ estLineHtml(r) +'</td>' +
-            '<td class="num">'+mBare(labor)+'</td><td class="num">'+mBare(mat)+'</td>' +
-            '<td class="num"><b>'+m$(r.TaskGrandTotalMaterialAndLabor)+'</b></td></tr>';
+            (showMoney ? '<td class="num">'+mBare(labor)+'</td><td class="num">'+mBare(mat)+'</td>' +
+              '<td class="num"><b>'+m$(r.TaskGrandTotalMaterialAndLabor)+'</b></td>' : "") + '</tr>';
         });
-        if (s.groups.length > 1) {
+        if (showMoney && s.groups.length > 1) {
           html += '<tr class="pj-grpTot"><td>Subtotal — '+esc(gr.name)+'</td><td class="num">'+m$(gl)+'</td><td class="num">'+m$(gm)+'</td><td class="num">'+m$(gt)+'</td></tr>';
         }
       });
       html += '</tbody></table></div>';
     });
-    if (state.estFilter === "*" && secs.length > 1) {
+    if (showMoney && state.estFilter === "*" && secs.length > 1) {
       html += '<div class="pj-esttable"><table class="pj-tbl"><tbody>' +
         '<tr class="pj-grand"><td>GRAND TOTAL — all estimates</td><td class="num">'+m$(grand.labor)+'</td><td class="num">'+m$(grand.mat)+'</td><td class="num">'+m$(grand.tot)+'</td></tr>' +
         '</tbody></table></div>';

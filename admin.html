@@ -48,6 +48,7 @@
             <select id="uRole">
               <option value="ReadOnly">Read-only</option>
               <option value="Field">Field</option>
+              <option value="Lead">Lead (crew leader)</option>
               <option value="Manager">Manager</option>
               <option value="Admin">Admin</option>
             </select>
@@ -73,7 +74,15 @@
             <select id="uManaged" multiple size="6" style="height:auto;"></select>
           </div>
           <div class="full">
-            <label>Per-table overrides <span class="muted">(optional — blank = role default)</span></label>
+            <label for="uEstPrices">Estimate prices <span class="muted">(Leads hide prices by default; changes apply at the user's next login)</span></label>
+            <select id="uEstPrices">
+              <option value="">Role default</option>
+              <option value="on">Show prices</option>
+              <option value="off">Hide prices</option>
+            </select>
+          </div>
+          <div class="full">
+            <label>Per-table overrides <span class="muted">(optional — blank = role default; applied at next login)</span></label>
             <div class="perm-grid" id="permGrid"></div>
           </div>
         </div>

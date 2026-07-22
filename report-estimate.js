@@ -31,18 +31,22 @@
   function today(){ return new Date().toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"}); }
 
   function lineDesc(r, hideDetail) {
+    // Money bits are skipped when their fields are absent (server-stripped for
+    // price-hidden users) — the scope of work still reads cleanly.
     var parts = [];
     if (r.taskLaborName) {
       var d = esc(r.taskLaborName);
       var bits = [];
-      if (num(r.taskLaborNumberOfGuys)) bits.push(r.taskLaborNumberOfGuys + " guys × " + (r.taskLaborDaysToComplete||0) + " days @ " + money(r.taskLaborPricePerHour) + "/hr");
-      if (num(r.taskLaborPrice)) bits.push((r.taskLaborQty||1) + " × " + money(r.taskLaborPrice));
+      if (num(r.taskLaborNumberOfGuys)) bits.push(r.taskLaborNumberOfGuys + " guys × " + (r.taskLaborDaysToComplete||0) + " days" +
+        (r.taskLaborPricePerHour != null && num(r.taskLaborPricePerHour) ? " @ " + money(r.taskLaborPricePerHour) + "/hr" : ""));
+      if (r.taskLaborPrice != null && num(r.taskLaborPrice)) bits.push((r.taskLaborQty||1) + " × " + money(r.taskLaborPrice));
       if (bits.length) d += ' <span class="lineb labor-detail">(' + bits.join("; ") + ")</span>";
       parts.push(d);
     }
     if (r.taskMaterialName) {
       var m = esc(r.taskMaterialName);
-      if (num(r.taskMaterialQty)) m += ' <span class="lineb">(' + r.taskMaterialQty + " × " + money(r.taskMaterialUnitPrice) + ")</span>";
+      if (num(r.taskMaterialQty)) m += ' <span class="lineb">(' + r.taskMaterialQty +
+        (r.taskMaterialUnitPrice != null && num(r.taskMaterialUnitPrice) ? " × " + money(r.taskMaterialUnitPrice) : " pcs") + ")</span>";
       parts.push(m);
     }
     if (r.taskEstimateNotes) parts.push('<span class="lineb">' + esc(r.taskEstimateNotes) + "</span>");
@@ -120,6 +124,12 @@
       ]);
       var proj = results[0].project;
       var allRows = results[1].rows || [];
+      // Price-hidden user (Lead): force the worksite copy — no prices, no toggle.
+      if (results[1].pricesHidden) {
+        el("rpSheet").classList.add("noprices");
+        el("rpNoPrices").checked = true;
+        el("rpNoPrices").parentElement.style.display = "none";
+      }
       // Estimate picker: print one named estimate (e.g. a change order) or all.
       var names = [];
       allRows.forEach(function (r) {
