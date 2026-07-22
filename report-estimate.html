@@ -16,7 +16,8 @@
       .rp-btn:hover{background:var(--surface-2);}
       .rp-btn-primary{background:#2f80d8; border-color:#2f80d8; color:#fff;}
       .rp-check{display:flex; align-items:center; gap:6px; font-size:13px; color:var(--text); cursor:pointer;}
-      .rp-check input{accent-color:#2f80d8;}
+      /* the global stylesheet makes inputs width:100% — keep checkboxes natural size (iOS honors the 100%) */
+      .rp-check input{width:16px; height:16px; min-width:16px; padding:0; margin:0; accent-color:#2f80d8; flex-shrink:0;}
       .rp-note{font-size:12px; color:var(--text-muted);}
 
       /* ── the sheet: always paper-like, even on dark screens ── */

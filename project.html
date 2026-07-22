@@ -387,7 +387,9 @@
           placeholder="Live transcript appears here while you speak…"></textarea>
         <div class="pj-sub" id="recHint" style="margin-top:5px"></div>
         <label style="display:flex;gap:7px;align-items:center;margin-top:9px;font-size:12.5px;color:var(--text);cursor:pointer">
-          <input type="checkbox" id="recSaveTx" checked style="accent-color:#2f80d8" /> Also save transcript as a text file in Site Notes
+          <input type="checkbox" id="recSaveTx" checked
+            style="width:17px;height:17px;min-width:17px;padding:0;margin:0;accent-color:#2f80d8;flex-shrink:0" />
+          <span style="flex:1;min-width:0">Also save transcript as a text file in Site Notes</span>
         </label>
         <div class="pj-msg err" id="recMsg"></div>
         <div class="pj-modal-actions">

@@ -1293,9 +1293,43 @@
       try { rec.mr.stop(); } catch(e){} // assembles rec.blob in onstop
       return;
     }
-    // idle → start recording
+    // idle → start recording.
+    // ORDER MATTERS on Android: the speech engine and MediaRecorder compete for
+    // the microphone, and whoever starts second can silently lose. Start the
+    // speech recognizer FIRST so it holds its audio path, then attach the
+    // recorder — this yields live transcripts on many Android devices that got
+    // none with the reverse order. (Desktop browsers share the mic either way.)
+    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SR) {
+      rec.sr = new SR();
+      rec.sr.continuous = true; rec.sr.interimResults = true;
+      rec.sr.lang = navigator.language || "en-US";
+      rec.sr.onresult = function(ev){
+        var interim = "";
+        for (var i = ev.resultIndex; i < ev.results.length; i++) {
+          if (ev.results[i].isFinal) rec.tx += ev.results[i][0].transcript + " ";
+          else interim += ev.results[i][0].transcript;
+        }
+        rec.interim = interim;
+        el("recTranscript").value = (rec.tx + " " + interim).replace(/\s+/g, " ").trim();
+      };
+      rec.sr.onerror = function(ev){
+        if (rec.phase !== "rec" && rec.phase !== "idle") return;
+        if (ev.error === "audio-capture" || ev.error === "not-allowed" || ev.error === "service-not-allowed") {
+          el("recHint").textContent = "Live transcription isn't available on this device (" + ev.error + ") — the audio still records; you can type the transcript after stopping.";
+        }
+      };
+      rec.sr.onend = function(){ if (rec.phase === "rec") { try { rec.sr.start(); } catch(e){} } };
+      try { rec.sr.start(); } catch(e) {}
+      // brief head start for the recognizer before the recorder grabs the mic
+      await new Promise(function(r){ setTimeout(r, 350); });
+    }
     try { rec.stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
-    catch (e) { el("recMsg").textContent = "Microphone access was denied."; return; }
+    catch (e) {
+      if (rec.sr) { try { rec.sr.onend = null; rec.sr.stop(); } catch(x){} }
+      el("recMsg").textContent = "Microphone access was denied.";
+      return;
+    }
     var mime = (window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) ? "audio/webm;codecs=opus"
       : ((window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported("audio/mp4")) ? "audio/mp4" : "");
     rec.chunks = []; rec.blob = null; rec.mime = mime || "audio/webm";
@@ -1314,23 +1348,6 @@
     }, 500);
     el("recState").textContent = "Recording…";
     el("recBtn").textContent = "■ Stop";
-    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SR) {
-      rec.sr = new SR();
-      rec.sr.continuous = true; rec.sr.interimResults = true;
-      rec.sr.lang = navigator.language || "en-US";
-      rec.sr.onresult = function(ev){
-        var interim = "";
-        for (var i = ev.resultIndex; i < ev.results.length; i++) {
-          if (ev.results[i].isFinal) rec.tx += ev.results[i][0].transcript + " ";
-          else interim += ev.results[i][0].transcript;
-        }
-        rec.interim = interim;
-        el("recTranscript").value = (rec.tx + " " + interim).replace(/\s+/g, " ").trim();
-      };
-      rec.sr.onend = function(){ if (rec.phase === "rec") { try { rec.sr.start(); } catch(e){} } };
-      try { rec.sr.start(); } catch(e) {}
-    }
   }
 
   async function recSave() {
