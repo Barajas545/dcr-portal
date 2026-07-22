@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DCR Portal — Floor Plans</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      .fp{
+        --acc:#2f80d8; --acc-2:#1f6fc8; --tint:rgba(47,128,216,0.12); --tint-2:rgba(47,128,216,0.22);
+        --gold:#d6a13a; --ok:#2fa679; --err:#d9614f;
+        max-width:860px; margin:0 auto; padding:14px 16px 60px;
+      }
+      .fp-head{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px;}
+      .fp-head h2{margin:0; font-size:19px; color:var(--text);}
+      .fp-search{flex:1; min-width:200px; max-width:420px; padding:9px 12px; font-size:14px;
+        border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text);}
+      .fp-search:focus{outline:none; border-color:var(--acc); box-shadow:0 0 0 3px var(--tint);}
+      .fp-sub{font-size:12px; color:var(--text-muted); margin-bottom:12px; min-height:14px;}
+      .fp-note{background:var(--tint); border:1px solid var(--acc); border-radius:8px;
+        padding:8px 12px; font-size:12.5px; color:var(--text); margin-bottom:12px;}
+      .fp-grp{font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em;
+        color:var(--text-muted); margin:16px 0 8px; display:flex; align-items:center; gap:6px;}
+      .fp-file{display:flex; align-items:center; gap:10px; background:var(--surface);
+        border:1px solid var(--border); border-radius:10px; padding:11px 14px; margin-bottom:7px;
+        cursor:pointer; transition:border-color .1s;}
+      .fp-file:hover{border-color:var(--acc);}
+      .fp-file .ic{font-size:20px;}
+      .fp-file .nm{flex:1; min-width:0;}
+      .fp-file .nm .t{font-size:13.5px; font-weight:600; color:var(--text); word-break:break-word;}
+      .fp-file .nm .m{font-size:11px; color:var(--text-muted); margin-top:2px;}
+      .fp-badge{font-size:10.5px; font-weight:700; padding:2px 9px; border-radius:10px;
+        background:rgba(47,166,121,.16); color:var(--ok); border:1px solid var(--ok); white-space:nowrap;}
+      .fp-empty{padding:36px; text-align:center; color:var(--text-muted);}
+    </style>
+  </head>
+  <body>
+    <div class="topbar">
+      <div class="brand"><div class="brand-badge">DCR</div><h1 id="companyName">DCR Portal</h1></div>
+      <div class="top-actions">
+        <span class="pill" id="userPill">…</span>
+        <a class="btn btn-ghost btn-sm" href="dashboard.html">Home</a>
+        <button class="btn btn-ghost btn-sm" id="logoutBtn">Log out</button>
+      </div>
+    </div>
+
+    <div class="fp">
+      <div class="fp-head">
+        <h2>📐 Floor Plans</h2>
+        <input class="fp-search" id="fpSearch" type="search" list="fpProjects"
+          placeholder="Search a project (ID, name, client, address)…" autocomplete="off" />
+        <datalist id="fpProjects"></datalist>
+      </div>
+      <div class="fp-sub" id="fpSub"></div>
+      <div id="fpList"><div class="fp-empty">Search for a project to see its floor-plan PDFs.<br>
+        <span style="font-size:12px">Open one to measure, annotate, and build takeoffs — your notes save right next to the plan.</span></div></div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="common.js"></script>
+    <script src="plans.js"></script>
+  </body>
+</html>

@@ -20,6 +20,7 @@
     sections.push({ label: "Projects & Sales", cards: [
       { href: "board.html", ic: "📋", tt: "Project Board", ds: "All projects by stage — drag to move, open details.", show: !!pp.project,
         links: [["Sales view","board.html?view=sales"],["Marketing view","board.html?view=marketing"],["Accounting view","board.html?view=accounting"]] },
+      { href: "plans.html", ic: "📐", tt: "Floor Plans", ds: "Open plan PDFs — measure, annotate, and build takeoffs.", show: !!pp.project },
       { href: "logs.html", ic: "📜", tt: "Log History", ds: "Today's project logs, grouped by project — or any period.", show: !!pp.projectLog },
       { href: "leads.html", ic: "📞", tt: "Leads", ds: "Sales pipeline: track contacts, convert to projects.", show: !!pp.leads },
       { href: "marketing.html", ic: "📣", tt: "Marketing Tasks", ds: "Billable marketing work — done, invoiced, paid.", show: !!pp.marketingTasks },
