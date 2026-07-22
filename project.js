@@ -1252,13 +1252,21 @@
     return [ (e.clientX-r.left)*(c.width/r.width), (e.clientY-r.top)*(c.height/r.height) ];
   }
 
-  /* ── voice notes w/ live browser transcription ── */
-  var rec = { mr: null, chunks: [], stream: null, timer: null, t0: 0, sr: null, tx: "" };
+  /* ── voice notes w/ live browser transcription ──
+     Flow: Start → live transcript (finals + the in-flight interim tail) →
+     Stop → REVIEW (transcript becomes editable so the user can fix it) →
+     Save uploads the audio + the reviewed transcript as a .txt, both into the
+     project's Site Notes folder. The interim tail is captured at stop time —
+     losing it was why short notes used to save empty/truncated transcripts. */
+  var rec = { mr: null, chunks: [], stream: null, timer: null, t0: 0, sr: null, tx: "", interim: "", phase: "idle", blob: null, mime: "" };
 
   function recOpen() {
-    rec.tx = "";
+    rec.tx = ""; rec.interim = ""; rec.phase = "idle"; rec.blob = null;
     var supported = window.SpeechRecognition || window.webkitSpeechRecognition;
-    el("recTranscript").textContent = supported ? "" : "(Live transcription isn't supported on this device — the audio will still be saved.)";
+    var ta = el("recTranscript");
+    ta.value = ""; ta.readOnly = true;
+    el("recHint").textContent = supported
+      ? "" : "Live transcription isn't supported on this device — the audio still saves; you can type the transcript after stopping.";
     el("recTimer").textContent = "0:00";
     el("recState").textContent = "Ready to record";
     el("recMsg").textContent = "";
@@ -1268,30 +1276,44 @@
   }
 
   async function recToggle() {
-    if (rec.mr && rec.mr.state === "recording") {
+    if (rec.phase === "review") { recSave(); return; }
+    if (rec.phase === "rec") {
+      // Stop → review. Capture the interim tail BEFORE tearing recognition down.
       clearInterval(rec.timer);
       if (rec.sr) { try { rec.sr.onend = null; rec.sr.stop(); } catch(e){} }
-      el("recState").textContent = "Saving…";
-      el("recBtn").disabled = true;
-      try { rec.mr.stop(); } catch(e){}
+      var full = (rec.tx + " " + rec.interim).replace(/\s+/g, " ").trim();
+      var ta = el("recTranscript");
+      ta.value = full;
+      ta.readOnly = false;
+      ta.placeholder = "No transcript was captured — you can type one here before saving.";
+      el("recState").textContent = "Review — check the transcript, then Save";
+      el("recHint").textContent = "The transcript below is editable. It saves as a .txt next to the audio in Site Notes.";
+      el("recBtn").textContent = "⬆ Save to Drive";
+      rec.phase = "review";
+      try { rec.mr.stop(); } catch(e){} // assembles rec.blob in onstop
       return;
     }
+    // idle → start recording
     try { rec.stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
     catch (e) { el("recMsg").textContent = "Microphone access was denied."; return; }
     var mime = (window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) ? "audio/webm;codecs=opus"
       : ((window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported("audio/mp4")) ? "audio/mp4" : "");
-    rec.chunks = [];
+    rec.chunks = []; rec.blob = null; rec.mime = mime || "audio/webm";
     rec.mr = mime ? new MediaRecorder(rec.stream, { mimeType: mime }) : new MediaRecorder(rec.stream);
     rec.mr.ondataavailable = function(e){ if (e.data && e.data.size) rec.chunks.push(e.data); };
-    rec.mr.onstop = recFinish;
+    rec.mr.onstop = function(){
+      if (rec.stream) rec.stream.getTracks().forEach(function(t){ t.stop(); });
+      rec.blob = new Blob(rec.chunks, { type: (rec.mr && rec.mr.mimeType) || rec.mime });
+    };
     rec.mr.start();
+    rec.phase = "rec";
     rec.t0 = Date.now();
     rec.timer = setInterval(function(){
       var s = Math.floor((Date.now()-rec.t0)/1000);
       el("recTimer").textContent = Math.floor(s/60)+":"+String(s%60).padStart(2,"0");
     }, 500);
     el("recState").textContent = "Recording…";
-    el("recBtn").textContent = "■ Stop & save";
+    el("recBtn").textContent = "■ Stop";
     var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SR) {
       rec.sr = new SR();
@@ -1303,33 +1325,39 @@
           if (ev.results[i].isFinal) rec.tx += ev.results[i][0].transcript + " ";
           else interim += ev.results[i][0].transcript;
         }
-        el("recTranscript").textContent = (rec.tx + interim).trim();
+        rec.interim = interim;
+        el("recTranscript").value = (rec.tx + " " + interim).replace(/\s+/g, " ").trim();
       };
-      rec.sr.onend = function(){ if (rec.mr && rec.mr.state==="recording") { try { rec.sr.start(); } catch(e){} } };
+      rec.sr.onend = function(){ if (rec.phase === "rec") { try { rec.sr.start(); } catch(e){} } };
       try { rec.sr.start(); } catch(e) {}
     }
   }
 
-  async function recFinish() {
-    if (rec.stream) rec.stream.getTracks().forEach(function(t){ t.stop(); });
-    var type = (rec.mr && rec.mr.mimeType) || "audio/webm";
+  async function recSave() {
+    // MediaRecorder.onstop is async — wait briefly for the blob if needed.
+    for (var w = 0; w < 20 && !rec.blob; w++) await new Promise(function(r){ setTimeout(r, 100); });
+    if (!rec.blob || !rec.blob.size) { el("recMsg").textContent = "No audio was captured."; return; }
+    var type = rec.blob.type || rec.mime;
     var ext = type.indexOf("mp4") !== -1 ? "m4a" : "webm";
-    var blob = new Blob(rec.chunks, { type: type });
     var base = "AUD " + capStamp();
+    el("recBtn").disabled = true;
+    el("recState").textContent = "Saving…";
     try {
-      await uploadToDrive(blob, "notes", base+"."+ext, type);
-      var txt = (rec.tx || "").trim();
+      await uploadToDrive(rec.blob, "notes", base+"."+ext, type);
+      var txt = el("recTranscript").value.trim();
       if (txt && el("recSaveTx").checked) {
         await uploadToDrive(new Blob(["Voice note transcript — "+base+"\n\n"+txt], { type: "text/plain" }),
           "notes", base+" - transcript.txt", "text/plain");
+        capProg("✓ Saved audio + transcript to Site Notes");
       }
+      rec.phase = "idle";
       el("recModal").classList.remove("open");
       loadFiles();
     } catch (e) {
       el("recMsg").textContent = e.message || "Upload failed";
       el("recBtn").disabled = false;
-      el("recBtn").textContent = "● Start recording";
-      el("recState").textContent = "Ready to record";
+      el("recBtn").textContent = "⬆ Save to Drive";
+      el("recState").textContent = "Review — check the transcript, then Save";
     }
   }
 
@@ -1506,7 +1534,7 @@
       if (rec.sr) { try { rec.sr.onend = null; rec.sr.stop(); } catch(e){} }
       if (rec.mr && rec.mr.state === "recording") { rec.mr.onstop = null; try { rec.mr.stop(); } catch(e){} }
       if (rec.stream) rec.stream.getTracks().forEach(function(t){ t.stop(); });
-      rec.mr = null;
+      rec.mr = null; rec.blob = null; rec.phase = "idle";
       el("recModal").classList.remove("open");
     };
     el("noteSave").onclick = noteSave;
