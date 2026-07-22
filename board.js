@@ -97,10 +97,25 @@
         '<div class="bd-col-body">' + (cards || '<div class="bd-empty-col">No projects</div>') + '</div></div>';
     }).join("");
 
-    // wire cards
+    // wire cards. Single click opens the side panel, double click opens the
+    // full project. We can't rely on the native dblclick event because the
+    // single click re-renders the board (replacing the card node mid-gesture),
+    // so we detect the double click by timing instead.
     wrap.querySelectorAll(".bd-card").forEach(function (c) {
-      c.addEventListener("click", function () { selectProject(c.getAttribute("data-id")); });
-      c.addEventListener("dblclick", function () { location.href = "project.html?id=" + encodeURIComponent(c.getAttribute("data-id")); });
+      c.addEventListener("click", function () {
+        var id = c.getAttribute("data-id");
+        if (state.clickTimer && state.clickId === id) {
+          clearTimeout(state.clickTimer); state.clickTimer = null; state.clickId = null;
+          location.href = "project.html?id=" + encodeURIComponent(id);
+          return;
+        }
+        clearTimeout(state.clickTimer);
+        state.clickId = id;
+        state.clickTimer = setTimeout(function () {
+          state.clickTimer = null; state.clickId = null;
+          selectProject(id);
+        }, 230);
+      });
       if (state.canWrite) {
         c.addEventListener("dragstart", function (e) {
           state.dragging = true;
