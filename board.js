@@ -37,7 +37,7 @@
     completed: function(months, o){ var c=col("Completed","Completed","#6b7c6f",o||{}); c.recentMonths=months; return c; },
   };
   var VIEWS = {
-    main: { label: "Main Board", cols: [C.onhold(), C.estim(), C.recived(), C.sent(), C.aproved(), C.inprog(), C.completed(2)] },
+    main: { label: "Main Board", cols: [C.onhold(), C.recived(), C.estim(), C.sent(), C.aproved(), C.inprog(), C.completed(2)] },
     sales: { label: "Sales", cols: [C.estim(), C.sent({desc:true, sortField:"projectDateLastModified"}), C.aproved(), C.inprog(), C.completed(24, {desc:true, sortField:"projectCompletedDate"})] },
     marketing: { label: "Marketing", cols: [C.aproved(), C.inprog(), C.completed(5, {desc:true, sortField:"projectCompletedDate"})] },
     accounting: { label: "Accounting", cols: [C.aproved(), C.inprog(), C.completed(2, {desc:true, sortField:"projectCompletedDate"})] },
@@ -168,6 +168,12 @@
       }).join("");
     }
     el("bdAddLogWrap").style.display = state.canLog ? "" : "none";
+
+    // double-click the preview image to open the full project (same as the tile)
+    var thumb = el("bdThumb");
+    thumb.style.cursor = "pointer";
+    thumb.title = "Double-click to open project";
+    thumb.ondblclick = function () { location.href = "project.html?id=" + encodeURIComponent(p.id); };
 
     loadThumb(p);
     loadLogs(id);
