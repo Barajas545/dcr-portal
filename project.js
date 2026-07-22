@@ -131,6 +131,12 @@
     return '<div class="pj-f"><label>'+esc(label)+'</label><input type="text" data-key="'+key+'" data-type="text" value="'+esc(v==null?"":v)+'"'+dis+'></div>';
   }
 
+  // Resize a textarea to fit its content (no inner scrollbar).
+  function autoGrow(ta) {
+    ta.style.height = "auto";
+    ta.style.height = (ta.scrollHeight + 4) + "px";
+  }
+
   function parseTags(raw) {
     return String(raw||"").split(",").map(function(s){ return s.trim().replace(/^#/,""); }).filter(Boolean);
   }
@@ -175,6 +181,11 @@
 
     el("pane-overview").querySelectorAll("[data-key]").forEach(function(inp){
       inp.addEventListener(inp.type==="checkbox"?"change":"input", function(){ markDirty(inp); });
+    });
+    // multi-line note boxes grow to fit their content
+    el("pane-overview").querySelectorAll('textarea[data-type="area"]').forEach(function(ta){
+      autoGrow(ta);
+      ta.addEventListener("input", function(){ autoGrow(ta); });
     });
     el("pjTagWrap").querySelectorAll(".pj-tag").forEach(function(tg){
       if (!state.canWrite) return;
@@ -1298,23 +1309,36 @@
     el("noteSave").disabled = false;
   }
 
-  /* ── project switcher ── */
+  /* ── project switcher (search by ID, name, client, address, phone, email) ── */
+  function projLabel(p) {
+    return [
+      (p.internalIDNumber || "") + " — " + (p.projectName || ""),
+      p.projectClientName,
+      [p.projectAddress, p.projectCity].filter(Boolean).join(", "),
+      p.projectPhoneNumber,
+      p.projectEmailAddress,
+    ].filter(Boolean).join(" · ");
+  }
   async function loadSwitcher() {
     try {
       var d = await DCR.api("/api/portal?action=board");
       state.boardList = d.projects || [];
+      // Each option's value carries all searchable fields, so the datalist
+      // surfaces a project whether you type its ID, client, address, phone…
       el("pjJumpList").innerHTML = state.boardList.map(function(p){
-        return '<option value="'+esc((p.internalIDNumber||"")+" — "+(p.projectName||""))+'">';
+        return '<option value="'+esc(projLabel(p))+'"></option>';
       }).join("");
     } catch (e) { /* non-fatal */ }
-    el("pjJump").addEventListener("change", function(){
-      var v = this.value.trim().toLowerCase();
-      var hit = state.boardList.find(function(p){
-        return ((p.internalIDNumber||"")+" — "+(p.projectName||"")).toLowerCase() === v ||
-               String(p.internalIDNumber||"").toLowerCase() === v;
-      });
+    var jump = function(){
+      var v = el("pjJump").value.trim().toLowerCase();
+      if (!v) return;
+      var hit = state.boardList.find(function(p){ return projLabel(p).toLowerCase() === v; })
+        || state.boardList.find(function(p){ return String(p.internalIDNumber||"").toLowerCase() === v; })
+        || state.boardList.find(function(p){ return projLabel(p).toLowerCase().indexOf(v) !== -1; });
       if (hit) location.href = "project.html?id=" + encodeURIComponent(hit.id);
-    });
+    };
+    el("pjJump").addEventListener("change", jump);
+    el("pjJump").addEventListener("keydown", function(e){ if (e.key === "Enter") jump(); });
   }
 
   /* ── init ── */

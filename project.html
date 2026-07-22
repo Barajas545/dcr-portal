@@ -61,6 +61,8 @@
       .pj-f input:disabled,.pj-f textarea:disabled,.pj-f select:disabled{background:var(--surface-2); color:var(--text-muted);}
       .pj-f.full{grid-column:1/-1;}
       .pj-f textarea{resize:vertical; min-height:64px;}
+      /* auto-growing note boxes: no inner scrollbar, height managed by JS */
+      .pj-f textarea[data-type="area"]{overflow-y:hidden;}
       .pj-check{display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text);
         padding:7px 4px; cursor:pointer;}
       .pj-check input{width:16px; height:16px; accent-color:var(--acc);}
