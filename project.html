@@ -79,13 +79,16 @@
       .pj-tbl th{background:var(--surface-2); padding:7px 10px; text-align:left; font-size:11px;
         text-transform:uppercase; letter-spacing:.04em; color:var(--text-muted); white-space:nowrap;}
       .pj-tbl td{padding:7px 10px; border-top:1px solid var(--border); color:var(--text); vertical-align:top;}
-      .pj-tbl td.num,.pj-tbl th.num{text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums;}
+      .pj-tbl td.num,.pj-tbl th.num{text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; width:130px;}
       .pj-grp td{background:var(--tint); font-weight:700; color:var(--acc); font-size:12.5px; padding-left:26px;}
       .pj-grpTot td:first-child{padding-left:26px;}
       .pj-grpTot td{background:var(--surface-2); font-weight:700;}
-      .pj-grand td{background:var(--tint-2); font-weight:800; font-size:13px; color:var(--text);}
+      .pj-grand td{background:var(--tint-2); font-weight:800; font-size:14px; color:var(--text);}
       /* estimate item description indented under its group */
       .pj-tbl td.pj-il{padding-left:40px;}
+      /* each estimate is its own card, with clear spacing between them */
+      .pj-esttable{margin-bottom:26px; border:1px solid var(--border); border-radius:10px; overflow:hidden;}
+      .pj-colhead th{background:var(--surface); border-bottom:1px solid var(--border);}
       .pj-rowbtns{display:flex; gap:4px;}
       .pj-empty{padding:26px; text-align:center; color:var(--text-muted); font-size:13.5px;}
       .pj-bar{display:flex; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap;}
@@ -124,10 +127,12 @@
       @media (max-width:700px){ .pj-switch input{width:130px;} }
       .pj-msg.ok{color:var(--ok,#2fa679);}
       /* ── estimate section rows ── */
-      .pj-est td{background:var(--tint-2,rgba(47,128,216,.25)); font-weight:800; font-size:14px; color:var(--text);
-        border-top:3px solid var(--acc,#2f80d8); padding-top:10px; padding-bottom:10px;}
+      /* estimate header row: name + its totals, at the top of each card, in orange */
+      .pj-est td{background:var(--surface-2); font-weight:800; font-size:14px;
+        border-top:none; padding-top:12px; padding-bottom:12px;}
+      .pj-estname{color:#e8912d; font-weight:800;}
+      .pj-est td.num{color:#e8912d;}
       .pj-estTot td{font-weight:800; border-top:2px solid var(--border); background:var(--tint,rgba(47,128,216,.12));}
-      .pj-gap td{background:transparent; border:none; padding:0; height:14px;}
 
       /* ── estimate item editor (Access SideForm port) ── */
       .ie-overlay{position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; z-index:70; padding:10px;}

@@ -308,37 +308,56 @@
       s.groups[s.gIdx[g]].rows.push(r);
     });
 
-    var cols = 4;
+    // Money formatting: zeros are hidden everywhere; $ shows only on totals
+    // (item Labor/Material columns show the bare number).
+    var m$ = function(n){ return num(n) ? fmtMoney(n) : ""; };
+    var mBare = function(n){ return num(n) ? fmtMoney(n).replace("$", "") : ""; };
+
+    // Per-estimate totals, computed up front so they can sit at the TOP of each card.
     var grand = { labor:0, mat:0, tot:0 };
-    var body = "";
-    secs.forEach(function(s, si){
-      if (si > 0) body += '<tr class="pj-gap"><td colspan="'+cols+'"></td></tr>';
-      body += '<tr class="pj-est"><td colspan="'+cols+'">📄 '+esc(s.name)+
-        (canEdit?' <button class="pj-btn pj-btn-sm" data-est-addto="'+esc(s.name===("(no estimate name)")?"":s.name)+'" style="margin-left:8px">＋ Add item</button>':"")+'</td></tr>';
+    secs.forEach(function(s){
       s.groups.forEach(function(gr){
+        gr.rows.forEach(function(r){
+          s.labor += r.TaskLaborTotalPrice + r.TaskLaborTotalPricePerQty;
+          s.mat   += r.TaskMaterialTotalPrice;
+          s.tot   += r.TaskGrandTotalMaterialAndLabor;
+        });
+      });
+      grand.labor += s.labor; grand.mat += s.mat; grand.tot += s.tot;
+    });
+
+    var html = "";
+    secs.forEach(function(s){
+      var addBtn = canEdit ? ' <button class="pj-btn pj-btn-sm" data-est-addto="'+esc(s.name==="(no estimate name)"?"":s.name)+'" style="margin-left:8px">＋ Add item</button>' : "";
+      html += '<div class="pj-esttable"><table class="pj-tbl"><thead>' +
+        '<tr class="pj-est"><td><span class="pj-estname">📄 '+esc(s.name)+'</span>'+addBtn+'</td>' +
+          '<td class="num">'+m$(s.labor)+'</td><td class="num">'+m$(s.mat)+'</td><td class="num">'+m$(s.tot)+'</td></tr>' +
+        '<tr class="pj-colhead"><th>Item</th><th class="num">Labor</th><th class="num">Material</th><th class="num">Total</th></tr>' +
+        '</thead><tbody>';
+      s.groups.forEach(function(gr){
+        html += '<tr class="pj-grp"><td colspan="4">'+esc(gr.name)+'</td></tr>';
         var gl=0, gm=0, gt=0;
-        body += '<tr class="pj-grp"><td colspan="'+cols+'">'+esc(gr.name)+'</td></tr>';
         gr.rows.forEach(function(r){
           var labor = r.TaskLaborTotalPrice + r.TaskLaborTotalPricePerQty;
           var mat = r.TaskMaterialTotalPrice;
           gl+=labor; gm+=mat; gt+=r.TaskGrandTotalMaterialAndLabor;
-          body += '<tr'+(canEdit?' data-est-open="'+r.id+'" style="cursor:pointer" title="Double-click to edit"':"")+'><td class="pj-il">'+ estLineHtml(r) +'</td>' +
-            '<td class="num">'+fmtMoney(labor)+'</td><td class="num">'+fmtMoney(mat)+'</td>' +
-            '<td class="num"><b>'+fmtMoney(r.TaskGrandTotalMaterialAndLabor)+'</b></td></tr>';
+          html += '<tr'+(canEdit?' data-est-open="'+r.id+'" style="cursor:pointer" title="Double-click to edit"':"")+'><td class="pj-il">'+ estLineHtml(r) +'</td>' +
+            '<td class="num">'+mBare(labor)+'</td><td class="num">'+mBare(mat)+'</td>' +
+            '<td class="num"><b>'+m$(r.TaskGrandTotalMaterialAndLabor)+'</b></td></tr>';
         });
-        s.labor+=gl; s.mat+=gm; s.tot+=gt;
-        body += '<tr class="pj-grpTot"><td>Subtotal — '+esc(gr.name)+'</td><td class="num">'+fmtMoney(gl)+'</td><td class="num">'+fmtMoney(gm)+'</td><td class="num">'+fmtMoney(gt)+'</td></tr>';
+        if (s.groups.length > 1) {
+          html += '<tr class="pj-grpTot"><td>Subtotal — '+esc(gr.name)+'</td><td class="num">'+m$(gl)+'</td><td class="num">'+m$(gm)+'</td><td class="num">'+m$(gt)+'</td></tr>';
+        }
       });
-      grand.labor+=s.labor; grand.mat+=s.mat; grand.tot+=s.tot;
-      body += '<tr class="pj-estTot"><td>Estimate total — '+esc(s.name)+'</td><td class="num">'+fmtMoney(s.labor)+'</td><td class="num">'+fmtMoney(s.mat)+'</td><td class="num">'+fmtMoney(s.tot)+'</td></tr>';
+      html += '</tbody></table></div>';
     });
-    if (state.estFilter === "*") {
-      body += '<tr class="pj-gap"><td colspan="'+cols+'"></td></tr>';
-      body += '<tr class="pj-grand"><td>GRAND TOTAL</td><td class="num">'+fmtMoney(grand.labor)+'</td><td class="num">'+fmtMoney(grand.mat)+'</td><td class="num">'+fmtMoney(grand.tot)+'</td></tr>';
+    if (state.estFilter === "*" && secs.length > 1) {
+      html += '<div class="pj-esttable"><table class="pj-tbl"><tbody>' +
+        '<tr class="pj-grand"><td>GRAND TOTAL — all estimates</td><td class="num">'+m$(grand.labor)+'</td><td class="num">'+m$(grand.mat)+'</td><td class="num">'+m$(grand.tot)+'</td></tr>' +
+        '</tbody></table></div>';
     }
 
-    pane.innerHTML = bar + '<div class="pj-tblwrap"><table class="pj-tbl"><thead><tr>' +
-      '<th>Item</th><th class="num">Labor</th><th class="num">Material</th><th class="num">Total</th></tr></thead><tbody>'+body+'</tbody></table></div>';
+    pane.innerHTML = bar + html;
     wireEstBar(canEdit);
     if (canEdit) {
       pane.querySelectorAll("[data-est-addto]").forEach(function(b){ b.onclick=function(e){ e.stopPropagation(); ieOpen(null, b.getAttribute("data-est-addto")); }; });
