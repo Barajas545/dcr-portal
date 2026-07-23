@@ -57,6 +57,12 @@ button { font: inherit; cursor: pointer; }
   font-weight: 800; letter-spacing: .5px;
 }
 .brand h1 { font-size: 18px; margin: 0; }
+/* Company logo mark in the top bar. The artwork is black-on-transparent, so it
+   shows as-is on the light theme and is inverted to white for dark mode below. */
+.brand-logo {
+  height: 32px; width: auto; max-width: 170px;
+  object-fit: contain; display: block; flex-shrink: 0;
+}
 .subtitle { color: var(--text-muted); margin: 4px 0 24px; font-size: 14px; }
 
 label { display: block; font-size: 13px; font-weight: 600; margin: 14px 0 6px; }
@@ -180,4 +186,6 @@ tbody tr:hover { background: var(--surface-2); }
   }
   .msg.error { background: #3a1712; color: #f6bcae; }
   .msg.ok { background: #10321f; color: #a7e2c0; }
+  /* Invert the black logo artwork to white on the dark top bar. */
+  .brand-logo { filter: invert(1); }
 }
