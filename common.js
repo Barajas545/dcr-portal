@@ -90,4 +90,12 @@
   };
 
   window.DCR = DCR;
+
+  // Register the service worker so the portal is installable as an app and
+  // opens offline. Registered once; the browser scopes it to /dcr-portal/.
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("sw.js").catch(function () { /* non-fatal */ });
+    });
+  }
 })();
