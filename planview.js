@@ -34,14 +34,14 @@
   var COLORS = ["#e53935", "#2f80d8", "#2fa679", "#f2b32c", "#9b59d0", "#111111"];
 
   var state = {
-    pdf: null, page: 1, pages: 1, zoom: 1, baseW: 0, baseH: 0,
+    pdf: null, page: 1, pages: 1, zoom: 1,
     tool: "pan", color: COLORS[0], width: 3, tol: 8,
     ppfDefault: 18, scaleLabel: '1/4" = 1\'', ppfPage: {}, scaleLabelPage: {},
     items: [], undo: [], redo: [], sel: -1, hide: false, dirty: false,
     draw: null, // in-progress {type, pts, ...}
-    countLabel: "", info: null, notesId: null, rendering: null, renderSeq: 0,
+    countLabel: "", info: null, notesId: null,
     pinch: null, pointers: {},
-    cache: {}, crisp: null, crispTimer: null, // preview page bitmaps + crisp visible-region tile
+    tile: null, renderTask: null, _tileRAF: 0, // crisp vector tile covering the viewport
   };
 
   /* ══ formatting ══ */
@@ -75,120 +75,137 @@
     return Math.abs(a) / 2;
   }
 
-  /* ══ page rendering — pre-rasterize every sheet to an in-memory bitmap ══
-     Each page is rendered ONCE to an ImageBitmap (preview res, ~1500px long
-     edge). Page switch + zoom are then instant bitmap draws (no pdf.js re-run).
-     When zoomed past preview resolution, the current page is re-rendered sharp
-     on a short debounce so dimensions stay crisp. */
-  async function buildOne(i) {
-    if (state.cache[i]) return state.cache[i];
-    var page = await state.pdf.getPage(i);
-    var base = page.getViewport({ scale: 1 });
-    var cs = Math.min(2.2, Math.max(0.6, 1500 / Math.max(base.width, base.height)));
-    var vp = page.getViewport({ scale: cs });
-    var cv = document.createElement("canvas");
-    cv.width = Math.floor(vp.width); cv.height = Math.floor(vp.height);
-    await page.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise;
-    var bmp = window.createImageBitmap ? await createImageBitmap(cv) : cv;
-    state.cache[i] = { bmp: bmp, scale: cs, w: base.width, h: base.height };
-    return state.cache[i];
+  /* ══ page rendering — direct pdf.js VECTOR, tile follows the viewport ══
+     The current page is rendered straight from the PDF (always crisp, never a
+     rasterized preview) into a tile that covers the viewport + margin. The
+     #viewWrap sizer is the full page; native scrolling moves the already-
+     rendered tile with it (instant, crisp). A fresh tile renders only when you
+     zoom, change page, or pan near the tile's edge. Memory stays bounded so it
+     works on tablets. Geometry is stored in absolute PDF points. */
+  var dims = {}; // pageNum -> {w,h} in points
+
+  async function getDims(n) {
+    if (dims[n]) return dims[n];
+    var page = await state.pdf.getPage(n);
+    var v = page.getViewport({ scale: 1 });
+    dims[n] = { w: v.width, h: v.height };
+    return dims[n];
   }
-  async function preloadRest() {
-    for (var i = 1; i <= state.pages; i++) {
-      if (state.cache[i]) continue;
-      hint("Preloading sheets… " + i + "/" + state.pages);
-      try { await buildOne(i); } catch (e) {}
-    }
-    hint("All " + state.pages + " sheets loaded. Scroll to pan · Ctrl+scroll (or pinch, or +/−) to zoom · pick a tool.");
-  }
-  async function goToPage(n) {
-    if (n < 1 || n > state.pages || n === state.page) return;
-    state.page = n; state.sel = -1; state.draw = null; el("pvDel").style.display = "none";
-    if (!state.cache[n]) { hint("Rendering sheet " + n + "…"); try { await buildOne(n); } catch (e) {} }
-    showPage();
+  function curDims() { return dims[state.page] || { w: 1, h: 1 }; }
+
+  function layout() {
+    var d = curDims(), wrap = el("viewWrap");
+    wrap.style.width = (d.w * state.zoom) + "px";
+    wrap.style.height = (d.h * state.zoom) + "px";
   }
 
-  function showPage() {
-    var c = state.cache[state.page];
-    if (!c) return;
-    state.baseW = c.w; state.baseH = c.h;
-    var dpr = window.devicePixelRatio || 1;
-    var pg = el("pgCanvas"), ov = el("ovCanvas"), wrap = el("viewWrap");
-    var pxW = Math.max(1, Math.round(c.w * state.zoom * dpr));
-    var pxH = Math.max(1, Math.round(c.h * state.zoom * dpr));
-    pg.width = pxW; pg.height = pxH;
-    pg.style.width = (pxW / dpr) + "px"; pg.style.height = (pxH / dpr) + "px";
-    ov.width = pxW; ov.height = pxH; ov.style.width = pg.style.width; ov.style.height = pg.style.height;
-    wrap.style.width = pg.style.width; wrap.style.height = pg.style.height;
-    var ctx = pg.getContext("2d");
-    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
-    ctx.clearRect(0, 0, pxW, pxH);
-    // preview bitmap scaled to fill — instant, slightly soft when zoomed in
-    ctx.drawImage(c.bmp, 0, 0, c.bmp.width, c.bmp.height, 0, 0, pxW, pxH);
-    // crisp visible-region tile on top, when it matches the current page & zoom
-    var cr = state.crisp;
-    if (cr && cr.page === state.page && Math.abs(cr.scale - state.zoom * dpr) < 0.01) {
-      ctx.drawImage(cr.bmp, Math.round(cr.x * state.zoom * dpr), Math.round(cr.y * state.zoom * dpr));
+  // visible region of the current page, in page points
+  function visRect() {
+    var d = curDims(), vpt = el("viewport"), wrap = el("viewWrap");
+    var cssX = Math.max(0, vpt.scrollLeft - wrap.offsetLeft);
+    var cssY = Math.max(0, vpt.scrollTop - wrap.offsetTop);
+    var cssW = Math.min(vpt.clientWidth, d.w * state.zoom - cssX);
+    var cssH = Math.min(vpt.clientHeight, d.h * state.zoom - cssY);
+    return { x: cssX / state.zoom, y: cssY / state.zoom, w: Math.max(1, cssW) / state.zoom, h: Math.max(1, cssH) / state.zoom };
+  }
+
+  function tileCovers() {
+    var t = state.tile, dpr = window.devicePixelRatio || 1;
+    if (!t || t.page !== state.page || Math.abs(t.scale - state.zoom * dpr) > 0.01) return false;
+    var v = visRect();
+    return t.x <= v.x + 0.5 && t.y <= v.y + 0.5 && t.x + t.w >= v.x + v.w - 0.5 && t.y + t.h >= v.y + v.h - 0.5;
+  }
+
+  // Keep the existing tile's canvases positioned/sized for the current zoom
+  // (called on zoom before the fresh render lands — content stays crisp).
+  function repositionTile() {
+    var t = state.tile; if (!t) return;
+    var pg = el("pgCanvas"), ov = el("ovCanvas");
+    var l = (t.x * state.zoom) + "px", tp = (t.y * state.zoom) + "px";
+    var w = (t.w * state.zoom) + "px", h = (t.h * state.zoom) + "px";
+    pg.style.left = ov.style.left = l; pg.style.top = ov.style.top = tp;
+    pg.style.width = ov.style.width = w; pg.style.height = ov.style.height = h;
+  }
+
+  function scheduleTile() {
+    if (tileCovers()) return;
+    if (state._tileRAF) cancelAnimationFrame(state._tileRAF);
+    state._tileRAF = requestAnimationFrame(renderTile);
+  }
+
+  async function renderTile() {
+    state._tileRAF = 0;
+    var pageNum = state.page, d = curDims();
+    var dpr = window.devicePixelRatio || 1, scale = state.zoom * dpr;
+    var v = visRect(), vpt = el("viewport");
+    var mgX = (vpt.clientWidth * 0.6) / state.zoom, mgY = (vpt.clientHeight * 0.6) / state.zoom;
+    var x = Math.max(0, v.x - mgX), y = Math.max(0, v.y - mgY);
+    var w = Math.min(d.w - x, v.w + 2 * mgX), h = Math.min(d.h - y, v.h + 2 * mgY);
+    var pxW = Math.round(w * scale), pxH = Math.round(h * scale);
+    var BUDGET = 22e6; // safe canvas pixel budget (tablets/Safari)
+    if (pxW * pxH > BUDGET) {
+      var k = Math.sqrt(BUDGET / (pxW * pxH));
+      w = Math.min(d.w, w * k); h = Math.min(d.h, h * k);
+      x = Math.max(0, Math.min(x, v.x - (w - v.w) / 2)); if (x + w > d.w) x = Math.max(0, d.w - w);
+      y = Math.max(0, Math.min(y, v.y - (h - v.h) / 2)); if (y + h > d.h) y = Math.max(0, d.h - h);
+      pxW = Math.round(w * scale); pxH = Math.round(h * scale);
     }
+    if (pxW < 1 || pxH < 1) return;
+    var pg = el("pgCanvas"), ov = el("ovCanvas");
+    // Render into an OFFSCREEN canvas so the currently displayed (rescaled) tile
+    // stays visible — no white flash — until the fresh one is fully painted.
+    var cv = document.createElement("canvas");
+    cv.width = pxW; cv.height = pxH;
+    try {
+      var page = await state.pdf.getPage(pageNum);
+      if (state.renderTask) { try { state.renderTask.cancel(); } catch (e) {} }
+      var vp = page.getViewport({ scale: scale });
+      state.renderTask = page.render({ canvasContext: cv.getContext("2d"), viewport: vp,
+        transform: [1, 0, 0, 1, -x * scale, -y * scale] });
+      await state.renderTask.promise;
+      state.renderTask = null;
+    } catch (e) { return; } // cancelled or errored — leave the previous tile up
+    if (state.page !== pageNum) return;
+    // swap in the finished tile synchronously (old content persists until now)
+    pg.width = pxW; pg.height = pxH;
+    pg.getContext("2d").drawImage(cv, 0, 0);
+    pg.style.left = ov.style.left = (x * state.zoom) + "px";
+    pg.style.top = ov.style.top = (y * state.zoom) + "px";
+    pg.style.width = ov.style.width = (w * state.zoom) + "px";
+    pg.style.height = ov.style.height = (h * state.zoom) + "px";
+    ov.width = pxW; ov.height = pxH;
+    state.tile = { page: pageNum, x: x, y: y, w: w, h: h, scale: scale };
+    updateStatus();
+    redraw();
+  }
+
+  function updateStatus() {
     el("pgInfo").textContent = state.page + "/" + state.pages;
     el("zPct").textContent = Math.round(state.zoom * 100) + "%";
     el("pvScaleInfo").textContent = "Scale: " + scaleLabelFor(state.page) +
       (state.ppfPage[state.page] ? " (calibrated)" : "");
-    redraw();
-    scheduleCrisp();
   }
 
-  // Visible region of the current page, in page points.
-  function visibleRectPoints() {
-    var c = state.cache[state.page], vpt = el("viewport"), wrap = el("viewWrap");
-    var cssX = Math.max(0, vpt.scrollLeft - wrap.offsetLeft);
-    var cssY = Math.max(0, vpt.scrollTop - wrap.offsetTop);
-    var cssW = Math.min(vpt.clientWidth, c.w * state.zoom - cssX);
-    var cssH = Math.min(vpt.clientHeight, c.h * state.zoom - cssY);
-    return { x: cssX / state.zoom, y: cssY / state.zoom, w: Math.max(0, cssW) / state.zoom, h: Math.max(0, cssH) / state.zoom };
+  async function refresh() {
+    await getDims(state.page);
+    layout();
+    updateStatus();
+    if (!tileCovers()) await renderTile(); else redraw();
   }
 
-  // Debounced: re-render just the visible area of the current page at full
-  // device resolution so it's crisp at any zoom (bounded by screen size, not page size).
-  function scheduleCrisp() {
-    var dpr = window.devicePixelRatio || 1, c = state.cache[state.page];
-    if (!c) return;
-    var needed = state.zoom * dpr;
-    if (needed <= c.scale * 1.02) return; // preview already crisp enough
-    var cr = state.crisp, v = visibleRectPoints();
-    if (cr && cr.page === state.page && Math.abs(cr.scale - needed) < 0.01 &&
-        cr.x <= v.x + 0.5 && cr.y <= v.y + 0.5 &&
-        cr.x + cr.w >= v.x + v.w - 0.5 && cr.y + cr.h >= v.y + v.h - 0.5) return; // covered
-    clearTimeout(state.crispTimer);
-    state.crispTimer = setTimeout(renderCrisp, 140);
-  }
-  async function renderCrisp() {
-    var pageNum = state.page, c = state.cache[pageNum];
-    if (!c) return;
-    var dpr = window.devicePixelRatio || 1, scale = state.zoom * dpr;
-    var v = visibleRectPoints();
-    if (v.w <= 0 || v.h <= 0) return;
-    var mgPt = 60 / state.zoom; // margin so small pans stay crisp
-    var x = Math.max(0, v.x - mgPt), y = Math.max(0, v.y - mgPt);
-    var w = Math.min(c.w - x, v.w + 2 * mgPt), h = Math.min(c.h - y, v.h + 2 * mgPt);
-    var pxW = Math.round(w * scale), pxH = Math.round(h * scale);
-    if (pxW * pxH > 40e6 || pxW < 1 || pxH < 1) return; // pathological — keep preview
-    try {
-      var page = await state.pdf.getPage(pageNum);
-      var vp = page.getViewport({ scale: scale });
-      var cv = document.createElement("canvas");
-      cv.width = pxW; cv.height = pxH;
-      await page.render({ canvasContext: cv.getContext("2d"), viewport: vp,
-        transform: [1, 0, 0, 1, -x * scale, -y * scale] }).promise;
-      var bmp = window.createImageBitmap ? await createImageBitmap(cv) : cv;
-      if (state.crisp && state.crisp.bmp && state.crisp.bmp.close) try { state.crisp.bmp.close(); } catch (e) {}
-      state.crisp = { page: pageNum, x: x, y: y, w: w, h: h, scale: scale, bmp: bmp };
-      if (state.page === pageNum) showPage();
-    } catch (e) {}
+  async function goToPage(n) {
+    if (n < 1 || n > state.pages || n === state.page) return;
+    state.page = n; state.sel = -1; state.draw = null; el("pvDel").style.display = "none";
+    state.tile = null;
+    var vpt = el("viewport"); vpt.scrollLeft = 0; vpt.scrollTop = 0;
+    hint("Sheet " + n + "…");
+    await refresh();
+    hint("Sheet " + n + " of " + state.pages + " · scroll to pan · Ctrl+scroll to zoom.");
   }
 
-  /* ══ overlay drawing ══ */
-  function S(pt) { var f = state.zoom * (window.devicePixelRatio || 1); return [pt[0] * f, pt[1] * f]; }
+  /* ══ overlay drawing (tile-local coordinates) ══ */
+  function S(pt) { var t = state.tile, s = t ? t.scale : state.zoom * (window.devicePixelRatio || 1);
+    var ox = t ? t.x : 0, oy = t ? t.y : 0; return [(pt[0] - ox) * s, (pt[1] - oy) * s]; }
   function lw(w) { return w * state.zoom * (window.devicePixelRatio || 1); }
 
   function pill(ctx, x, y, text, color) {
@@ -351,8 +368,11 @@
 
   /* ══ pointer / tool handling ══ */
   function evBase(e) {
+    // client px → absolute page points. The overlay canvas is positioned at
+    // (tile.x, tile.y)·zoom, so its top-left maps to page point (tile.x, tile.y).
     var ov = el("ovCanvas"), r = ov.getBoundingClientRect();
-    return [(e.clientX - r.left) / state.zoom, (e.clientY - r.top) / state.zoom];
+    var t = state.tile, ox = t ? t.x : 0, oy = t ? t.y : 0;
+    return [ox + (e.clientX - r.left) / state.zoom, oy + (e.clientY - r.top) / state.zoom];
   }
 
   var drag = null; // {mode:"pan"|"draw"|"move", start, itemStart, moved}
@@ -510,28 +530,31 @@
 
   /* ══ zoom / pan ══ */
   function zoomAt(clientX, clientY, factor) {
-    if (!state.cache[state.page]) return;
-    var vpt = el("viewport"), r = vpt.getBoundingClientRect();
+    if (!dims[state.page]) return;
     var nz = Math.max(0.1, Math.min(8, state.zoom * factor));
     if (Math.abs(nz - state.zoom) < 0.001) return;
-    var ox = clientX - r.left + vpt.scrollLeft, oy = clientY - r.top + vpt.scrollTop;
-    var k = nz / state.zoom;
+    var pt = evBase({ clientX: clientX, clientY: clientY }); // page point under cursor (old zoom)
     state.zoom = nz;
-    showPage(); // synchronous bitmap draw — smooth
-    vpt.scrollLeft = ox * k - (clientX - r.left);
-    vpt.scrollTop = oy * k - (clientY - r.top);
+    layout();
+    repositionTile();      // rescale the existing crisp tile in place — stays sharp until the fresh render lands
+    updateStatus();
+    var vpt = el("viewport"), r = vpt.getBoundingClientRect(), wrap = el("viewWrap");
+    vpt.scrollLeft = wrap.offsetLeft + pt[0] * nz - (clientX - r.left);
+    vpt.scrollTop = wrap.offsetTop + pt[1] * nz - (clientY - r.top);
+    scheduleTile();
   }
-  function fitWidth() {
-    var c = state.cache[state.page]; if (!c) return;
-    var vpt = el("viewport");
-    state.zoom = Math.min(8, Math.max(0.1, (vpt.clientWidth - 40) / c.w));
-    showPage();
+  async function fitWidth() {
+    await getDims(state.page);
+    var d = curDims(), vpt = el("viewport");
+    state.zoom = Math.min(8, Math.max(0.1, (vpt.clientWidth - 40) / d.w));
+    await refresh();
   }
-  function fitPage() {
-    var c = state.cache[state.page]; if (!c) return;
-    var vpt = el("viewport");
-    state.zoom = Math.min(8, Math.max(0.1, Math.min((vpt.clientWidth - 40) / c.w, (vpt.clientHeight - 40) / c.h)));
-    showPage();
+  async function fitPage() {
+    await getDims(state.page);
+    var d = curDims(), vpt = el("viewport");
+    state.zoom = Math.min(8, Math.max(0.1, Math.min((vpt.clientWidth - 40) / d.w, (vpt.clientHeight - 40) / d.h)));
+    vpt.scrollLeft = 0; vpt.scrollTop = 0;
+    await refresh();
   }
 
   /* ══ modals ══ */
@@ -688,7 +711,7 @@
       var sc = SCALES[Number(s.value)];
       state.ppfDefault = sc.ppf; state.scaleLabel = sc.label;
       delete state.ppfPage[state.page]; delete state.scaleLabelPage[state.page];
-      markDirty(); showPage();
+      markDirty(); updateStatus(); redraw();
     };
   }
 
@@ -744,7 +767,7 @@
         markDirty();
       }
       el("calModal").classList.remove("open"); calPending = null;
-      setTool("pan"); showPage();
+      setTool("pan"); updateStatus(); redraw();
     };
     el("cntCancel").onclick = function () { el("cntModal").classList.remove("open"); if (!state.countLabel) setTool("pan"); };
     el("cntOk").onclick = function () {
@@ -774,8 +797,8 @@
         zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.0015));
       }
     }, { passive: false });
-    // re-crisp the newly-visible area after a scroll/pan settles
-    el("viewport").addEventListener("scroll", function () { scheduleCrisp(); });
+    // native scroll pans the page; re-render the tile when the view nears its edge
+    el("viewport").addEventListener("scroll", function () { scheduleTile(); });
 
     document.addEventListener("keydown", function (e) {
       if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
@@ -807,15 +830,13 @@
       pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.worker.min.js";
       state.pdf = await pdfjsLib.getDocument({ data: buf }).promise;
       state.pages = state.pdf.numPages;
-      // Render the first sheet for instant display, then preload the rest into
-      // memory in the background so page-switching is instant afterwards.
       el("pvLoad").textContent = "Rendering sheet 1…";
-      await buildOne(1);
-      el("pvLoad").style.display = "none";
-      await loadNotes();
       state.page = 1;
-      fitWidth();
-      preloadRest();
+      await getDims(1);
+      await loadNotes();
+      el("pvLoad").style.display = "none";
+      await fitWidth();     // sets zoom to fit, renders the first crisp tile
+      hint("Sheet 1 of " + state.pages + " · scroll to pan · Ctrl+scroll (or pinch, +/−) to zoom · pick a tool.");
       // record recent
       try {
         var rec = JSON.parse(localStorage.getItem("dcrPlanRecent") || "[]").filter(function (r) { return r.id !== FILE_ID; });
