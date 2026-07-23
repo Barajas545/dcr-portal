@@ -17,7 +17,7 @@ function niceDate(d) { if(!d) return ""; return new Date(d+"T12:00:00").toLocale
 function el(id){ return document.getElementById(id); }
 
 /* ── time helpers (identical conventions to desktop) ── */
-function tsParseSpTime(iso){ if(!iso) return null; var d=new Date(iso); if(isNaN(d)) return null; var t=new Date(2000,0,1,0,0,0,0); t.setUTCHours(d.getUTCHours(),d.getUTCMinutes(),0,0); return {hours:t.getHours(),minutes:t.getMinutes()}; }
+function tsParseSpTime(iso){ if(!iso) return null; var d=new Date(iso); if(isNaN(d)) return null; return {hours:d.getHours(),minutes:d.getMinutes()}; } // wall-clock time via the stored instant's own UTC offset (no DST re-anchoring — see timesheet.js)
 function tsTimeToStr(h,m){ return String(h).padStart(2,"0")+":"+String(m||0).padStart(2,"0"); }
 function tsTimeToDisplay(h,m){ var a=h>=12?"PM":"AM"; var h12=h%12||12; return h12+":"+String(m||0).padStart(2,"0")+" "+a; }
 function tsParseTimeInput(id){ var v=el(id).value; if(!v) return null; var p=v.split(":"); return {hours:parseInt(p[0]),minutes:parseInt(p[1]||0)}; }

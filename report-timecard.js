@@ -23,7 +23,7 @@
   function num(v){ var n=parseFloat(v); return isFinite(n)?n:0; }
 
   /* time helpers (same conventions as the timesheet pages) */
-  function tsParseSpTime(iso){ if(!iso) return null; var d=new Date(iso); if(isNaN(d)) return null; var t=new Date(2000,0,1,0,0,0,0); t.setUTCHours(d.getUTCHours(),d.getUTCMinutes(),0,0); return {hours:t.getHours(),minutes:t.getMinutes()}; }
+  function tsParseSpTime(iso){ if(!iso) return null; var d=new Date(iso); if(isNaN(d)) return null; return {hours:d.getHours(),minutes:d.getMinutes()}; } // wall-clock time via the stored instant's own UTC offset (no DST re-anchoring — see timesheet.js)
   function clock(iso){ var t=tsParseSpTime(iso); if(!t) return ""; var a=t.hours>=12?"PM":"AM"; var h=t.hours%12||12; return h+":"+String(t.minutes).padStart(2,"0")+a; }
   function fmtDate(v){ if(!v) return ""; var d=new Date(v); return isNaN(d)?"":d.toISOString().split("T")[0]; }
   function getSaturdayOf(date){ var d=new Date(date); d.setHours(0,0,0,0); var day=d.getDay(); d.setDate(d.getDate()-(day===6?0:day+1)); return d; }

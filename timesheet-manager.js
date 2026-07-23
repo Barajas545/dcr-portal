@@ -24,7 +24,7 @@ function pmFormatDateFull(d){ return d.toLocaleDateString("en-US",{weekday:"shor
 function pmFindEmpId(name){ var m=pmEmployeeList.find(function(e){return (e.name||"").toLowerCase()===(name||"").toLowerCase();}); return m?m.employeeId:""; }
 
 /* ── time helpers (same conventions as the employee pages) ── */
-function pmParseSpTime(iso){ if(!iso) return null; var d=new Date(iso); if(isNaN(d)) return null; var t=new Date(2000,0,1,0,0,0,0); t.setUTCHours(d.getUTCHours(),d.getUTCMinutes(),0,0); return {hours:t.getHours(),minutes:t.getMinutes()}; }
+function pmParseSpTime(iso){ if(!iso) return null; var d=new Date(iso); if(isNaN(d)) return null; return {hours:d.getHours(),minutes:d.getMinutes()}; } // wall-clock time via the stored instant's own UTC offset (no DST re-anchoring — see timesheet.js)
 function pmTimeToStr(h,m){ return String(h).padStart(2,"0")+":"+String(m||0).padStart(2,"0"); }
 function pmTimeToDisplay(h,m){ var a=h>=12?"PM":"AM";var h12=h%12||12;return h12+":"+String(m||0).padStart(2,"0")+" "+a; }
 function pmTimeToMinutes(t){ return t? t.hours*60+t.minutes : 0; }

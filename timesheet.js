@@ -43,11 +43,12 @@ function tsParseSpTime(isoStr) {
   if (!isoStr) return null;
   var d = new Date(isoStr);
   if (isNaN(d.getTime())) return null;
-  var utcH = d.getUTCHours(), utcM = d.getUTCMinutes();
-  var now = new Date();
-  var temp = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-  temp.setUTCHours(utcH, utcM, 0, 0);
-  return { hours: temp.getHours(), minutes: temp.getMinutes() };
+  // Read the wall-clock time in the viewer's local zone using THIS instant's own
+  // UTC offset. Do NOT re-anchor to today: the "normal schedule" columns carry a
+  // 1/1/1900 date (winter, PST −8); re-anchoring to a summer viewing date (PDT −7)
+  // would add an hour of DST, so a 6:00 AM setting showed as 7:00 AM. getHours()
+  // uses the stored date's own offset, so it always matches what was configured.
+  return { hours: d.getHours(), minutes: d.getMinutes() };
 }
 function tsTimeToStr(h, m) { return String(h).padStart(2,"0") + ":" + String(m||0).padStart(2,"0"); }
 function tsTimeToDisplay(h, m) { var ampm=h>=12?"PM":"AM"; var h12=h%12||12; return h12+":"+String(m||0).padStart(2,"0")+" "+ampm; }
