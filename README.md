@@ -24,7 +24,8 @@ api/portal.js   single serverless function; routes by ?action=
                   action=me      current user + permissions
                   action=lists   admin: table catalog for the permissions picker
                   action=users   admin: create/update users
-                  action=data    authenticated data gateway (enforces per-user access)
+                  action=data    raw table gateway — Admin-only Data Browser (plus an
+                                 allowlist of rows non-admin pages embed: project, contacts)
                   action=setup   one-time bootstrap (creates AppUsers list + first admin)
 ```
 

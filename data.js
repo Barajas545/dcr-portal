@@ -18,6 +18,16 @@
 
   async function init() {
     state.profile = await DCR.requireAuth();
+    // Admins only. The card is hidden for non-admins and the server enforces this
+    // too — this guard just gives a clear message to anyone who reaches the URL.
+    if (state.profile.role !== "Admin") {
+      document.body.innerHTML =
+        '<div style="max-width:520px;margin:80px auto;padding:32px;text-align:center;font-family:system-ui,sans-serif">' +
+        '<h2 style="margin:0 0 8px">Admins only</h2>' +
+        '<p style="opacity:.75;margin:0 0 20px">The Data Browser is restricted to administrators.</p>' +
+        '<a href="dashboard.html" style="color:#2f80d8;font-weight:600;text-decoration:none">← Back to Home</a></div>';
+      return;
+    }
     el("companyName").textContent = DCR.company + " Portal";
     el("userPill").textContent = (state.profile.displayName || state.profile.email) + " · " + state.profile.role;
     el("logoutBtn").onclick = function () { DCR.logout(); };
