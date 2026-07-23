@@ -41,7 +41,7 @@
     draw: null, // in-progress {type, pts, ...}
     countLabel: "", info: null, notesId: null, rendering: null, renderSeq: 0,
     pinch: null, pointers: {},
-    cache: {}, sharp: null, sharpTimer: null, // pre-rendered page bitmaps + current-page hi-res
+    cache: {}, crisp: null, crispTimer: null, // preview page bitmaps + crisp visible-region tile
   };
 
   /* ══ formatting ══ */
@@ -99,7 +99,7 @@
       hint("Preloading sheets… " + i + "/" + state.pages);
       try { await buildOne(i); } catch (e) {}
     }
-    hint("All " + state.pages + " sheets loaded — pick a tool to begin.");
+    hint("All " + state.pages + " sheets loaded. Scroll to pan · Ctrl+scroll (or pinch, or +/−) to zoom · pick a tool.");
   }
   async function goToPage(n) {
     if (n < 1 || n > state.pages || n === state.page) return;
@@ -121,45 +121,68 @@
     ov.width = pxW; ov.height = pxH; ov.style.width = pg.style.width; ov.style.height = pg.style.height;
     wrap.style.width = pg.style.width; wrap.style.height = pg.style.height;
     var ctx = pg.getContext("2d");
-    ctx.clearRect(0, 0, pxW, pxH);
-    var src = c.bmp;
-    if (state.sharp && state.sharp.page === state.page && state.sharp.scale >= state.zoom * dpr * 0.95) src = state.sharp.bmp;
     ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(src, 0, 0, src.width, src.height, 0, 0, pxW, pxH);
+    ctx.clearRect(0, 0, pxW, pxH);
+    // preview bitmap scaled to fill — instant, slightly soft when zoomed in
+    ctx.drawImage(c.bmp, 0, 0, c.bmp.width, c.bmp.height, 0, 0, pxW, pxH);
+    // crisp visible-region tile on top, when it matches the current page & zoom
+    var cr = state.crisp;
+    if (cr && cr.page === state.page && Math.abs(cr.scale - state.zoom * dpr) < 0.01) {
+      ctx.drawImage(cr.bmp, Math.round(cr.x * state.zoom * dpr), Math.round(cr.y * state.zoom * dpr));
+    }
     el("pgInfo").textContent = state.page + "/" + state.pages;
     el("zPct").textContent = Math.round(state.zoom * 100) + "%";
     el("pvScaleInfo").textContent = "Scale: " + scaleLabelFor(state.page) +
       (state.ppfPage[state.page] ? " (calibrated)" : "");
     redraw();
-    scheduleSharpen();
+    scheduleCrisp();
   }
 
-  function scheduleSharpen() {
-    var dpr = window.devicePixelRatio || 1;
-    var c = state.cache[state.page];
+  // Visible region of the current page, in page points.
+  function visibleRectPoints() {
+    var c = state.cache[state.page], vpt = el("viewport"), wrap = el("viewWrap");
+    var cssX = Math.max(0, vpt.scrollLeft - wrap.offsetLeft);
+    var cssY = Math.max(0, vpt.scrollTop - wrap.offsetTop);
+    var cssW = Math.min(vpt.clientWidth, c.w * state.zoom - cssX);
+    var cssH = Math.min(vpt.clientHeight, c.h * state.zoom - cssY);
+    return { x: cssX / state.zoom, y: cssY / state.zoom, w: Math.max(0, cssW) / state.zoom, h: Math.max(0, cssH) / state.zoom };
+  }
+
+  // Debounced: re-render just the visible area of the current page at full
+  // device resolution so it's crisp at any zoom (bounded by screen size, not page size).
+  function scheduleCrisp() {
+    var dpr = window.devicePixelRatio || 1, c = state.cache[state.page];
     if (!c) return;
     var needed = state.zoom * dpr;
-    if (needed <= c.scale * 1.05) return; // preview already crisp enough
-    if (state.sharp && state.sharp.page === state.page && state.sharp.scale >= needed * 0.95) return;
-    clearTimeout(state.sharpTimer);
-    state.sharpTimer = setTimeout(function () { sharpenNow(needed); }, 220);
+    if (needed <= c.scale * 1.02) return; // preview already crisp enough
+    var cr = state.crisp, v = visibleRectPoints();
+    if (cr && cr.page === state.page && Math.abs(cr.scale - needed) < 0.01 &&
+        cr.x <= v.x + 0.5 && cr.y <= v.y + 0.5 &&
+        cr.x + cr.w >= v.x + v.w - 0.5 && cr.y + cr.h >= v.y + v.h - 0.5) return; // covered
+    clearTimeout(state.crispTimer);
+    state.crispTimer = setTimeout(renderCrisp, 140);
   }
-  async function sharpenNow(needed) {
-    var pageNum = state.page;
-    var c = state.cache[pageNum];
+  async function renderCrisp() {
+    var pageNum = state.page, c = state.cache[pageNum];
     if (!c) return;
-    var maxScale = Math.sqrt(11e6 / (c.w * c.h)); // pixel budget for the hi-res copy
-    var target = Math.min(needed, 4, maxScale);
-    if (target <= c.scale) return;
+    var dpr = window.devicePixelRatio || 1, scale = state.zoom * dpr;
+    var v = visibleRectPoints();
+    if (v.w <= 0 || v.h <= 0) return;
+    var mgPt = 60 / state.zoom; // margin so small pans stay crisp
+    var x = Math.max(0, v.x - mgPt), y = Math.max(0, v.y - mgPt);
+    var w = Math.min(c.w - x, v.w + 2 * mgPt), h = Math.min(c.h - y, v.h + 2 * mgPt);
+    var pxW = Math.round(w * scale), pxH = Math.round(h * scale);
+    if (pxW * pxH > 40e6 || pxW < 1 || pxH < 1) return; // pathological — keep preview
     try {
       var page = await state.pdf.getPage(pageNum);
-      var vp = page.getViewport({ scale: target });
+      var vp = page.getViewport({ scale: scale });
       var cv = document.createElement("canvas");
-      cv.width = Math.floor(vp.width); cv.height = Math.floor(vp.height);
-      await page.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise;
+      cv.width = pxW; cv.height = pxH;
+      await page.render({ canvasContext: cv.getContext("2d"), viewport: vp,
+        transform: [1, 0, 0, 1, -x * scale, -y * scale] }).promise;
       var bmp = window.createImageBitmap ? await createImageBitmap(cv) : cv;
-      if (state.sharp && state.sharp.bmp && state.sharp.bmp.close) try { state.sharp.bmp.close(); } catch (e) {}
-      state.sharp = { page: pageNum, scale: target, bmp: bmp };
+      if (state.crisp && state.crisp.bmp && state.crisp.bmp.close) try { state.crisp.bmp.close(); } catch (e) {}
+      state.crisp = { page: pageNum, x: x, y: y, w: w, h: h, scale: scale, bmp: bmp };
       if (state.page === pageNum) showPage();
     } catch (e) {}
   }
@@ -639,7 +662,7 @@
     if (t !== "count") state.countLabel = state.countLabel; // keep session label
     document.querySelectorAll(".pv-tool").forEach(function (b) { b.classList.toggle("on", b.getAttribute("data-tool") === t); });
     var hints = {
-      pan: "Select/Pan — click an item to select (Del to remove, drag to move); drag empty space to pan.",
+      pan: "Select/Pan — click an item to select (Del removes, drag moves). Scroll to pan · Ctrl+scroll / pinch to zoom.",
       measure: "Measure — drag (or click-click) between two points. Label shows " + scaleLabelFor(state.page) + " distance.",
       poly: "Lineal ft — click each point; double-click or Enter to finish.",
       area: "Area — click corners; click the first point (or double-click) to close.",
@@ -743,10 +766,16 @@
     ov.addEventListener("pointerup", onUp);
     ov.addEventListener("pointercancel", onUp);
     ov.addEventListener("dblclick", function (e) { e.preventDefault(); if (state.draw) finishDraw(); });
+    // Wheel: plain scroll pans; Ctrl/⌘+scroll (and trackpad pinch, which Chrome
+    // delivers as ctrl+wheel) zooms smoothly, anchored at the cursor.
     el("viewport").addEventListener("wheel", function (e) {
-      e.preventDefault();
-      zoomAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.15 : 0.87);
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.0015));
+      }
     }, { passive: false });
+    // re-crisp the newly-visible area after a scroll/pan settles
+    el("viewport").addEventListener("scroll", function () { scheduleCrisp(); });
 
     document.addEventListener("keydown", function (e) {
       if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
