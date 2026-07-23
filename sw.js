@@ -3,7 +3,7 @@
    always up to date (no stale-cache surprises). Responses are cached only as an
    offline fallback. Cross-origin requests (the Vercel API) and non-GET requests
    (logins, saves) are never intercepted — they always hit the network directly. */
-const CACHE = "dcr-portal-v1";
+const CACHE = "dcr-portal-v2";
 
 self.addEventListener("install", function () {
   self.skipWaiting(); // activate the new worker immediately
