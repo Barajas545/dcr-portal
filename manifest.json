@@ -7,6 +7,7 @@
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
+  "launch_handler": { "client_mode": "focus-existing" },
   "background_color": "#0f141a",
   "theme_color": "#171d25",
   "icons": [
