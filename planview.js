@@ -41,6 +41,7 @@
     draw: null, // in-progress {type, pts, ...}
     countLabel: "", info: null, notesId: null, rendering: null, renderSeq: 0,
     pinch: null, pointers: {},
+    cache: {}, sharp: null, sharpTimer: null, // pre-rendered page bitmaps + current-page hi-res
   };
 
   /* ══ formatting ══ */
@@ -74,32 +75,93 @@
     return Math.abs(a) / 2;
   }
 
-  /* ══ page rendering ══ */
-  async function renderPage() {
-    var seq = ++state.renderSeq;
-    var page = await state.pdf.getPage(state.page);
-    if (seq !== state.renderSeq) return;
+  /* ══ page rendering — pre-rasterize every sheet to an in-memory bitmap ══
+     Each page is rendered ONCE to an ImageBitmap (preview res, ~1500px long
+     edge). Page switch + zoom are then instant bitmap draws (no pdf.js re-run).
+     When zoomed past preview resolution, the current page is re-rendered sharp
+     on a short debounce so dimensions stay crisp. */
+  async function buildOne(i) {
+    if (state.cache[i]) return state.cache[i];
+    var page = await state.pdf.getPage(i);
     var base = page.getViewport({ scale: 1 });
-    state.baseW = base.width; state.baseH = base.height;
+    var cs = Math.min(2.2, Math.max(0.6, 1500 / Math.max(base.width, base.height)));
+    var vp = page.getViewport({ scale: cs });
+    var cv = document.createElement("canvas");
+    cv.width = Math.floor(vp.width); cv.height = Math.floor(vp.height);
+    await page.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise;
+    var bmp = window.createImageBitmap ? await createImageBitmap(cv) : cv;
+    state.cache[i] = { bmp: bmp, scale: cs, w: base.width, h: base.height };
+    return state.cache[i];
+  }
+  async function preloadRest() {
+    for (var i = 1; i <= state.pages; i++) {
+      if (state.cache[i]) continue;
+      hint("Preloading sheets… " + i + "/" + state.pages);
+      try { await buildOne(i); } catch (e) {}
+    }
+    hint("All " + state.pages + " sheets loaded — pick a tool to begin.");
+  }
+  async function goToPage(n) {
+    if (n < 1 || n > state.pages || n === state.page) return;
+    state.page = n; state.sel = -1; state.draw = null; el("pvDel").style.display = "none";
+    if (!state.cache[n]) { hint("Rendering sheet " + n + "…"); try { await buildOne(n); } catch (e) {} }
+    showPage();
+  }
+
+  function showPage() {
+    var c = state.cache[state.page];
+    if (!c) return;
+    state.baseW = c.w; state.baseH = c.h;
     var dpr = window.devicePixelRatio || 1;
-    var vp = page.getViewport({ scale: state.zoom * dpr });
     var pg = el("pgCanvas"), ov = el("ovCanvas"), wrap = el("viewWrap");
-    pg.width = Math.floor(vp.width); pg.height = Math.floor(vp.height);
-    pg.style.width = (vp.width / dpr) + "px"; pg.style.height = (vp.height / dpr) + "px";
-    ov.width = pg.width; ov.height = pg.height;
-    ov.style.width = pg.style.width; ov.style.height = pg.style.height;
+    var pxW = Math.max(1, Math.round(c.w * state.zoom * dpr));
+    var pxH = Math.max(1, Math.round(c.h * state.zoom * dpr));
+    pg.width = pxW; pg.height = pxH;
+    pg.style.width = (pxW / dpr) + "px"; pg.style.height = (pxH / dpr) + "px";
+    ov.width = pxW; ov.height = pxH; ov.style.width = pg.style.width; ov.style.height = pg.style.height;
     wrap.style.width = pg.style.width; wrap.style.height = pg.style.height;
-    if (state.rendering) { try { state.rendering.cancel(); } catch (e) {} }
-    var task = page.render({ canvasContext: pg.getContext("2d"), viewport: vp });
-    state.rendering = task;
-    try { await task.promise; } catch (e) { /* cancelled */ }
-    if (seq !== state.renderSeq) return;
-    state.rendering = null;
+    var ctx = pg.getContext("2d");
+    ctx.clearRect(0, 0, pxW, pxH);
+    var src = c.bmp;
+    if (state.sharp && state.sharp.page === state.page && state.sharp.scale >= state.zoom * dpr * 0.95) src = state.sharp.bmp;
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(src, 0, 0, src.width, src.height, 0, 0, pxW, pxH);
     el("pgInfo").textContent = state.page + "/" + state.pages;
     el("zPct").textContent = Math.round(state.zoom * 100) + "%";
     el("pvScaleInfo").textContent = "Scale: " + scaleLabelFor(state.page) +
       (state.ppfPage[state.page] ? " (calibrated)" : "");
     redraw();
+    scheduleSharpen();
+  }
+
+  function scheduleSharpen() {
+    var dpr = window.devicePixelRatio || 1;
+    var c = state.cache[state.page];
+    if (!c) return;
+    var needed = state.zoom * dpr;
+    if (needed <= c.scale * 1.05) return; // preview already crisp enough
+    if (state.sharp && state.sharp.page === state.page && state.sharp.scale >= needed * 0.95) return;
+    clearTimeout(state.sharpTimer);
+    state.sharpTimer = setTimeout(function () { sharpenNow(needed); }, 220);
+  }
+  async function sharpenNow(needed) {
+    var pageNum = state.page;
+    var c = state.cache[pageNum];
+    if (!c) return;
+    var maxScale = Math.sqrt(11e6 / (c.w * c.h)); // pixel budget for the hi-res copy
+    var target = Math.min(needed, 4, maxScale);
+    if (target <= c.scale) return;
+    try {
+      var page = await state.pdf.getPage(pageNum);
+      var vp = page.getViewport({ scale: target });
+      var cv = document.createElement("canvas");
+      cv.width = Math.floor(vp.width); cv.height = Math.floor(vp.height);
+      await page.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise;
+      var bmp = window.createImageBitmap ? await createImageBitmap(cv) : cv;
+      if (state.sharp && state.sharp.bmp && state.sharp.bmp.close) try { state.sharp.bmp.close(); } catch (e) {}
+      state.sharp = { page: pageNum, scale: target, bmp: bmp };
+      if (state.page === pageNum) showPage();
+    } catch (e) {}
   }
 
   /* ══ overlay drawing ══ */
@@ -425,28 +487,28 @@
 
   /* ══ zoom / pan ══ */
   function zoomAt(clientX, clientY, factor) {
+    if (!state.cache[state.page]) return;
     var vpt = el("viewport"), r = vpt.getBoundingClientRect();
-    var nz = Math.max(0.15, Math.min(8, state.zoom * factor));
+    var nz = Math.max(0.1, Math.min(8, state.zoom * factor));
     if (Math.abs(nz - state.zoom) < 0.001) return;
     var ox = clientX - r.left + vpt.scrollLeft, oy = clientY - r.top + vpt.scrollTop;
     var k = nz / state.zoom;
     state.zoom = nz;
-    renderPage().then(function () {
-      vpt.scrollLeft = ox * k - (clientX - r.left);
-      vpt.scrollTop = oy * k - (clientY - r.top);
-    });
+    showPage(); // synchronous bitmap draw — smooth
+    vpt.scrollLeft = ox * k - (clientX - r.left);
+    vpt.scrollTop = oy * k - (clientY - r.top);
   }
   function fitWidth() {
-    if (!state.baseW) return;
+    var c = state.cache[state.page]; if (!c) return;
     var vpt = el("viewport");
-    state.zoom = Math.min(8, Math.max(0.15, (vpt.clientWidth - 40) / state.baseW));
-    renderPage();
+    state.zoom = Math.min(8, Math.max(0.1, (vpt.clientWidth - 40) / c.w));
+    showPage();
   }
   function fitPage() {
-    if (!state.baseW || !state.baseH) return;
+    var c = state.cache[state.page]; if (!c) return;
     var vpt = el("viewport");
-    state.zoom = Math.min(8, Math.max(0.15, Math.min((vpt.clientWidth - 40) / state.baseW, (vpt.clientHeight - 40) / state.baseH)));
-    renderPage();
+    state.zoom = Math.min(8, Math.max(0.1, Math.min((vpt.clientWidth - 40) / c.w, (vpt.clientHeight - 40) / c.h)));
+    showPage();
   }
 
   /* ══ modals ══ */
@@ -603,7 +665,7 @@
       var sc = SCALES[Number(s.value)];
       state.ppfDefault = sc.ppf; state.scaleLabel = sc.label;
       delete state.ppfPage[state.page]; delete state.scaleLabelPage[state.page];
-      markDirty(); renderPage();
+      markDirty(); showPage();
     };
   }
 
@@ -626,8 +688,8 @@
     el("pvWidth").onchange = function () { state.width = Number(this.value); };
     el("pvTol").onchange = function () { state.tol = Number(this.value); markDirty(); redraw(); };
     el("tCal").onclick = function () { setTool("cal"); };
-    el("pgPrev").onclick = function () { if (state.page > 1) { state.page--; state.sel = -1; state.draw = null; renderPage(); } };
-    el("pgNext").onclick = function () { if (state.page < state.pages) { state.page++; state.sel = -1; state.draw = null; renderPage(); } };
+    el("pgPrev").onclick = function () { goToPage(state.page - 1); };
+    el("pgNext").onclick = function () { goToPage(state.page + 1); };
     el("zIn").onclick = function () { var v = el("viewport"); zoomAt(v.getBoundingClientRect().left + v.clientWidth / 2, v.getBoundingClientRect().top + v.clientHeight / 2, 1.25); };
     el("zOut").onclick = function () { var v = el("viewport"); zoomAt(v.getBoundingClientRect().left + v.clientWidth / 2, v.getBoundingClientRect().top + v.clientHeight / 2, 0.8); };
     el("zFitW").onclick = fitWidth;
@@ -659,7 +721,7 @@
         markDirty();
       }
       el("calModal").classList.remove("open"); calPending = null;
-      setTool("pan"); renderPage();
+      setTool("pan"); showPage();
     };
     el("cntCancel").onclick = function () { el("cntModal").classList.remove("open"); if (!state.countLabel) setTool("pan"); };
     el("cntOk").onclick = function () {
@@ -716,13 +778,15 @@
       pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.worker.min.js";
       state.pdf = await pdfjsLib.getDocument({ data: buf }).promise;
       state.pages = state.pdf.numPages;
-      // seed base dimensions BEFORE the first fit (fitWidth divides by baseW)
-      var p1 = await state.pdf.getPage(1);
-      var v1 = p1.getViewport({ scale: 1 });
-      state.baseW = v1.width; state.baseH = v1.height;
+      // Render the first sheet for instant display, then preload the rest into
+      // memory in the background so page-switching is instant afterwards.
+      el("pvLoad").textContent = "Rendering sheet 1…";
+      await buildOne(1);
       el("pvLoad").style.display = "none";
       await loadNotes();
+      state.page = 1;
       fitWidth();
+      preloadRest();
       // record recent
       try {
         var rec = JSON.parse(localStorage.getItem("dcrPlanRecent") || "[]").filter(function (r) { return r.id !== FILE_ID; });
