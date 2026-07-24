@@ -130,38 +130,58 @@
     return doc.output("blob");
   }
 
-  async function buildBlob(scopeMode, anchorKey) {
-    await loadLibs();
-    var data = await DCR.api("/api/portal?action=timesheets");
-    var sheets = buildSheets(data.items || [], scopeMode, anchorKey);
-    if (!sheets.length) throw new Error("No timesheet entries were found for the selected " + (scopeMode === "week" ? "week" : "day") + ".");
+  // Build ONE employee's PDF (their rows only). null if they have no entries in range.
+  function buildEmployeeFile(items, employeeName, scopeMode, anchorKey) {
+    var mine = employeeName.toLowerCase();
+    var empItems = items.filter(function (x) { return String(x.timeSheetEmployeeName || "").toLowerCase() === mine; });
+    var sheets = buildSheets(empItems, scopeMode, anchorKey);
+    if (!sheets.length) return null;
     var blob = renderToBlob(sheets, DCR.company || "DCR");
-    var who = ((profile && (profile.displayName || profile.email)) || "timesheet").split("@")[0].trim().replace(/\s+/g, "-");
+    var who = employeeName.trim().replace(/[^\w]+/g, "-").replace(/^-+|-+$/g, "") || "employee";
     var stamp = scopeMode === "week" ? ("Week-" + sheets[0].dateKey) : anchorKey;
-    return { blob: blob, name: "Timesheet-" + who + "-" + stamp + ".pdf", pages: sheets.length };
+    return { blob: blob, name: "Timesheet-" + who + "-" + stamp + ".pdf", employee: employeeName };
   }
 
-  async function shareOrDownload(scopeMode, anchorKey) {
-    var out = await buildBlob(scopeMode, anchorKey);
-    var file = new File([out.blob], out.name, { type: "application/pdf" });
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      try { await navigator.share({ files: [file], title: "Timesheet", text: "My timesheet" }); return "shared"; }
+  // Deliver 1..N files: OS share sheet if the platform can share files, else download each.
+  async function deliver(built) {
+    var files = built.map(function (b) { return new File([b.blob], b.name, { type: "application/pdf" }); });
+    if (files.length && navigator.canShare && navigator.canShare({ files: files })) {
+      try { await navigator.share({ files: files, title: files.length > 1 ? "Timesheets" : "Timesheet" }); return "shared"; }
       catch (e) { if (e && e.name === "AbortError") return "cancelled"; }
     }
-    var url = URL.createObjectURL(out.blob);
-    var a = document.createElement("a"); a.href = url; a.download = out.name;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
+    files.forEach(function (file, i) {
+      setTimeout(function () {
+        var url = URL.createObjectURL(file);
+        var a = document.createElement("a"); a.href = url; a.download = file.name;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+      }, i * 400); // stagger so the browser doesn't block rapid downloads
+    });
     return "downloaded";
+  }
+
+  function distinctEmployees(items) {
+    var seen = {}, out = [];
+    items.forEach(function (x) {
+      var n = (x.timeSheetEmployeeName || "").trim();
+      if (n && !seen[n.toLowerCase()]) { seen[n.toLowerCase()] = 1; out.push(n); }
+    });
+    return out.sort(function (a, b) { return a.localeCompare(b); });
+  }
+  function selfName() {
+    if (!profile) return "";
+    if (profile.tsScope && typeof profile.tsScope === "object" && profile.tsScope.self) return profile.tsScope.self;
+    return profile.displayName || "";
   }
 
   /* ── chooser modal ── */
   function openModal() {
+    var esc = function (v) { return DCR.esc(v); };
     var todayKey = (function () { var d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); })();
     var ov = document.createElement("div");
     ov.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px;";
     ov.innerHTML =
-      '<div style="background:var(--surface,#fff);color:var(--text,#111);border:1px solid var(--border,#ccc);border-radius:14px;max-width:380px;width:100%;padding:20px;box-shadow:0 10px 40px rgba(0,0,0,.4)">' +
+      '<div style="background:var(--surface,#fff);color:var(--text,#111);border:1px solid var(--border,#ccc);border-radius:14px;max-width:400px;width:100%;padding:20px;box-shadow:0 10px 40px rgba(0,0,0,.4);max-height:92vh;overflow:auto">' +
       '<h3 style="margin:0 0 4px;font-size:17px">📄 Send timesheet as PDF</h3>' +
       '<p style="margin:0 0 14px;font-size:13px;color:var(--text-muted,#777)">Creates a PDF in the DCR form and opens your share options (email, text…).</p>' +
       '<label style="display:block;font-size:12px;font-weight:600;margin:0 0 6px">What to send</label>' +
@@ -171,23 +191,27 @@
       '</div>' +
       '<label style="display:block;font-size:12px;font-weight:600;margin:0 0 6px" id="tpDateLabel">Date</label>' +
       '<input id="tpDate" type="date" value="' + todayKey + '" style="width:100%;box-sizing:border-box;padding:9px 11px;font-size:15px;border:1px solid var(--border,#ccc);border-radius:8px;background:var(--surface,#fff);color:var(--text,#111)">' +
-      '<div id="tpNote" style="font-size:11px;color:var(--text-muted,#888);margin-top:6px">The whole Saturday–Friday week that contains this date.</div>' +
+      '<div id="tpNote" style="font-size:11px;color:var(--text-muted,#888);margin-top:6px;display:none">The whole Saturday–Friday week that contains this date.</div>' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin:14px 0 6px">' +
+        '<label style="font-size:12px;font-weight:600">Whose hours to send</label>' +
+        '<a href="#" id="tpToggleAll" style="font-size:12px;color:var(--accent,#1f6fc8);text-decoration:none;display:none">Select all</a>' +
+      '</div>' +
+      '<div id="tpEmps" style="font-size:13px;color:var(--text-muted,#777)">Loading employees…</div>' +
+      '<div id="tpMultiNote" style="font-size:11px;color:var(--text-muted,#888);margin-top:6px"></div>' +
       '<div id="tpMsg" style="font-size:13px;margin-top:12px;min-height:16px"></div>' +
       '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px">' +
         '<button type="button" id="tpCancel" class="btn btn-ghost btn-sm">Cancel</button>' +
-        '<button type="button" id="tpGo" class="btn btn-sm">📄 Generate &amp; Send</button>' +
+        '<button type="button" id="tpGo" class="btn btn-sm" disabled>📄 Generate &amp; Send</button>' +
       '</div></div>';
     document.body.appendChild(ov);
 
-    var scope = "day";
+    var scope = "day", items = [], names = [];
     var note = ov.querySelector("#tpNote");
-    note.style.display = "none";
     ov.querySelectorAll("#tpScope [data-scope]").forEach(function (b) {
       b.onclick = function () {
         scope = b.getAttribute("data-scope");
         ov.querySelectorAll("#tpScope [data-scope]").forEach(function (x) {
-          x.className = (x === b) ? "btn btn-sm" : "btn btn-ghost btn-sm";
-          x.style.flex = "1";
+          x.className = (x === b) ? "btn btn-sm" : "btn btn-ghost btn-sm"; x.style.flex = "1";
         });
         ov.querySelector("#tpDateLabel").textContent = scope === "week" ? "Any date in the week" : "Date";
         note.style.display = scope === "week" ? "block" : "none";
@@ -196,17 +220,79 @@
     function close() { ov.remove(); }
     ov.onclick = function (e) { if (e.target === ov) close(); };
     ov.querySelector("#tpCancel").onclick = close;
+
+    function selectedNames() {
+      if (names.length <= 1) return names.slice();
+      return Array.prototype.slice.call(ov.querySelectorAll("#tpEmps input:checked")).map(function (c) { return c.value; });
+    }
+    function updateMultiNote() {
+      var n = selectedNames().length;
+      ov.querySelector("#tpMultiNote").textContent = n > 1 ? ("You’ll get " + n + " separate PDFs — one file per employee.") : "";
+    }
+
+    // Load the timesheet data + build the "whose hours" picker.
+    (async function () {
+      try {
+        if (!profile) { try { profile = await DCR.api("/api/portal?action=me"); } catch (e) {} }
+        var data = await DCR.api("/api/portal?action=timesheets");
+        items = data.items || [];
+        names = distinctEmployees(items);
+        var box = ov.querySelector("#tpEmps");
+        if (!names.length) { box.textContent = "No recent timesheet entries were found."; return; }
+        if (names.length === 1) {
+          box.innerHTML = '<div style="color:var(--text)"><b>' + esc(names[0]) + "</b></div>";
+        } else {
+          var mine = (selfName() || "").toLowerCase();
+          box.innerHTML = '<div style="max-height:170px;overflow:auto;border:1px solid var(--border,#ddd);border-radius:8px;padding:6px 8px">' +
+            names.map(function (n) {
+              return '<label style="display:flex;align-items:center;gap:8px;padding:4px 2px;cursor:pointer;color:var(--text)">' +
+                '<input type="checkbox" value="' + esc(n) + '"' + (n.toLowerCase() === mine ? " checked" : "") +
+                ' style="width:auto;margin:0">' + esc(n) + "</label>";
+            }).join("") + "</div>";
+          var toggle = ov.querySelector("#tpToggleAll"); toggle.style.display = "inline";
+          toggle.onclick = function (e) {
+            e.preventDefault();
+            var boxes = ov.querySelectorAll("#tpEmps input");
+            var allOn = Array.prototype.every.call(boxes, function (c) { return c.checked; });
+            boxes.forEach(function (c) { c.checked = !allOn; });
+            updateMultiNote();
+          };
+          box.addEventListener("change", updateMultiNote);
+          updateMultiNote();
+        }
+        ov.querySelector("#tpGo").disabled = false;
+      } catch (e) {
+        ov.querySelector("#tpEmps").textContent = e.message || "Could not load timesheet data.";
+      }
+    })();
+
     ov.querySelector("#tpGo").onclick = async function () {
       var msg = ov.querySelector("#tpMsg"), go = ov.querySelector("#tpGo");
       var anchor = ov.querySelector("#tpDate").value;
+      var picked = selectedNames();
       if (!anchor) { msg.style.color = "#c8371f"; msg.textContent = "Pick a date first."; return; }
-      go.disabled = true; msg.style.color = "var(--text-muted,#777)"; msg.textContent = "Building your PDF…";
+      if (!picked.length) { msg.style.color = "#c8371f"; msg.textContent = "Choose at least one employee."; return; }
+      go.disabled = true; msg.style.color = "var(--text-muted,#777)";
+      msg.textContent = "Building " + (picked.length > 1 ? (picked.length + " PDFs…") : "your PDF…");
       try {
-        var res = await shareOrDownload(scope, anchor);
+        await loadLibs();
+        var built = [], skipped = [];
+        picked.forEach(function (name) {
+          var f = buildEmployeeFile(items, name, scope, anchor);
+          if (f) built.push(f); else skipped.push(name);
+        });
+        if (!built.length) {
+          go.disabled = false; msg.style.color = "#c8371f";
+          msg.textContent = "No entries found for the selected " + (scope === "week" ? "week" : "day") + ".";
+          return;
+        }
+        var res = await deliver(built);
         if (res === "cancelled") { go.disabled = false; msg.textContent = ""; return; }
         msg.style.color = "#1f9d55";
-        msg.textContent = res === "shared" ? "✓ Opened your share options." : "✓ PDF downloaded — attach it to your email/text.";
-        setTimeout(close, 1400);
+        var made = built.length + (built.length > 1 ? " PDFs" : " PDF");
+        var skipTxt = skipped.length ? (" · " + skipped.length + " had no entries") : "";
+        msg.textContent = (res === "shared" ? "✓ Shared " : "✓ Downloaded ") + made + skipTxt + ".";
+        setTimeout(close, 1700);
       } catch (e) {
         go.disabled = false; msg.style.color = "#c8371f"; msg.textContent = e.message || "Could not create the PDF.";
       }
@@ -214,7 +300,7 @@
   }
 
   // Expose a small API (also handy for verification: renderToBlob is pure).
-  if (window.DCR) DCR.timesheetPdf = { open: openModal, buildSheets: buildSheets, renderToBlob: renderToBlob, loadLibs: loadLibs };
+  if (window.DCR) DCR.timesheetPdf = { open: openModal, buildSheets: buildSheets, renderToBlob: renderToBlob, buildEmployeeFile: buildEmployeeFile, distinctEmployees: distinctEmployees, loadLibs: loadLibs };
 
   document.addEventListener("DOMContentLoaded", function () {
     var btn = document.getElementById("tsPdfBtn");
