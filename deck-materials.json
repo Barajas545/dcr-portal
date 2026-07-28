@@ -1,0 +1,2088 @@
+{
+  "schemaVersion": "1.0",
+  "catalogVersion": "materials-research-candidate-v2.1",
+  "catalogStatus": "draft",
+  "publishedAt": null,
+  "products": [
+    {
+      "materialId": "trex-enhance",
+      "brandId": "trex",
+      "brandName": "Trex",
+      "officialName": "Trex Enhance",
+      "status": "active",
+      "reviewStatus": "draft",
+      "category": "decking",
+      "technicalClassification": "scalloped_capped_composite",
+      "materialType": "wood_plastic_composite",
+      "marketTier": "Entry",
+      "priceTier": "entry",
+      "shortDescription": "Entry-positioned Trex capped-composite decking with lightweight scalloped boards.",
+      "salesHighlights": [
+        "Entry Trex composite option",
+        "Low-maintenance capped surface",
+        "Broad neutral color selection"
+      ],
+      "bestFor": [
+        "Budget-conscious residential decks",
+        "Straightforward deck layouts"
+      ],
+      "appearanceTags": [
+        "wood_grain",
+        "neutral",
+        "low_to_moderate_variation"
+      ],
+      "colors": [
+        {
+          "colorId": "trex-enhance-foggy-wharf",
+          "name": "Foggy Wharf",
+          "status": "active",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.trex.com/products/decking/enhance/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "colorId": "trex-enhance-rocky-harbor",
+          "name": "Rocky Harbor",
+          "status": "active",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.trex.com/products/decking/enhance/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "colorId": "trex-enhance-toasted-sand",
+          "name": "Toasted Sand",
+          "status": "active",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.trex.com/products/decking/enhance/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "colorId": "trex-enhance-honey-grove",
+          "name": "Honey Grove",
+          "status": "active",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.trex.com/products/decking/enhance/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "colorId": "trex-enhance-cinnamon-cove",
+          "name": "Cinnamon Cove",
+          "status": "active",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.trex.com/products/decking/enhance/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "colorId": "trex-enhance-golden-hour",
+          "name": "Golden Hour",
+          "status": "active",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.trex.com/products/decking/enhance/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "colorId": "trex-enhance-saddle",
+          "name": "Saddle",
+          "status": "active",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.trex.com/products/decking/enhance/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "colorId": "trex-enhance-clam-shell",
+          "name": "Clam Shell",
+          "status": "active",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.trex.com/products/decking/enhance/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "colorId": "trex-enhance-tide-pool",
+          "name": "Tide Pool",
+          "status": "active",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.trex.com/products/decking/enhance/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "colorId": "trex-enhance-pebble-beach",
+          "name": "Pebble Beach",
+          "status": "active",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.trex.com/products/decking/enhance/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        }
+      ],
+      "profiles": [
+        {
+          "profileId": "trex-enhance-grooved-1x6",
+          "profileType": "grooved_edge",
+          "nominalDimensions": "1 in x 6 in",
+          "actualWidthIn": 5.5,
+          "actualThicknessIn": 0.94,
+          "availableLengthsFt": [
+            12,
+            16,
+            20
+          ],
+          "status": "draft",
+          "reviewStatus": "draft"
+        },
+        {
+          "profileId": "trex-enhance-square-1x6",
+          "profileType": "square_shoulder",
+          "nominalDimensions": "1 in x 6 in",
+          "actualWidthIn": 5.5,
+          "actualThicknessIn": 0.94,
+          "availableLengthsFt": [
+            16,
+            20
+          ],
+          "status": "draft",
+          "reviewStatus": "draft"
+        }
+      ],
+      "performanceAttributes": [
+        {
+          "attributeId": "recycled_content",
+          "value": "approximately_95_percent",
+          "statement": "Trex states that its composite deck boards use approximately 95% recycled and reclaimed materials.",
+          "evidenceType": "official_manufacturer_information",
+          "sourceRef": "trex-enhance-official",
+          "lastVerifiedAt": "2026-07-26",
+          "salesVisibility": "sales"
+        },
+        {
+          "attributeId": "heat_mitigating_colors",
+          "value": "selected_colors_only",
+          "statement": "Selected Enhance colors are marketed with heat-mitigating technology; all decking can still become hot.",
+          "evidenceType": "official_manufacturer_information",
+          "sourceRef": "trex-decking-overview",
+          "lastVerifiedAt": "2026-07-26",
+          "salesVisibility": "admin_only"
+        },
+        {
+          "attributeId": "hidden_fastener_compatibility",
+          "value": "compatible_grooved_boards",
+          "statement": "Compatible grooved boards may use an approved Trex hidden-fastening system.",
+          "evidenceType": "official_manufacturer_information",
+          "sourceRef": "trex-resource-center",
+          "lastVerifiedAt": "2026-07-26",
+          "salesVisibility": "admin_only"
+        },
+        {
+          "attributeId": "scratch_resistance",
+          "value": "not_verified",
+          "statement": "No independent comparative scratch-resistance evidence was verified.",
+          "evidenceType": "not_enough_evidence",
+          "sourceRef": null,
+          "lastVerifiedAt": "2026-07-26",
+          "salesVisibility": "not_displayed"
+        }
+      ],
+      "warrantyDetails": [
+        {
+          "warrantyType": "limited_residential_product",
+          "durationValue": 25,
+          "durationUnit": "years",
+          "appliesTo": "qualifying_residential_installations",
+          "transferability": "not_verified",
+          "coverageSummary": "Limited product coverage subject to controlling terms.",
+          "sourceRef": "trex-enhance-official",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "warrantyType": "fade_and_stain",
+          "durationValue": 25,
+          "durationUnit": "years",
+          "appliesTo": "qualifying_residential_installations",
+          "transferability": "not_verified",
+          "coverageSummary": "Limited fade-and-stain coverage subject to controlling terms.",
+          "sourceRef": "trex-enhance-official",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "warrantyType": "commercial",
+          "durationValue": null,
+          "durationUnit": null,
+          "appliesTo": "commercial_installations",
+          "transferability": "not_verified",
+          "coverageSummary": "Commercial duration and conditions remain not verified.",
+          "sourceRef": "trex-warranty-center",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        }
+      ],
+      "documentationRefs": [
+        {
+          "documentationRefId": "trex-enhance-official",
+          "documentType": "official_product_page",
+          "title": "Trex Enhance Composite Decking",
+          "url": "https://www.trex.com/products/decking/enhance/",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "documentationRefId": "trex-decking-overview",
+          "documentType": "official_product_overview",
+          "title": "Trex Decking Collections",
+          "url": "https://www.trex.com/products/decking/",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "documentationRefId": "trex-resource-center",
+          "documentType": "manufacturer_resource_center",
+          "title": "Trex Resource Center",
+          "url": "https://www.trex.com/customer-support/trex-owners/downloads/",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "documentationRefId": "trex-warranty-center",
+          "documentType": "manufacturer_warranty_center",
+          "title": "Trex Warranty Center",
+          "url": "https://www.trex.com/customer-support/trex-owners/warranty/",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        }
+      ],
+      "regionalAvailability": [
+        {
+          "regionId": "central_coast_ca",
+          "availabilityStatus": "unknown",
+          "verifiedSupplier": null,
+          "verifiedAt": null,
+          "verificationNotes": "No store-specific public inventory and price were verified."
+        },
+        {
+          "regionId": "santa_barbara_ca",
+          "availabilityStatus": "unknown",
+          "verifiedSupplier": null,
+          "verifiedAt": null,
+          "verificationNotes": "No store-specific public inventory and price were verified."
+        }
+      ],
+      "lastVerifiedAt": "2026-07-26",
+      "sources": [
+        {
+          "sourceRef": "trex-enhance-official",
+          "sourceType": "official_manufacturer",
+          "sourceUrl": "https://www.trex.com/products/decking/enhance/",
+          "verifiedAt": "2026-07-26",
+          "confidenceLevel": "high"
+        },
+        {
+          "sourceRef": "trex-decking-overview",
+          "sourceType": "official_manufacturer",
+          "sourceUrl": "https://www.trex.com/products/decking/",
+          "verifiedAt": "2026-07-26",
+          "confidenceLevel": "high"
+        },
+        {
+          "sourceRef": "trex-resource-center",
+          "sourceType": "official_manufacturer",
+          "sourceUrl": "https://www.trex.com/customer-support/trex-owners/downloads/",
+          "verifiedAt": "2026-07-26",
+          "confidenceLevel": "high"
+        },
+        {
+          "sourceRef": "trex-warranty-center",
+          "sourceType": "official_manufacturer",
+          "sourceUrl": "https://www.trex.com/customer-support/trex-owners/warranty/",
+          "verifiedAt": "2026-07-26",
+          "confidenceLevel": "high"
+        }
+      ],
+      "governance": {
+        "researchStatus": "draft",
+        "identityConfidence": "high",
+        "technicalDataConfidence": "medium",
+        "regionalAvailabilityConfidence": "unknown",
+        "priceDataConfidence": "low",
+        "salesModeSelectable": false,
+        "calculationApprovalStatus": "not_approved",
+        "verificationNotes": "Identity is verified; regional pricing and calculation use remain unapproved."
+      }
+    },
+    {
+      "materialId": "trex-select",
+      "brandId": "trex",
+      "brandName": "Trex",
+      "officialName": "Trex Select",
+      "status": "active",
+      "reviewStatus": "draft",
+      "category": "decking",
+      "technicalClassification": "capped_composite_thin_profile",
+      "materialType": "wood_plastic_composite",
+      "marketTier": "Mid",
+      "priceTier": "mid",
+      "shortDescription": "Mid-positioned Trex capped-composite decking with a thinner profile than several Trex collections.",
+      "salesHighlights": [
+        "Mid-tier Trex positioning",
+        "Thirty-five-year residential warranty",
+        "Low-maintenance capped surface"
+      ],
+      "bestFor": [
+        "Mid-market residential decks",
+        "Projects balancing cost and warranty"
+      ],
+      "appearanceTags": [
+        "refined_wood_grain",
+        "neutral",
+        "low_to_moderate_variation"
+      ],
+      "colors": [
+        {
+          "colorId": "trex-select-whiskey-barrel",
+          "name": "Whiskey Barrel",
+          "status": "active",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.trex.com/products/decking/select/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "colorId": "trex-select-malted-barley",
+          "name": "Malted Barley",
+          "status": "active",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.trex.com/products/decking/select/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "colorId": "trex-select-millstone",
+          "name": "Millstone",
+          "status": "active",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.trex.com/products/decking/select/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "colorId": "trex-select-pebble-grey",
+          "name": "Pebble Grey",
+          "status": "active",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.trex.com/products/decking/select/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "colorId": "trex-select-saddle-select",
+          "name": "Saddle Select",
+          "status": "active",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.trex.com/products/decking/select/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        }
+      ],
+      "profiles": [
+        {
+          "profileId": "trex-select-grooved-1x6",
+          "profileType": "grooved_edge",
+          "nominalDimensions": "1 in x 6 in",
+          "actualWidthIn": 5.5,
+          "actualThicknessIn": null,
+          "availableLengthsFt": [
+            12,
+            16,
+            20
+          ],
+          "status": "draft",
+          "reviewStatus": "draft"
+        },
+        {
+          "profileId": "trex-select-square-1x6",
+          "profileType": "square_shoulder",
+          "nominalDimensions": "1 in x 6 in",
+          "actualWidthIn": 5.5,
+          "actualThicknessIn": null,
+          "availableLengthsFt": [
+            16,
+            20
+          ],
+          "status": "draft",
+          "reviewStatus": "draft"
+        }
+      ],
+      "performanceAttributes": [
+        {
+          "attributeId": "profile_elevation_difference",
+          "value": "thinner_than_selected_other_trex_collections",
+          "statement": "Trex states that Select is slightly thinner than several other collections; mixing profiles requires elevation review.",
+          "evidenceType": "official_manufacturer_information",
+          "sourceRef": "trex-faq",
+          "lastVerifiedAt": "2026-07-26",
+          "salesVisibility": "admin_only"
+        },
+        {
+          "attributeId": "hidden_fastener_compatibility",
+          "value": "compatible_grooved_boards",
+          "statement": "Compatible grooved boards may use approved Trex hidden fasteners.",
+          "evidenceType": "official_manufacturer_information",
+          "sourceRef": "trex-resource-center",
+          "lastVerifiedAt": "2026-07-26",
+          "salesVisibility": "admin_only"
+        },
+        {
+          "attributeId": "scratch_resistance",
+          "value": "not_verified",
+          "statement": "No independent comparative scratch-resistance evidence was verified.",
+          "evidenceType": "not_enough_evidence",
+          "sourceRef": null,
+          "lastVerifiedAt": "2026-07-26",
+          "salesVisibility": "not_displayed"
+        }
+      ],
+      "warrantyDetails": [
+        {
+          "warrantyType": "limited_residential_product",
+          "durationValue": 35,
+          "durationUnit": "years",
+          "appliesTo": "qualifying_residential_installations",
+          "transferability": "not_verified",
+          "coverageSummary": "Limited product coverage subject to controlling terms.",
+          "sourceRef": "trex-select-official",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "warrantyType": "fade_and_stain",
+          "durationValue": 35,
+          "durationUnit": "years",
+          "appliesTo": "qualifying_residential_installations",
+          "transferability": "not_verified",
+          "coverageSummary": "Limited fade-and-stain coverage subject to controlling terms.",
+          "sourceRef": "trex-select-official",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "warrantyType": "commercial",
+          "durationValue": null,
+          "durationUnit": null,
+          "appliesTo": "commercial_installations",
+          "transferability": "not_verified",
+          "coverageSummary": "Commercial duration and conditions remain not verified.",
+          "sourceRef": "trex-warranty-center",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        }
+      ],
+      "documentationRefs": [
+        {
+          "documentationRefId": "trex-select-official",
+          "documentType": "official_product_page",
+          "title": "Trex Select Composite Decking",
+          "url": "https://www.trex.com/products/decking/select/",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "documentationRefId": "trex-faq",
+          "documentType": "manufacturer_faq",
+          "title": "Trex FAQ",
+          "url": "https://www.trex.com/why-trex/faq/",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "documentationRefId": "trex-resource-center",
+          "documentType": "manufacturer_resource_center",
+          "title": "Trex Resource Center",
+          "url": "https://www.trex.com/customer-support/trex-owners/downloads/",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "documentationRefId": "trex-warranty-center",
+          "documentType": "manufacturer_warranty_center",
+          "title": "Trex Warranty Center",
+          "url": "https://www.trex.com/customer-support/trex-owners/warranty/",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        }
+      ],
+      "regionalAvailability": [
+        {
+          "regionId": "central_coast_ca",
+          "availabilityStatus": "unknown",
+          "verifiedSupplier": null,
+          "verifiedAt": null,
+          "verificationNotes": "No store-specific public inventory and price were verified."
+        },
+        {
+          "regionId": "santa_barbara_ca",
+          "availabilityStatus": "unknown",
+          "verifiedSupplier": null,
+          "verifiedAt": null,
+          "verificationNotes": "No store-specific public inventory and price were verified."
+        }
+      ],
+      "lastVerifiedAt": "2026-07-26",
+      "sources": [
+        {
+          "sourceRef": "trex-select-official",
+          "sourceType": "official_manufacturer",
+          "sourceUrl": "https://www.trex.com/products/decking/select/",
+          "verifiedAt": "2026-07-26",
+          "confidenceLevel": "high"
+        },
+        {
+          "sourceRef": "trex-faq",
+          "sourceType": "official_manufacturer",
+          "sourceUrl": "https://www.trex.com/why-trex/faq/",
+          "verifiedAt": "2026-07-26",
+          "confidenceLevel": "high"
+        },
+        {
+          "sourceRef": "trex-resource-center",
+          "sourceType": "official_manufacturer",
+          "sourceUrl": "https://www.trex.com/customer-support/trex-owners/downloads/",
+          "verifiedAt": "2026-07-26",
+          "confidenceLevel": "high"
+        },
+        {
+          "sourceRef": "trex-warranty-center",
+          "sourceType": "official_manufacturer",
+          "sourceUrl": "https://www.trex.com/customer-support/trex-owners/warranty/",
+          "verifiedAt": "2026-07-26",
+          "confidenceLevel": "high"
+        }
+      ],
+      "governance": {
+        "researchStatus": "draft",
+        "identityConfidence": "high",
+        "technicalDataConfidence": "medium",
+        "regionalAvailabilityConfidence": "unknown",
+        "priceDataConfidence": "low",
+        "salesModeSelectable": false,
+        "calculationApprovalStatus": "not_approved",
+        "verificationNotes": "Identity is verified; profile thickness, local inventory and estimate pricing require review."
+      }
+    },
+    {
+      "materialId": "trex-transcend",
+      "brandId": "trex",
+      "brandName": "Trex",
+      "officialName": "Trex Transcend",
+      "status": "active",
+      "reviewStatus": "draft",
+      "category": "decking",
+      "technicalClassification": "full_profile_capped_composite",
+      "materialType": "wood_plastic_composite",
+      "marketTier": "Premium",
+      "priceTier": "premium",
+      "shortDescription": "Premium full-profile Trex composite decking with rich multi-tonal colors.",
+      "salesHighlights": [
+        "Premium Trex composite",
+        "Full-profile construction",
+        "Fifty-year residential warranty"
+      ],
+      "bestFor": [
+        "Premium residential decks",
+        "Custom homes"
+      ],
+      "appearanceTags": [
+        "premium_wood_grain",
+        "multi_tonal",
+        "high_variation"
+      ],
+      "colors": [
+        {
+          "colorId": "trex-transcend-havana-gold",
+          "name": "Havana Gold",
+          "status": "active",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.trex.com/products/decking/transcend/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "colorId": "trex-transcend-island-mist",
+          "name": "Island Mist",
+          "status": "active",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.trex.com/products/decking/transcend/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "colorId": "trex-transcend-lava-rock",
+          "name": "Lava Rock",
+          "status": "active",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.trex.com/products/decking/transcend/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "colorId": "trex-transcend-spiced-rum",
+          "name": "Spiced Rum",
+          "status": "active",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.trex.com/products/decking/transcend/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "colorId": "trex-transcend-tiki-torch",
+          "name": "Tiki Torch",
+          "status": "active",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.trex.com/products/decking/transcend/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "colorId": "trex-transcend-rope-swing",
+          "name": "Rope Swing",
+          "status": "active",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.trex.com/products/decking/transcend/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        }
+      ],
+      "profiles": [
+        {
+          "profileId": "trex-transcend-grooved-1x6",
+          "profileType": "grooved_edge",
+          "nominalDimensions": "1 in x 6 in",
+          "actualWidthIn": 5.5,
+          "actualThicknessIn": 0.94,
+          "availableLengthsFt": [
+            12,
+            16,
+            20
+          ],
+          "status": "draft",
+          "reviewStatus": "draft"
+        },
+        {
+          "profileId": "trex-transcend-square-1x6",
+          "profileType": "square_shoulder",
+          "nominalDimensions": "1 in x 6 in",
+          "actualWidthIn": 5.5,
+          "actualThicknessIn": 0.94,
+          "availableLengthsFt": [
+            16,
+            20
+          ],
+          "status": "draft",
+          "reviewStatus": "draft"
+        }
+      ],
+      "performanceAttributes": [
+        {
+          "attributeId": "scratch_and_scuff_resistance",
+          "value": "manufacturer_claim",
+          "statement": "Trex markets Transcend as highly resistant to scuffs and scratches; no independent score was verified.",
+          "evidenceType": "official_manufacturer_information",
+          "sourceRef": "trex-transcend-official",
+          "lastVerifiedAt": "2026-07-26",
+          "salesVisibility": "sales"
+        },
+        {
+          "attributeId": "hidden_fastener_compatibility",
+          "value": "compatible_grooved_boards",
+          "statement": "Compatible grooved boards may use approved Trex hidden fasteners.",
+          "evidenceType": "official_manufacturer_information",
+          "sourceRef": "trex-resource-center",
+          "lastVerifiedAt": "2026-07-26",
+          "salesVisibility": "admin_only"
+        }
+      ],
+      "warrantyDetails": [
+        {
+          "warrantyType": "limited_residential_product",
+          "durationValue": 50,
+          "durationUnit": "years",
+          "appliesTo": "qualifying_residential_installations",
+          "transferability": "not_verified",
+          "coverageSummary": "Limited product coverage subject to controlling terms.",
+          "sourceRef": "trex-transcend-official",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "warrantyType": "fade_and_stain",
+          "durationValue": 50,
+          "durationUnit": "years",
+          "appliesTo": "qualifying_residential_installations",
+          "transferability": "not_verified",
+          "coverageSummary": "Limited fade-and-stain coverage subject to controlling terms.",
+          "sourceRef": "trex-transcend-official",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "warrantyType": "commercial",
+          "durationValue": null,
+          "durationUnit": null,
+          "appliesTo": "commercial_installations",
+          "transferability": "not_verified",
+          "coverageSummary": "Commercial duration and conditions remain not verified.",
+          "sourceRef": "trex-warranty-center",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        }
+      ],
+      "documentationRefs": [
+        {
+          "documentationRefId": "trex-transcend-official",
+          "documentType": "official_product_page",
+          "title": "Trex Transcend Composite Decking",
+          "url": "https://www.trex.com/products/decking/transcend/",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "documentationRefId": "trex-resource-center",
+          "documentType": "manufacturer_resource_center",
+          "title": "Trex Resource Center",
+          "url": "https://www.trex.com/customer-support/trex-owners/downloads/",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "documentationRefId": "trex-warranty-center",
+          "documentType": "manufacturer_warranty_center",
+          "title": "Trex Warranty Center",
+          "url": "https://www.trex.com/customer-support/trex-owners/warranty/",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        }
+      ],
+      "regionalAvailability": [
+        {
+          "regionId": "central_coast_ca",
+          "availabilityStatus": "unknown",
+          "verifiedSupplier": null,
+          "verifiedAt": null,
+          "verificationNotes": "No store-specific public inventory and price were verified."
+        },
+        {
+          "regionId": "santa_barbara_ca",
+          "availabilityStatus": "unknown",
+          "verifiedSupplier": null,
+          "verifiedAt": null,
+          "verificationNotes": "No store-specific public inventory and price were verified."
+        }
+      ],
+      "lastVerifiedAt": "2026-07-26",
+      "sources": [
+        {
+          "sourceRef": "trex-transcend-official",
+          "sourceType": "official_manufacturer",
+          "sourceUrl": "https://www.trex.com/products/decking/transcend/",
+          "verifiedAt": "2026-07-26",
+          "confidenceLevel": "high"
+        },
+        {
+          "sourceRef": "trex-resource-center",
+          "sourceType": "official_manufacturer",
+          "sourceUrl": "https://www.trex.com/customer-support/trex-owners/downloads/",
+          "verifiedAt": "2026-07-26",
+          "confidenceLevel": "high"
+        },
+        {
+          "sourceRef": "trex-warranty-center",
+          "sourceType": "official_manufacturer",
+          "sourceUrl": "https://www.trex.com/customer-support/trex-owners/warranty/",
+          "verifiedAt": "2026-07-26",
+          "confidenceLevel": "high"
+        }
+      ],
+      "governance": {
+        "researchStatus": "draft",
+        "identityConfidence": "high",
+        "technicalDataConfidence": "medium",
+        "regionalAvailabilityConfidence": "unknown",
+        "priceDataConfidence": "low",
+        "salesModeSelectable": false,
+        "calculationApprovalStatus": "not_approved",
+        "verificationNotes": "Transcend core remains separate from Lineage; regional pricing is unapproved."
+      }
+    },
+    {
+      "materialId": "trex-transcend-lineage",
+      "brandId": "trex",
+      "brandName": "Trex",
+      "officialName": "Trex Transcend Lineage",
+      "status": "pending_catalog_review",
+      "reviewStatus": "draft",
+      "category": "decking",
+      "technicalClassification": "full_profile_capped_composite",
+      "materialType": "wood_plastic_composite",
+      "marketTier": "Premium",
+      "priceTier": "premium",
+      "shortDescription": "Separate premium Trex catalog candidate with refined grain and heat-mitigating technology.",
+      "salesHighlights": [
+        "Heat-mitigating technology",
+        "Refined contemporary grain",
+        "Separate candidate from Transcend core"
+      ],
+      "bestFor": [
+        "Potential future premium catalog inclusion"
+      ],
+      "appearanceTags": [
+        "contemporary",
+        "refined_grain",
+        "moderate_variation"
+      ],
+      "colors": [
+        {
+          "colorId": "trex-transcend-lineage-island-mist",
+          "name": "Island Mist",
+          "status": "active",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.trex.com/products/decking/lineage/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "colorId": "trex-transcend-lineage-rainier",
+          "name": "Rainier",
+          "status": "active",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.trex.com/products/decking/lineage/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "colorId": "trex-transcend-lineage-carmel",
+          "name": "Carmel",
+          "status": "active",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.trex.com/products/decking/lineage/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "colorId": "trex-transcend-lineage-biscayne",
+          "name": "Biscayne",
+          "status": "active",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.trex.com/products/decking/lineage/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "colorId": "trex-transcend-lineage-jasper",
+          "name": "Jasper",
+          "status": "active",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.trex.com/products/decking/lineage/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "colorId": "trex-transcend-lineage-salt-flat",
+          "name": "Salt Flat",
+          "status": "active",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.trex.com/products/decking/lineage/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "colorId": "trex-transcend-lineage-hatteras",
+          "name": "Hatteras",
+          "status": "active",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.trex.com/products/decking/lineage/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        }
+      ],
+      "profiles": [
+        {
+          "profileId": "trex-transcend-lineage-grooved-1x6",
+          "profileType": "grooved_edge",
+          "nominalDimensions": "1 in x 6 in",
+          "actualWidthIn": 5.5,
+          "actualThicknessIn": 0.94,
+          "availableLengthsFt": [
+            12,
+            16,
+            20
+          ],
+          "status": "draft",
+          "reviewStatus": "draft"
+        },
+        {
+          "profileId": "trex-transcend-lineage-square-1x6",
+          "profileType": "square_shoulder",
+          "nominalDimensions": "1 in x 6 in",
+          "actualWidthIn": 5.5,
+          "actualThicknessIn": 0.94,
+          "availableLengthsFt": [
+            16,
+            20
+          ],
+          "status": "draft",
+          "reviewStatus": "draft"
+        }
+      ],
+      "performanceAttributes": [
+        {
+          "attributeId": "heat_mitigating_technology",
+          "value": "suncomfortable_technology",
+          "statement": "Trex markets Lineage with heat-mitigating technology; all decking can still become hot.",
+          "evidenceType": "official_manufacturer_information",
+          "sourceRef": "trex-lineage-official",
+          "lastVerifiedAt": "2026-07-26",
+          "salesVisibility": "sales"
+        },
+        {
+          "attributeId": "catalog_selection_restriction",
+          "value": "not_selectable_pending_review",
+          "statement": "Lineage must remain unavailable in Sales Mode until administrative catalog approval.",
+          "evidenceType": "market_observation",
+          "sourceRef": null,
+          "lastVerifiedAt": "2026-07-26",
+          "salesVisibility": "admin_only"
+        }
+      ],
+      "warrantyDetails": [
+        {
+          "warrantyType": "limited_residential_product",
+          "durationValue": 50,
+          "durationUnit": "years",
+          "appliesTo": "qualifying_residential_installations",
+          "transferability": "not_verified",
+          "coverageSummary": "Limited product coverage subject to controlling terms.",
+          "sourceRef": "trex-lineage-official",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "warrantyType": "fade_and_stain",
+          "durationValue": 50,
+          "durationUnit": "years",
+          "appliesTo": "qualifying_residential_installations",
+          "transferability": "not_verified",
+          "coverageSummary": "Limited fade-and-stain coverage subject to controlling terms.",
+          "sourceRef": "trex-lineage-official",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        }
+      ],
+      "documentationRefs": [
+        {
+          "documentationRefId": "trex-lineage-official",
+          "documentType": "official_product_page",
+          "title": "Trex Transcend Lineage",
+          "url": "https://www.trex.com/products/decking/lineage/",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        }
+      ],
+      "regionalAvailability": [
+        {
+          "regionId": "central_coast_ca",
+          "availabilityStatus": "unknown",
+          "verifiedSupplier": null,
+          "verifiedAt": null,
+          "verificationNotes": "No store-specific public inventory and price were verified."
+        },
+        {
+          "regionId": "santa_barbara_ca",
+          "availabilityStatus": "unknown",
+          "verifiedSupplier": null,
+          "verifiedAt": null,
+          "verificationNotes": "No store-specific public inventory and price were verified."
+        }
+      ],
+      "lastVerifiedAt": "2026-07-26",
+      "sources": [
+        {
+          "sourceRef": "trex-lineage-official",
+          "sourceType": "official_manufacturer",
+          "sourceUrl": "https://www.trex.com/products/decking/lineage/",
+          "verifiedAt": "2026-07-26",
+          "confidenceLevel": "high"
+        }
+      ],
+      "governance": {
+        "researchStatus": "draft",
+        "identityConfidence": "high",
+        "technicalDataConfidence": "medium",
+        "regionalAvailabilityConfidence": "unknown",
+        "priceDataConfidence": "low",
+        "salesModeSelectable": false,
+        "calculationApprovalStatus": "not_approved",
+        "verificationNotes": "Pending catalog review; not one of the seven initial selectable lines."
+      }
+    },
+    {
+      "materialId": "timbertech-prime-plus",
+      "brandId": "timbertech",
+      "brandName": "TimberTech",
+      "officialName": "TimberTech Composite Prime+ Collection",
+      "status": "active",
+      "reviewStatus": "draft",
+      "category": "decking",
+      "technicalClassification": "scalloped_capped_composite",
+      "materialType": "wood_plastic_composite",
+      "marketTier": "Value",
+      "priceTier": "value",
+      "shortDescription": "Value-positioned TimberTech decking research candidate.",
+      "salesHighlights": [
+        "Low-maintenance alternative to wood",
+        "Manufacturer-backed warranty"
+      ],
+      "bestFor": [
+        "Residential deck projects requiring product-specific review"
+      ],
+      "appearanceTags": [
+        "wood_inspired",
+        "color_variation"
+      ],
+      "colors": [
+        {
+          "colorId": "timbertech-prime-plus-coconut-husk",
+          "name": "Coconut Husk",
+          "status": "draft",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.timbertech.com/product/edge-prime-plus-collection/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "colorId": "timbertech-prime-plus-dark-cocoa",
+          "name": "Dark Cocoa",
+          "status": "draft",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.timbertech.com/product/edge-prime-plus-collection/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "colorId": "timbertech-prime-plus-sea-gray",
+          "name": "Sea Gray",
+          "status": "draft",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.timbertech.com/product/edge-prime-plus-collection/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        }
+      ],
+      "profiles": [
+        {
+          "profileId": "timbertech-prime-plus-grooved-1x6",
+          "profileType": "grooved_edge",
+          "nominalDimensions": "1 in x 6 in",
+          "actualWidthIn": 5.36,
+          "actualThicknessIn": 0.94,
+          "availableLengthsFt": [
+            12,
+            16,
+            20
+          ],
+          "status": "draft",
+          "reviewStatus": "draft"
+        },
+        {
+          "profileId": "timbertech-prime-plus-square-1x6",
+          "profileType": "square_shoulder",
+          "nominalDimensions": "1 in x 6 in",
+          "actualWidthIn": 5.36,
+          "actualThicknessIn": 0.94,
+          "availableLengthsFt": [
+            16,
+            20
+          ],
+          "status": "draft",
+          "reviewStatus": "draft"
+        }
+      ],
+      "performanceAttributes": [
+        {
+          "attributeId": "moisture_resistance",
+          "value": "manufacturer_claim",
+          "statement": "The manufacturer markets this product for resistance to common moisture-related deterioration.",
+          "evidenceType": "official_manufacturer_information",
+          "sourceRef": "timbertech-prime-plus-official",
+          "lastVerifiedAt": "2026-07-26",
+          "salesVisibility": "sales"
+        },
+        {
+          "attributeId": "collection_identity_risk",
+          "value": "prime_and_prime_plus_are_distinct",
+          "statement": "Prime and Prime+ are separate current collections; ambiguous supplier listings must not be assigned automatically.",
+          "evidenceType": "official_manufacturer_information",
+          "sourceRef": "timbertech-prime-official",
+          "lastVerifiedAt": "2026-07-26",
+          "salesVisibility": "admin_only"
+        },
+        {
+          "attributeId": "edgeloc_compatibility",
+          "value": "compatible_with_prime_plus_grooved_boards",
+          "statement": "TimberTech identifies EDGELoc as compatible with Prime+ grooved boards.",
+          "evidenceType": "official_manufacturer_information",
+          "sourceRef": "timbertech-edgeloc-official",
+          "lastVerifiedAt": "2026-07-26",
+          "salesVisibility": "admin_only"
+        }
+      ],
+      "warrantyDetails": [
+        {
+          "warrantyType": "limited_product",
+          "durationValue": 25,
+          "durationUnit": "years",
+          "appliesTo": "qualifying_installations",
+          "transferability": "not_verified",
+          "coverageSummary": "Limited product coverage subject to controlling terms.",
+          "sourceRef": "timbertech-prime-plus-official",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "warrantyType": "fade_and_stain",
+          "durationValue": 25,
+          "durationUnit": "years",
+          "appliesTo": "qualifying_installations",
+          "transferability": "not_verified",
+          "coverageSummary": "Limited fade-and-stain coverage subject to controlling terms.",
+          "sourceRef": "timbertech-prime-plus-official",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "warrantyType": "labor_replacement",
+          "durationValue": null,
+          "durationUnit": null,
+          "appliesTo": "eligible_installations_only",
+          "transferability": "not_verified",
+          "coverageSummary": "Separate labor replacement eligibility remains not verified.",
+          "sourceRef": "timbertech-warranty-center",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        }
+      ],
+      "documentationRefs": [
+        {
+          "documentationRefId": "timbertech-prime-plus-official",
+          "documentType": "official_product_page",
+          "title": "TimberTech Composite Prime+ Collection",
+          "url": "https://www.timbertech.com/product/edge-prime-plus-collection/",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "documentationRefId": "timbertech-warranty-center",
+          "documentType": "manufacturer_warranty_center",
+          "title": "TimberTech Warranty Center",
+          "url": "https://www.timbertech.com/about-warranties/",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "documentationRefId": "timbertech-prime-official",
+          "documentType": "official_product_page",
+          "title": "TimberTech Composite Prime Collection",
+          "url": "https://www.timbertech.com/product/edge-prime-collection/",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "documentationRefId": "timbertech-edgeloc-official",
+          "documentType": "official_fastener_page",
+          "title": "TimberTech EDGELoc",
+          "url": "https://www.timbertech.com/product/edgeloc/",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        }
+      ],
+      "regionalAvailability": [
+        {
+          "regionId": "central_coast_ca",
+          "availabilityStatus": "unknown",
+          "verifiedSupplier": null,
+          "verifiedAt": null,
+          "verificationNotes": "No store-specific public inventory and price were verified."
+        },
+        {
+          "regionId": "santa_barbara_ca",
+          "availabilityStatus": "unknown",
+          "verifiedSupplier": null,
+          "verifiedAt": null,
+          "verificationNotes": "No store-specific public inventory and price were verified."
+        }
+      ],
+      "lastVerifiedAt": "2026-07-26",
+      "sources": [
+        {
+          "sourceRef": "timbertech-prime-plus-official",
+          "sourceType": "official_manufacturer",
+          "sourceUrl": "https://www.timbertech.com/product/edge-prime-plus-collection/",
+          "verifiedAt": "2026-07-26",
+          "confidenceLevel": "high"
+        },
+        {
+          "sourceRef": "timbertech-warranty-center",
+          "sourceType": "official_manufacturer",
+          "sourceUrl": "https://www.timbertech.com/about-warranties/",
+          "verifiedAt": "2026-07-26",
+          "confidenceLevel": "high"
+        },
+        {
+          "sourceRef": "timbertech-prime-official",
+          "sourceType": "official_manufacturer",
+          "sourceUrl": "https://www.timbertech.com/product/edge-prime-collection/",
+          "verifiedAt": "2026-07-26",
+          "confidenceLevel": "high"
+        },
+        {
+          "sourceRef": "timbertech-edgeloc-official",
+          "sourceType": "official_manufacturer",
+          "sourceUrl": "https://www.timbertech.com/product/edgeloc/",
+          "verifiedAt": "2026-07-26",
+          "confidenceLevel": "high"
+        }
+      ],
+      "governance": {
+        "researchStatus": "draft",
+        "identityConfidence": "high",
+        "technicalDataConfidence": "medium",
+        "regionalAvailabilityConfidence": "unknown",
+        "priceDataConfidence": "unknown",
+        "salesModeSelectable": false,
+        "calculationApprovalStatus": "not_approved",
+        "verificationNotes": "Regional pricing and estimate calculation remain unapproved."
+      }
+    },
+    {
+      "materialId": "timbertech-terrain-plus",
+      "brandId": "timbertech",
+      "brandName": "TimberTech",
+      "officialName": "TimberTech Composite Terrain+ Collection",
+      "status": "active",
+      "reviewStatus": "draft",
+      "category": "decking",
+      "technicalClassification": "scalloped_capped_composite",
+      "materialType": "wood_plastic_composite",
+      "marketTier": "Mid",
+      "priceTier": "mid",
+      "shortDescription": "Mid-positioned TimberTech decking research candidate.",
+      "salesHighlights": [
+        "Low-maintenance alternative to wood",
+        "Manufacturer-backed warranty"
+      ],
+      "bestFor": [
+        "Residential deck projects requiring product-specific review"
+      ],
+      "appearanceTags": [
+        "wood_inspired",
+        "color_variation"
+      ],
+      "colors": [
+        {
+          "colorId": "timbertech-terrain-plus-natural-white-oak",
+          "name": "Natural White Oak",
+          "status": "draft",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.timbertech.com/product/composite-terrain-plus-collection/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "colorId": "timbertech-terrain-plus-weathered-oak",
+          "name": "Weathered Oak",
+          "status": "draft",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.timbertech.com/product/composite-terrain-plus-collection/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "colorId": "timbertech-terrain-plus-dark-oak",
+          "name": "Dark Oak",
+          "status": "draft",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.timbertech.com/product/composite-terrain-plus-collection/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        }
+      ],
+      "profiles": [
+        {
+          "profileId": "timbertech-terrain-plus-grooved-1x6",
+          "profileType": "grooved_edge",
+          "nominalDimensions": "1 in x 6 in",
+          "actualWidthIn": null,
+          "actualThicknessIn": null,
+          "availableLengthsFt": [],
+          "status": "draft",
+          "reviewStatus": "draft"
+        },
+        {
+          "profileId": "timbertech-terrain-plus-square-1x6",
+          "profileType": "square_shoulder",
+          "nominalDimensions": "1 in x 6 in",
+          "actualWidthIn": null,
+          "actualThicknessIn": null,
+          "availableLengthsFt": [],
+          "status": "draft",
+          "reviewStatus": "draft"
+        }
+      ],
+      "performanceAttributes": [
+        {
+          "attributeId": "moisture_resistance",
+          "value": "manufacturer_claim",
+          "statement": "The manufacturer markets this product for resistance to common moisture-related deterioration.",
+          "evidenceType": "official_manufacturer_information",
+          "sourceRef": "timbertech-terrain-plus-official",
+          "lastVerifiedAt": "2026-07-26",
+          "salesVisibility": "sales"
+        },
+        {
+          "attributeId": "scratch_resistance",
+          "value": "manufacturer_claim_without_independent_score",
+          "statement": "Manufacturer scratch-resistance language was found; no independent comparative score was verified.",
+          "evidenceType": "official_manufacturer_information",
+          "sourceRef": "timbertech-terrain-plus-official",
+          "lastVerifiedAt": "2026-07-26",
+          "salesVisibility": "sales"
+        }
+      ],
+      "warrantyDetails": [
+        {
+          "warrantyType": "limited_product",
+          "durationValue": 30,
+          "durationUnit": "years",
+          "appliesTo": "qualifying_installations",
+          "transferability": "not_verified",
+          "coverageSummary": "Limited product coverage subject to controlling terms.",
+          "sourceRef": "timbertech-terrain-plus-official",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "warrantyType": "fade_and_stain",
+          "durationValue": 30,
+          "durationUnit": "years",
+          "appliesTo": "qualifying_installations",
+          "transferability": "not_verified",
+          "coverageSummary": "Limited fade-and-stain coverage subject to controlling terms.",
+          "sourceRef": "timbertech-terrain-plus-official",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "warrantyType": "labor_replacement",
+          "durationValue": null,
+          "durationUnit": null,
+          "appliesTo": "eligible_installations_only",
+          "transferability": "not_verified",
+          "coverageSummary": "Separate labor replacement eligibility remains not verified.",
+          "sourceRef": "timbertech-warranty-center",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        }
+      ],
+      "documentationRefs": [
+        {
+          "documentationRefId": "timbertech-terrain-plus-official",
+          "documentType": "official_product_page",
+          "title": "TimberTech Composite Terrain+ Collection",
+          "url": "https://www.timbertech.com/product/composite-terrain-plus-collection/",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "documentationRefId": "timbertech-warranty-center",
+          "documentType": "manufacturer_warranty_center",
+          "title": "TimberTech Warranty Center",
+          "url": "https://www.timbertech.com/about-warranties/",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        }
+      ],
+      "regionalAvailability": [
+        {
+          "regionId": "central_coast_ca",
+          "availabilityStatus": "unknown",
+          "verifiedSupplier": null,
+          "verifiedAt": null,
+          "verificationNotes": "No store-specific public inventory and price were verified."
+        },
+        {
+          "regionId": "santa_barbara_ca",
+          "availabilityStatus": "unknown",
+          "verifiedSupplier": null,
+          "verifiedAt": null,
+          "verificationNotes": "No store-specific public inventory and price were verified."
+        }
+      ],
+      "lastVerifiedAt": "2026-07-26",
+      "sources": [
+        {
+          "sourceRef": "timbertech-terrain-plus-official",
+          "sourceType": "official_manufacturer",
+          "sourceUrl": "https://www.timbertech.com/product/composite-terrain-plus-collection/",
+          "verifiedAt": "2026-07-26",
+          "confidenceLevel": "high"
+        },
+        {
+          "sourceRef": "timbertech-warranty-center",
+          "sourceType": "official_manufacturer",
+          "sourceUrl": "https://www.timbertech.com/about-warranties/",
+          "verifiedAt": "2026-07-26",
+          "confidenceLevel": "high"
+        }
+      ],
+      "governance": {
+        "researchStatus": "draft",
+        "identityConfidence": "high",
+        "technicalDataConfidence": "low",
+        "regionalAvailabilityConfidence": "unknown",
+        "priceDataConfidence": "unknown",
+        "salesModeSelectable": false,
+        "calculationApprovalStatus": "not_approved",
+        "verificationNotes": "Regional pricing and estimate calculation remain unapproved."
+      }
+    },
+    {
+      "materialId": "timbertech-reserve",
+      "brandId": "timbertech",
+      "brandName": "TimberTech",
+      "officialName": "TimberTech Composite Reserve Collection",
+      "status": "active",
+      "reviewStatus": "draft",
+      "category": "decking",
+      "technicalClassification": "full_profile_capped_composite",
+      "materialType": "wood_plastic_composite",
+      "marketTier": "Premium",
+      "priceTier": "premium",
+      "shortDescription": "Premium-positioned TimberTech decking research candidate.",
+      "salesHighlights": [
+        "Low-maintenance alternative to wood",
+        "Manufacturer-backed warranty"
+      ],
+      "bestFor": [
+        "Residential deck projects requiring product-specific review"
+      ],
+      "appearanceTags": [
+        "wood_inspired",
+        "color_variation"
+      ],
+      "colors": [
+        {
+          "colorId": "timbertech-reserve-antique-leather",
+          "name": "Antique Leather",
+          "status": "draft",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.timbertech.com/product/pro-reserve-collection/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "colorId": "timbertech-reserve-dark-roast",
+          "name": "Dark Roast",
+          "status": "draft",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.timbertech.com/product/pro-reserve-collection/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "colorId": "timbertech-reserve-driftwood",
+          "name": "Driftwood",
+          "status": "draft",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.timbertech.com/product/pro-reserve-collection/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "colorId": "timbertech-reserve-reclaimed-chestnut",
+          "name": "Reclaimed Chestnut",
+          "status": "draft",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.timbertech.com/product/pro-reserve-collection/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        }
+      ],
+      "profiles": [
+        {
+          "profileId": "timbertech-reserve-grooved-1x6",
+          "profileType": "grooved_edge",
+          "nominalDimensions": "1 in x 6 in",
+          "actualWidthIn": 5.36,
+          "actualThicknessIn": 0.94,
+          "availableLengthsFt": [
+            12,
+            16,
+            20
+          ],
+          "status": "draft",
+          "reviewStatus": "draft"
+        },
+        {
+          "profileId": "timbertech-reserve-square-1x6",
+          "profileType": "square_shoulder",
+          "nominalDimensions": "1 in x 6 in",
+          "actualWidthIn": 5.36,
+          "actualThicknessIn": 0.94,
+          "availableLengthsFt": [
+            16,
+            20
+          ],
+          "status": "draft",
+          "reviewStatus": "draft"
+        }
+      ],
+      "performanceAttributes": [
+        {
+          "attributeId": "moisture_resistance",
+          "value": "manufacturer_claim",
+          "statement": "The manufacturer markets this product for resistance to common moisture-related deterioration.",
+          "evidenceType": "official_manufacturer_information",
+          "sourceRef": "timbertech-reserve-official",
+          "lastVerifiedAt": "2026-07-26",
+          "salesVisibility": "sales"
+        },
+        {
+          "attributeId": "fire_resistant_variant",
+          "value": "separate_variant_required",
+          "statement": "Fire-Resistant Reserve must be specifically identified and ordered; standard Reserve is not automatically equivalent.",
+          "evidenceType": "official_manufacturer_information",
+          "sourceRef": "timbertech-reserve-official",
+          "lastVerifiedAt": "2026-07-26",
+          "salesVisibility": "admin_only"
+        },
+        {
+          "attributeId": "wui_compliance",
+          "value": "conditional",
+          "statement": "Any WUI representation depends on the specific fire-resistant product, listing and approved assembly.",
+          "evidenceType": "official_manufacturer_information",
+          "sourceRef": "timbertech-reserve-official",
+          "lastVerifiedAt": "2026-07-26",
+          "salesVisibility": "admin_only"
+        }
+      ],
+      "warrantyDetails": [
+        {
+          "warrantyType": "limited_product",
+          "durationValue": 30,
+          "durationUnit": "years",
+          "appliesTo": "qualifying_installations",
+          "transferability": "not_verified",
+          "coverageSummary": "Limited product coverage subject to controlling terms.",
+          "sourceRef": "timbertech-reserve-official",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "warrantyType": "fade_and_stain",
+          "durationValue": 30,
+          "durationUnit": "years",
+          "appliesTo": "qualifying_installations",
+          "transferability": "not_verified",
+          "coverageSummary": "Limited fade-and-stain coverage subject to controlling terms.",
+          "sourceRef": "timbertech-reserve-official",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "warrantyType": "labor_replacement",
+          "durationValue": null,
+          "durationUnit": null,
+          "appliesTo": "eligible_installations_only",
+          "transferability": "not_verified",
+          "coverageSummary": "Separate labor replacement eligibility remains not verified.",
+          "sourceRef": "timbertech-warranty-center",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        }
+      ],
+      "documentationRefs": [
+        {
+          "documentationRefId": "timbertech-reserve-official",
+          "documentType": "official_product_page",
+          "title": "TimberTech Composite Reserve Collection",
+          "url": "https://www.timbertech.com/product/pro-reserve-collection/",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "documentationRefId": "timbertech-warranty-center",
+          "documentType": "manufacturer_warranty_center",
+          "title": "TimberTech Warranty Center",
+          "url": "https://www.timbertech.com/about-warranties/",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        }
+      ],
+      "regionalAvailability": [
+        {
+          "regionId": "central_coast_ca",
+          "availabilityStatus": "unknown",
+          "verifiedSupplier": null,
+          "verifiedAt": null,
+          "verificationNotes": "No store-specific public inventory and price were verified."
+        },
+        {
+          "regionId": "santa_barbara_ca",
+          "availabilityStatus": "unknown",
+          "verifiedSupplier": null,
+          "verifiedAt": null,
+          "verificationNotes": "No store-specific public inventory and price were verified."
+        }
+      ],
+      "lastVerifiedAt": "2026-07-26",
+      "sources": [
+        {
+          "sourceRef": "timbertech-reserve-official",
+          "sourceType": "official_manufacturer",
+          "sourceUrl": "https://www.timbertech.com/product/pro-reserve-collection/",
+          "verifiedAt": "2026-07-26",
+          "confidenceLevel": "high"
+        },
+        {
+          "sourceRef": "timbertech-warranty-center",
+          "sourceType": "official_manufacturer",
+          "sourceUrl": "https://www.timbertech.com/about-warranties/",
+          "verifiedAt": "2026-07-26",
+          "confidenceLevel": "high"
+        }
+      ],
+      "governance": {
+        "researchStatus": "draft",
+        "identityConfidence": "high",
+        "technicalDataConfidence": "medium",
+        "regionalAvailabilityConfidence": "unknown",
+        "priceDataConfidence": "unknown",
+        "salesModeSelectable": false,
+        "calculationApprovalStatus": "not_approved",
+        "verificationNotes": "Regional pricing and estimate calculation remain unapproved."
+      }
+    },
+    {
+      "materialId": "timbertech-landmark",
+      "brandId": "timbertech",
+      "brandName": "TimberTech",
+      "officialName": "TimberTech Advanced PVC Landmark Collection",
+      "status": "active",
+      "reviewStatus": "draft",
+      "category": "decking",
+      "technicalClassification": "advanced_pvc_full_profile",
+      "materialType": "engineered_polymer_without_wood_fiber",
+      "marketTier": "Luxury",
+      "priceTier": "luxury",
+      "shortDescription": "Luxury-positioned TimberTech decking research candidate.",
+      "salesHighlights": [
+        "Low-maintenance alternative to wood",
+        "Manufacturer-backed warranty"
+      ],
+      "bestFor": [
+        "Residential deck projects requiring product-specific review"
+      ],
+      "appearanceTags": [
+        "wood_inspired",
+        "color_variation"
+      ],
+      "colors": [
+        {
+          "colorId": "timbertech-landmark-american-walnut",
+          "name": "American Walnut",
+          "status": "active",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.timbertech.com/product/azek-landmark-collection/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "colorId": "timbertech-landmark-boardwalk",
+          "name": "Boardwalk",
+          "status": "active",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.timbertech.com/product/azek-landmark-collection/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "colorId": "timbertech-landmark-castle-gate",
+          "name": "Castle Gate",
+          "status": "active",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.timbertech.com/product/azek-landmark-collection/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "colorId": "timbertech-landmark-french-white-oak",
+          "name": "French White Oak",
+          "status": "active",
+          "availabilityStatus": "unknown",
+          "manufacturerUrl": "https://www.timbertech.com/product/azek-landmark-collection/",
+          "swatchUrl": null,
+          "imageUrl": null,
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        }
+      ],
+      "profiles": [
+        {
+          "profileId": "timbertech-landmark-grooved-1x6",
+          "profileType": "grooved_edge",
+          "nominalDimensions": "1 in x 6 in",
+          "actualWidthIn": null,
+          "actualThicknessIn": null,
+          "availableLengthsFt": [
+            12,
+            16,
+            20
+          ],
+          "status": "draft",
+          "reviewStatus": "draft"
+        },
+        {
+          "profileId": "timbertech-landmark-square-1x6",
+          "profileType": "square_shoulder",
+          "nominalDimensions": "1 in x 6 in",
+          "actualWidthIn": null,
+          "actualThicknessIn": null,
+          "availableLengthsFt": [
+            16,
+            20
+          ],
+          "status": "draft",
+          "reviewStatus": "draft"
+        }
+      ],
+      "performanceAttributes": [
+        {
+          "attributeId": "moisture_resistance",
+          "value": "manufacturer_claim",
+          "statement": "The manufacturer markets this product for resistance to common moisture-related deterioration.",
+          "evidenceType": "official_manufacturer_information",
+          "sourceRef": "timbertech-landmark-official",
+          "lastVerifiedAt": "2026-07-26",
+          "salesVisibility": "sales"
+        },
+        {
+          "attributeId": "wood_fiber_content",
+          "value": "none",
+          "statement": "TimberTech classifies Landmark as Advanced PVC without organic wood fibers.",
+          "evidenceType": "official_manufacturer_information",
+          "sourceRef": "timbertech-landmark-official",
+          "lastVerifiedAt": "2026-07-26",
+          "salesVisibility": "sales"
+        },
+        {
+          "attributeId": "wui_compliance",
+          "value": "manufacturer_identified",
+          "statement": "WUI use remains conditional on the applicable listing, assembly and jurisdiction.",
+          "evidenceType": "official_manufacturer_information",
+          "sourceRef": "timbertech-landmark-official",
+          "lastVerifiedAt": "2026-07-26",
+          "salesVisibility": "admin_only"
+        },
+        {
+          "attributeId": "ignition_resistance",
+          "value": "manufacturer_identified",
+          "statement": "The manufacturer identifies ignition-resistant performance subject to applicable conditions.",
+          "evidenceType": "official_manufacturer_information",
+          "sourceRef": "timbertech-landmark-official",
+          "lastVerifiedAt": "2026-07-26",
+          "salesVisibility": "admin_only"
+        },
+        {
+          "attributeId": "flame_spread_class",
+          "value": "class_a",
+          "statement": "The manufacturer identifies a Class A flame-spread rating; listing-level conditions require review.",
+          "evidenceType": "official_manufacturer_information",
+          "sourceRef": "timbertech-landmark-official",
+          "lastVerifiedAt": "2026-07-26",
+          "salesVisibility": "admin_only"
+        },
+        {
+          "attributeId": "cortex_compatibility",
+          "value": "advanced_pvc_system_subject_to_conditions",
+          "statement": "Cortex for Advanced PVC requires current installation-condition review.",
+          "evidenceType": "official_manufacturer_information",
+          "sourceRef": "timbertech-cortex-pvc-official",
+          "lastVerifiedAt": "2026-07-26",
+          "salesVisibility": "admin_only"
+        }
+      ],
+      "warrantyDetails": [
+        {
+          "warrantyType": "limited_product",
+          "durationValue": null,
+          "durationUnit": "limited_lifetime",
+          "appliesTo": "qualifying_installations",
+          "transferability": "not_verified",
+          "coverageSummary": "Limited lifetime coverage subject to controlling terms.",
+          "sourceRef": "timbertech-landmark-official",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "warrantyType": "fade_and_stain",
+          "durationValue": 50,
+          "durationUnit": "years",
+          "appliesTo": "qualifying_installations",
+          "transferability": "not_verified",
+          "coverageSummary": "Limited fade-and-stain coverage subject to controlling terms.",
+          "sourceRef": "timbertech-landmark-official",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "warrantyType": "labor_replacement",
+          "durationValue": null,
+          "durationUnit": null,
+          "appliesTo": "eligible_installations_only",
+          "transferability": "not_verified",
+          "coverageSummary": "Separate labor replacement eligibility remains not verified.",
+          "sourceRef": "timbertech-warranty-center",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        }
+      ],
+      "documentationRefs": [
+        {
+          "documentationRefId": "timbertech-landmark-official",
+          "documentType": "official_product_page",
+          "title": "TimberTech Advanced PVC Landmark Collection",
+          "url": "https://www.timbertech.com/product/azek-landmark-collection/",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "documentationRefId": "timbertech-warranty-center",
+          "documentType": "manufacturer_warranty_center",
+          "title": "TimberTech Warranty Center",
+          "url": "https://www.timbertech.com/about-warranties/",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        },
+        {
+          "documentationRefId": "timbertech-cortex-pvc-official",
+          "documentType": "official_fastener_page",
+          "title": "Cortex for Advanced PVC",
+          "url": "https://www.timbertech.com/product/cortex-fastener-pack-azek/",
+          "documentVersion": "current_web_version_2026-07-26",
+          "lastVerifiedAt": "2026-07-26",
+          "reviewStatus": "draft"
+        }
+      ],
+      "regionalAvailability": [
+        {
+          "regionId": "central_coast_ca",
+          "availabilityStatus": "unknown",
+          "verifiedSupplier": null,
+          "verifiedAt": null,
+          "verificationNotes": "No store-specific public inventory and price were verified."
+        },
+        {
+          "regionId": "santa_barbara_ca",
+          "availabilityStatus": "unknown",
+          "verifiedSupplier": null,
+          "verifiedAt": null,
+          "verificationNotes": "No store-specific public inventory and price were verified."
+        }
+      ],
+      "lastVerifiedAt": "2026-07-26",
+      "sources": [
+        {
+          "sourceRef": "timbertech-landmark-official",
+          "sourceType": "official_manufacturer",
+          "sourceUrl": "https://www.timbertech.com/product/azek-landmark-collection/",
+          "verifiedAt": "2026-07-26",
+          "confidenceLevel": "high"
+        },
+        {
+          "sourceRef": "timbertech-warranty-center",
+          "sourceType": "official_manufacturer",
+          "sourceUrl": "https://www.timbertech.com/about-warranties/",
+          "verifiedAt": "2026-07-26",
+          "confidenceLevel": "high"
+        },
+        {
+          "sourceRef": "timbertech-cortex-pvc-official",
+          "sourceType": "official_manufacturer",
+          "sourceUrl": "https://www.timbertech.com/product/cortex-fastener-pack-azek/",
+          "verifiedAt": "2026-07-26",
+          "confidenceLevel": "high"
+        }
+      ],
+      "governance": {
+        "researchStatus": "draft",
+        "identityConfidence": "high",
+        "technicalDataConfidence": "medium",
+        "regionalAvailabilityConfidence": "unknown",
+        "priceDataConfidence": "unknown",
+        "salesModeSelectable": false,
+        "calculationApprovalStatus": "not_approved",
+        "verificationNotes": "Regional pricing and estimate calculation remain unapproved."
+      }
+    }
+  ],
+  "metadata": {
+    "researchStatus": "draft",
+    "researchDate": "2026-07-26",
+    "dataContract": "DCR Sales Hub Material Intelligence Data Contract v1.0",
+    "candidateLabel": "materials.json candidate v2.1",
+    "productionReady": false,
+    "approvedForEstimateCalculations": false,
+    "initialOfficialLineCount": 7,
+    "pendingCatalogCandidateCount": 1,
+    "validation": {
+      "allInitialMaterialsCategoryDecking": true,
+      "allSalesModeSelectableFalse": true,
+      "allIdsUnique": true,
+      "embeddedCitationMarkupFound": false,
+      "fasciaSelectableProfilesIncluded": false
+    }
+  }
+}

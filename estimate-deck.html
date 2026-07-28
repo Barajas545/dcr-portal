@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DCR — Deck Estimate</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      .ed{--acc:#2f80d8; --acc-2:#1f6fc8; --tint:rgba(47,128,216,.12); --tint-2:rgba(47,128,216,.25);
+        --gold:#d6a13a; --ok:#2fa679; --err:#d9614f;
+        max-width:880px; margin:0 auto; padding:16px 16px 70px;}
+
+      /* step progress */
+      .ed-steps{display:flex; gap:4px; margin:6px 0 18px;}
+      .ed-step{flex:1; text-align:center; font-size:11px; font-weight:600; color:var(--text-muted);
+        padding:7px 2px; border-bottom:3px solid var(--border); cursor:default; white-space:nowrap; overflow:hidden;}
+      .ed-step.done{color:var(--acc); border-color:var(--tint-2); cursor:pointer;}
+      .ed-step.on{color:var(--acc); border-color:var(--acc);}
+
+      .ed-card{background:var(--surface); border:1px solid var(--border); border-radius:14px;
+        padding:20px; margin-bottom:14px;}
+      .ed-card h2{margin:0 0 4px; font-size:19px;}
+      .ed-sub{font-size:13px; color:var(--text-muted); margin:0 0 16px;}
+      .ed-grid{display:grid; grid-template-columns:1fr 1fr; gap:0 16px;}
+      .ed-grid .full{grid-column:1/-1;}
+      @media (max-width:640px){ .ed-grid{grid-template-columns:1fr;} }
+
+      /* selection cards (project type / complexity) */
+      .ed-pick{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin:6px 0 4px;}
+      .ed-pick-card{border:2px solid var(--border); border-radius:12px; padding:12px; cursor:pointer;
+        background:var(--surface); transition:border-color .1s;}
+      .ed-pick-card:hover{border-color:var(--acc);}
+      .ed-pick-card.on{border-color:var(--acc); background:var(--tint);}
+      .ed-pick-card .t{font-weight:700; font-size:13.5px;}
+      .ed-pick-card .d{font-size:11.5px; color:var(--text-muted); margin-top:3px; line-height:1.35;}
+
+      /* match cards */
+      .ed-match{border:2px solid var(--border); border-radius:12px; padding:14px 16px; margin-bottom:10px;
+        background:var(--surface);}
+      .ed-match.sel{border-color:var(--ok); background:rgba(47,166,121,.07);}
+      .ed-match .hd{display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;}
+      .ed-match .nm{font-weight:700; font-size:15px;}
+      .ed-badge{font-size:12px; font-weight:700; padding:3px 11px; border-radius:12px; white-space:nowrap;}
+      .ed-badge.hi{background:rgba(47,166,121,.15); color:var(--ok);}
+      .ed-badge.md{background:rgba(214,161,58,.15); color:var(--gold);}
+      .ed-badge.lo{background:rgba(217,97,79,.13); color:var(--err);}
+      .ed-badge.sample{background:var(--surface-2); color:var(--text-muted); font-weight:600;}
+      .ed-facts{display:flex; gap:14px; flex-wrap:wrap; font-size:12.5px; color:var(--text-muted); margin-top:8px;}
+      .ed-facts b{color:var(--text);}
+
+      /* material cards */
+      .ed-mat{border:2px solid var(--border); border-radius:12px; padding:14px 16px; margin-bottom:10px; background:var(--surface);}
+      .ed-mat.sel{border-color:var(--acc); background:var(--tint);}
+      .ed-mat.alt{border-color:var(--gold);}
+      .ed-mat.dis{opacity:.55;}
+      .ed-mat .hd{display:flex; align-items:center; justify-content:space-between; gap:10px; cursor:pointer; flex-wrap:wrap;}
+      .ed-mat.dis .hd{cursor:default;}
+      .ed-tier{font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em;
+        padding:2px 9px; border-radius:10px; background:var(--surface-2); color:var(--text-muted);}
+      .ed-chips{display:flex; gap:6px; flex-wrap:wrap; margin-top:10px;}
+      .ed-chip{font-size:11.5px; padding:4px 11px; border-radius:12px; border:1.5px solid var(--border); cursor:pointer;}
+      .ed-chip.on{border-color:var(--acc); background:var(--tint); font-weight:700;}
+
+      /* estimate output */
+      .ed-total{font-size:26px; font-weight:800; color:var(--acc);}
+      .ed-kv{display:flex; justify-content:space-between; gap:10px; padding:6px 0; font-size:13.5px;
+        border-bottom:1px solid var(--border);}
+      .ed-kv:last-child{border-bottom:none;}
+      .ed-kv .v{font-weight:700; text-align:right;}
+      table.ed-tbl{width:100%; border-collapse:collapse; font-size:12.5px; margin-top:8px;}
+      .ed-tbl th{text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.04em;
+        color:var(--text-muted); padding:6px 8px; border-bottom:2px solid var(--border);}
+      .ed-tbl td{padding:7px 8px; border-bottom:1px solid var(--border);}
+      .ed-tbl .num{text-align:right; white-space:nowrap;}
+      .ed-note{background:var(--tint); border:1px solid var(--acc); border-radius:10px; padding:10px 13px;
+        font-size:12.5px; margin:10px 0;}
+      .ed-warn{background:rgba(214,161,58,.1); border:1px solid var(--gold); border-radius:10px; padding:10px 13px;
+        font-size:12.5px; margin:10px 0;}
+      .ed-assump{font-size:12px; color:var(--text-muted); line-height:1.55; padding-left:18px; margin:6px 0;}
+      .ed-assump li{margin-bottom:4px;}
+
+      .ed-nav{display:flex; justify-content:space-between; gap:10px; margin-top:16px;}
+      .ed-msg{font-size:13px; min-height:18px; margin-top:10px;}
+
+      label{margin-top:12px;}
+      .req::after{content:" *"; color:var(--danger);}
+
+      /* print: clean letterhead summary of the final step */
+      #printHead{display:none;}
+      @media print{
+        body{background:#fff;}
+        .topbar,.ed-steps,.ed-nav,.no-print{display:none !important;}
+        .ed{max-width:none; padding:0;}
+        .ed-card{border:none; padding:8px 0; break-inside:avoid;}
+        #printHead{display:flex; align-items:center; gap:16px; border-bottom:2px solid #333;
+          padding-bottom:10px; margin-bottom:14px;}
+        #printHead img{height:52px;}
+        #printHead .co{font-size:10px; line-height:1.5; color:#333;}
+      }
+    </style>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/png" href="icon-192.png" />
+  <link rel="apple-touch-icon" href="icon-180.png" />
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#171d25" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="DCR Portal" />
+  </head>
+  <body>
+    <div class="topbar">
+      <div class="brand"><img class="brand-logo" src="logo.png" alt="DCR Framing" /><h1 id="companyName">DCR Portal</h1></div>
+      <div class="top-actions">
+        <span class="pill" id="userPill">…</span>
+        <a class="btn btn-ghost btn-sm" href="estimates.html">← Estimates</a>
+        <button class="btn btn-ghost btn-sm" id="logoutBtn">Log out</button>
+      </div>
+    </div>
+
+    <div class="ed">
+      <div id="printHead">
+        <img id="phLogo" src="logo.jpg" alt="" />
+        <div class="co" id="phCo"></div>
+        <div style="flex:1"></div>
+        <div style="font-size:18px;font-weight:800">PRELIMINARY DECK ESTIMATE</div>
+      </div>
+
+      <div class="ed-steps" id="edSteps">
+        <div class="ed-step" data-step="1">1 · Project</div>
+        <div class="ed-step" data-step="2">2 · Similar projects</div>
+        <div class="ed-step" data-step="3">3 · Materials</div>
+        <div class="ed-step" data-step="4">4 · Review</div>
+        <div class="ed-step" data-step="5">5 · Estimate</div>
+      </div>
+
+      <div id="edApp"><div class="ed-card">Loading…</div></div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="common.js"></script>
+    <script src="estimate-deck.js"></script>
+  </body>
+</html>

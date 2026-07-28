@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DCR — Sales Estimates</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      .se{--acc:#2f80d8; --acc-2:#1f6fc8; --tint:rgba(47,128,216,.12); --tint-2:rgba(47,128,216,.25);
+        --gold:#d6a13a; --ok:#2fa679; --err:#d9614f;
+        max-width:980px; margin:0 auto; padding:16px 16px 70px;}
+      .se h2{margin:14px 0 4px; font-size:20px;}
+      .se-sub{font-size:13px; color:var(--text-muted); margin:0 0 14px;}
+
+      .se-trades{display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:12px; margin-bottom:22px;}
+      .se-trade{border:1px solid var(--border); border-radius:14px; padding:16px; background:var(--surface);
+        text-decoration:none; color:var(--text); display:flex; flex-direction:column; gap:5px;
+        transition:border-color .1s, transform .06s;}
+      .se-trade:hover{border-color:var(--acc); transform:translateY(-1px);}
+      .se-trade .ic{font-size:24px;}
+      .se-trade .tt{font-weight:700; font-size:15px;}
+      .se-trade .ds{font-size:11.5px; color:var(--text-muted); line-height:1.35;}
+      .se-trade.soon{opacity:.5; pointer-events:none;}
+      .se-trade.soon .tt::after{content:" · soon"; font-size:10px; color:var(--text-muted);}
+
+      table.se-tbl{width:100%; border-collapse:collapse; font-size:13px; background:var(--surface);
+        border:1px solid var(--border); border-radius:12px; overflow:hidden;}
+      .se-tbl th{text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.04em;
+        color:var(--text-muted); padding:9px 10px; border-bottom:2px solid var(--border); background:var(--surface-2);}
+      .se-tbl td{padding:9px 10px; border-bottom:1px solid var(--border); vertical-align:top;}
+      .se-tbl tr:last-child td{border-bottom:none;}
+      .se-tbl tr.row{cursor:pointer;}
+      .se-tbl tr.row:hover td{background:var(--tint);}
+      .se-tbl .num{text-align:right; white-space:nowrap;}
+      .se-status{font-size:11px; font-weight:700; padding:2px 9px; border-radius:10px; white-space:nowrap;}
+      .st-draft{background:var(--surface-2); color:var(--text-muted);}
+      .st-preliminary{background:rgba(47,128,216,.13); color:var(--acc);}
+      .st-reviewed{background:rgba(214,161,58,.15); color:var(--gold);}
+      .st-sent{background:rgba(47,128,216,.2); color:var(--acc);}
+      .st-won{background:rgba(47,166,121,.16); color:var(--ok);}
+      .st-lost{background:rgba(217,97,79,.13); color:var(--err);}
+      .se-empty{padding:26px; text-align:center; color:var(--text-muted); background:var(--surface);
+        border:1px solid var(--border); border-radius:12px; font-size:13.5px;}
+      .se-badge-sample{font-size:10px; font-weight:700; padding:2px 7px; border-radius:8px;
+        background:var(--surface-2); color:var(--text-muted);}
+      .se-head{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+      .se-head h2{flex:1; margin:14px 0;}
+
+      /* modal (reference project editor) */
+      .se-overlay{position:fixed; inset:0; background:rgba(0,0,0,.55); display:none;
+        align-items:center; justify-content:center; z-index:80; padding:14px;}
+      .se-overlay.open{display:flex;}
+      .se-modal{background:var(--surface); color:var(--text); border:1px solid var(--border);
+        border-radius:13px; width:100%; max-width:640px; max-height:92vh; overflow:auto; padding:20px;}
+      .se-modal h3{margin:0 0 10px;}
+      .se-grid{display:grid; grid-template-columns:1fr 1fr; gap:0 14px;}
+      .se-grid .full{grid-column:1/-1;}
+      @media (max-width:560px){ .se-grid{grid-template-columns:1fr;} }
+      .se-actions{display:flex; justify-content:flex-end; gap:8px; margin-top:14px;}
+      label{margin-top:10px;}
+    </style>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/png" href="icon-192.png" />
+  <link rel="apple-touch-icon" href="icon-180.png" />
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#171d25" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="DCR Portal" />
+  </head>
+  <body>
+    <div class="topbar">
+      <div class="brand"><img class="brand-logo" src="logo.png" alt="DCR Framing" /><h1 id="companyName">DCR Portal</h1></div>
+      <div class="top-actions">
+        <span class="pill" id="userPill">…</span>
+        <a class="btn btn-ghost btn-sm" href="dashboard.html">Home</a>
+        <button class="btn btn-ghost btn-sm" id="logoutBtn">Log out</button>
+      </div>
+    </div>
+
+    <div class="se">
+      <h2>💰 Sales Estimates</h2>
+      <p class="se-sub">Estimate new work from your completed-project history. Start with a trade:</p>
+      <div class="se-trades" id="seTrades">
+        <a class="se-trade" href="estimate-deck.html"><span class="ic">🪵</span><span class="tt">Deck</span>
+          <span class="ds">New decks, resurfacing, expansions — priced from past deck projects.</span></a>
+        <a class="se-trade soon" href="#"><span class="ic">🏠</span><span class="tt">Siding</span><span class="ds">Coming next.</span></a>
+        <a class="se-trade soon" href="#"><span class="ic">🎨</span><span class="tt">Painting</span><span class="ds">Coming next.</span></a>
+        <a class="se-trade soon" href="#"><span class="ic">🧱</span><span class="tt">Drywall</span><span class="ds">Coming next.</span></a>
+        <a class="se-trade soon" href="#"><span class="ic">⚡</span><span class="tt">Electrical</span><span class="ds">Coming next.</span></a>
+      </div>
+
+      <div id="seSetup" style="display:none" class="se-empty">
+        The sales lists don't exist in SharePoint yet.<br><br>
+        <button class="btn" id="seSetupBtn">⚙️ Create the SharePoint lists now</button>
+        <div id="seSetupMsg" style="margin-top:10px;font-size:12.5px"></div>
+      </div>
+
+      <div class="se-head"><h2>Saved estimates</h2>
+        <input id="seSearch" type="search" placeholder="Search client, address, status…" style="max-width:260px">
+        <button class="btn btn-ghost btn-sm" id="seReload">↻</button></div>
+      <div id="seList"><div class="se-empty">Loading…</div></div>
+
+      <div class="se-head"><h2>Reference projects (comps)</h2>
+        <button class="btn btn-sm" id="refAdd">+ Add past project</button></div>
+      <p class="se-sub">Completed projects the estimator compares against. Keep these accurate — they drive every benchmark.</p>
+      <div id="refList"><div class="se-empty">Loading…</div></div>
+    </div>
+
+    <!-- reference project editor -->
+    <div class="se-overlay" id="refModal">
+      <div class="se-modal">
+        <h3 id="refTitle">Add past project</h3>
+        <div class="se-grid">
+          <div><label>Project ref (ID)</label><input id="r_ref" placeholder="DCR-DECK-007"></div>
+          <div><label>Project name</label><input id="r_name"></div>
+          <div><label>City</label><input id="r_city"></div>
+          <div><label>Project type</label>
+            <select id="r_type"><option>new-deck</option><option>resurface</option><option>deck-expansion</option><option>partial-rebuild</option></select></div>
+          <div><label>Complexity</label>
+            <select id="r_cx"><option>standard</option><option>moderate</option><option>complex</option></select></div>
+          <div><label>Completed date</label><input id="r_done" type="date"></div>
+          <div><label>Decking area (SF)</label><input id="r_sf" type="number" min="0"></div>
+          <div><label>Framing area (SF)</label><input id="r_frame" type="number" min="0"></div>
+          <div><label>Railing (LF)</label><input id="r_rail" type="number" min="0"></div>
+          <div><label>Stairs</label><input id="r_stairs" type="number" min="0"></div>
+          <div><label>Final price ($)</label><input id="r_price" type="number" min="0"></div>
+          <div><label>Total man-hours</label><input id="r_hours" type="number" min="0"></div>
+          <div><label>Decking manufacturer</label><input id="r_mfr" placeholder="Trex / TimberTech…"></div>
+          <div><label>Product line</label><input id="r_line"></div>
+          <div class="full"><label>Notes</label><textarea id="r_notes" rows="2"></textarea></div>
+          <div><label>Active as reference</label>
+            <select id="r_active"><option value="true">Yes</option><option value="false">No</option></select></div>
+          <div id="r_cpsWrap"><label>Cost / SF <span style="color:var(--text-muted);font-weight:400">(auto)</span></label>
+            <input id="r_cps" disabled></div>
+        </div>
+        <div class="se-actions">
+          <button class="btn btn-ghost" id="refCancel">Cancel</button>
+          <button class="btn btn-danger" id="refDelete" style="display:none">Delete</button>
+          <button class="btn" id="refSave">Save</button>
+        </div>
+        <div id="refMsg" style="font-size:12.5px;margin-top:8px"></div>
+      </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="common.js"></script>
+    <script src="estimates.js"></script>
+  </body>
+</html>

@@ -8,6 +8,11 @@
     var pp = profile.permissions || {};
     var ts = profile.tsScope;
     var isLeadOrMgr = ts === "*" || (ts && ts.managed && ts.managed.length);
+    var flags = profile.flags || {};
+    // salesEstimates flag; tokens issued before the flag existed fall back to role
+    var canSales = "salesEstimates" in flags
+      ? flags.salesEstimates === true
+      : profile.role === "Admin" || profile.role === "Manager";
     var sections = [];
 
     sections.push({ label: "Field & Time", cards: [
@@ -22,6 +27,7 @@
         links: [["Sales view","board.html?view=sales"],["Marketing view","board.html?view=marketing"],["Accounting view","board.html?view=accounting"]] },
       { href: "plans.html", ic: "📐", tt: "Floor Plans", ds: "Open plan PDFs — measure, annotate, and build takeoffs.", show: !!pp.project },
       { href: "logs.html", ic: "📜", tt: "Log History", ds: "Today's project logs, grouped by project — or any period.", show: !!pp.projectLog },
+      { href: "estimates.html", ic: "💰", tt: "Sales Estimates", ds: "Estimate decks & more from completed-project history.", show: canSales },
       { href: "leads.html", ic: "📞", tt: "Leads", ds: "Sales pipeline: track contacts, convert to projects.", show: !!pp.leads },
       { href: "marketing.html", ic: "📣", tt: "Marketing Tasks", ds: "Billable marketing work — done, invoiced, paid.", show: !!pp.marketingTasks },
     ]});
