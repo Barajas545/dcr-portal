@@ -253,9 +253,66 @@
   }
   async function loadCatalog() {
     if (state.catalog) return state.catalog;
+    // SharePoint Materials Library first (live-managed, with photos); the
+    // shipped deck-materials.json is the resilience fallback.
+    try {
+      var d = await DCR.api("/api/portal?action=sales&part=materials&trade=deck");
+      var rows = d.materials || [];
+      var prodRows = rows.filter(function (r2) { return r2.itemKind === "product" && r2.itemStatus !== "retired"; });
+      if (prodRows.length) {
+        state.catalog = {
+          source: "sharepoint",
+          products: prodRows.map(function (pr) {
+            var det = {};
+            try { det = JSON.parse(pr.detailsJson || "{}"); } catch (e) {}
+            var colors = rows
+              .filter(function (c) { return c.itemKind === "color" && c.materialId === pr.materialId && c.itemStatus !== "retired"; })
+              .map(function (c) {
+                return { colorId: c.itemId, name: c.itemName, status: c.itemStatus,
+                  manufacturerUrl: c.manufacturerUrl, pictureUrl: c.pictureUrl, pictureItemId: c.pictureItemId };
+              });
+            return {
+              materialId: pr.materialId, brandName: pr.brandName, officialName: pr.itemName,
+              status: pr.itemStatus, marketTier: pr.marketTier,
+              shortDescription: pr.description, warrantySummary: pr.warrantySummary,
+              selectable: pr.selectable !== false && pr.itemStatus === "active",
+              pictureUrl: pr.pictureUrl, pictureItemId: pr.pictureItemId,
+              colors: colors,
+              profiles: det.profiles || [],
+            };
+          }),
+        };
+        return state.catalog;
+      }
+    } catch (e) { /* fall through to the static file */ }
     var r = await fetch("deck-materials.json");
-    state.catalog = await r.json();
+    var raw = await r.json();
+    (raw.products || []).forEach(function (p) { p.selectable = p.status === "active"; });
+    state.catalog = raw;
     return state.catalog;
+  }
+
+  // Post-render picture hydration: uploaded photos need an authenticated blob
+  // fetch; pasted URLs load directly. Images stay hidden until they load.
+  function hydratePics(scope) {
+    scope.querySelectorAll("img[data-pic-item], img[data-pic-url]").forEach(function (img) {
+      img.onload = function () {
+        img.style.display = "";
+        var ph = img.parentElement && img.parentElement.querySelector(".picph");
+        if (ph) ph.style.display = "none";
+      };
+      var itemId = img.getAttribute("data-pic-item"), url = img.getAttribute("data-pic-url");
+      if (itemId) {
+        DCR.blobUrl("/api/portal?action=sales&part=image&id=" + encodeURIComponent(itemId))
+          .then(function (u) { img.src = u; })
+          .catch(function () { if (url) img.src = url; });
+      } else if (url) img.src = url;
+    });
+  }
+  function picAttrs(o) {
+    if (o && o.pictureItemId) return ' data-pic-item="' + esc(o.pictureItemId) + '"' + (o.pictureUrl ? ' data-pic-url="' + esc(o.pictureUrl) + '"' : "");
+    if (o && o.pictureUrl) return ' data-pic-url="' + esc(o.pictureUrl) + '"';
+    return "";
   }
 
   /* ══ step navigation ══ */
@@ -431,15 +488,22 @@
       return;
     }
     var cards = products().map(function (pr) {
-      var selectable = pr.status === "active";
+      var selectable = pr.selectable !== undefined ? pr.selectable !== false : pr.status === "active";
       var isPrimary = state.sel.primary && state.sel.primary.materialId === pr.materialId;
       var isAlt = state.sel.alternative && state.sel.alternative.materialId === pr.materialId;
       var cls = "ed-mat" + (isPrimary ? " sel" : "") + (isAlt ? " alt" : "") + (selectable ? "" : " dis");
+      var thumb = (pr.pictureItemId || pr.pictureUrl)
+        ? '<span style="width:46px;height:46px;border-radius:9px;overflow:hidden;flex-shrink:0;background:var(--surface-2);display:inline-flex">' +
+          '<img style="display:none;width:100%;height:100%;object-fit:cover"' + picAttrs(pr) + ' alt=""></span>'
+        : "";
       var colorChips = "", profChips = "";
       if (isPrimary) {
         colorChips = '<div class="ed-chips">' + (pr.colors || []).map(function (c) {
           var on = state.sel.primary.colorId === c.colorId;
-          return '<span class="ed-chip' + (on ? " on" : "") + '" data-color="' + esc(c.colorId) + '">' + esc(c.name) + "</span>";
+          var sw = (c.pictureItemId || c.pictureUrl)
+            ? '<img style="display:none;width:18px;height:18px;border-radius:4px;object-fit:cover;vertical-align:-4px;margin-right:5px"' + picAttrs(c) + ' alt="">'
+            : "";
+          return '<span class="ed-chip' + (on ? " on" : "") + '" data-color="' + esc(c.colorId) + '">' + sw + esc(c.name) + "</span>";
         }).join("") + "</div>";
         profChips = '<div class="ed-chips">' + (pr.profiles || []).map(function (f) {
           var on = state.sel.primary.profileId === f.profileId;
@@ -448,8 +512,8 @@
         }).join("") + "</div>";
       }
       return '<div class="' + cls + '" data-mat="' + esc(pr.materialId) + '" data-selectable="' + selectable + '">' +
-        '<div class="hd"><div><b>' + esc(pr.brandName) + " " + esc(pr.officialName.replace(pr.brandName, "").trim() || pr.officialName) + "</b>" +
-        '<div style="font-size:12px;color:var(--text-muted);margin-top:2px">' + esc(pr.shortDescription || "") + "</div></div>" +
+        '<div class="hd"><div style="display:flex;gap:10px;align-items:center;min-width:0">' + thumb + '<div><b>' + esc(pr.brandName) + " " + esc(pr.officialName.replace(pr.brandName, "").trim() || pr.officialName) + "</b>" +
+        '<div style="font-size:12px;color:var(--text-muted);margin-top:2px">' + esc(pr.shortDescription || "") + "</div></div></div>" +
         '<div style="display:flex;gap:6px;align-items:center"><span class="ed-tier">' + esc(pr.marketTier || "") + "</span>" +
         (selectable
           ? '<button class="btn btn-sm btn-ghost altBtn" data-mat="' + esc(pr.materialId) + '">' + (isAlt ? "✓ Alternative" : "+ Alt") + "</button>"
@@ -468,6 +532,8 @@
       '<div class="ed-msg" id="s3msg" style="color:var(--err)"></div>' +
       '<div class="ed-nav"><button class="btn btn-ghost" id="s3back">← Similar projects</button>' +
       '<button class="btn" id="s3next">Review →</button></div></div>';
+
+    hydratePics(el("edApp"));
 
     document.querySelectorAll(".ed-mat").forEach(function (card) {
       card.querySelector(".hd").onclick = function (ev) {

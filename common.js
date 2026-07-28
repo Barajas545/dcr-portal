@@ -81,6 +81,20 @@
       location.href = "index.html";
     },
 
+    // Fetch an authenticated portal endpoint as a blob object-URL (for <img>
+    // tags that can't send Authorization headers). Cached per path.
+    _blobCache: {},
+    async blobUrl(path) {
+      if (DCR._blobCache[path]) return DCR._blobCache[path];
+      const res = await fetch(API_BASE + path, {
+        headers: { Authorization: "Bearer " + DCR.getToken() },
+      });
+      if (!res.ok) throw new Error("Image load failed (" + res.status + ")");
+      const url = URL.createObjectURL(await res.blob());
+      DCR._blobCache[path] = url;
+      return url;
+    },
+
     // Escape untrusted strings before inserting into HTML.
     esc(v) {
       return String(v ?? "").replace(/[&<>"']/g, (c) =>

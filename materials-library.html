@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DCR — Materials Library</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      .ml{--acc:#2f80d8; --acc-2:#1f6fc8; --tint:rgba(47,128,216,.12); --tint-2:rgba(47,128,216,.25);
+        --gold:#d6a13a; --ok:#2fa679; --err:#d9614f;
+        max-width:1020px; margin:0 auto; padding:16px 16px 70px;}
+      .ml-head{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:4px;}
+      .ml-head h2{margin:0; font-size:20px; flex:1;}
+      .ml-sub{font-size:13px; color:var(--text-muted); margin:2px 0 16px;}
+
+      .ml-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:14px;}
+      .ml-card{background:var(--surface); border:1px solid var(--border); border-radius:14px; overflow:hidden;
+        display:flex; flex-direction:column;}
+      .ml-pic{height:150px; background:var(--surface-2); display:flex; align-items:center; justify-content:center;
+        font-size:34px; color:var(--text-muted); position:relative; cursor:pointer;}
+      .ml-pic img{width:100%; height:100%; object-fit:cover;}
+      .ml-pic .tier{position:absolute; top:8px; left:8px; font-size:10.5px; font-weight:700; text-transform:uppercase;
+        letter-spacing:.05em; padding:3px 10px; border-radius:10px; background:rgba(0,0,0,.55); color:#fff;}
+      .ml-pic .stat{position:absolute; top:8px; right:8px; font-size:10.5px; font-weight:700;
+        padding:3px 10px; border-radius:10px; background:rgba(0,0,0,.55); color:#ffd47f;}
+      .ml-body{padding:12px 14px 14px; display:flex; flex-direction:column; gap:6px; flex:1;}
+      .ml-name{font-weight:700; font-size:15px;}
+      .ml-desc{font-size:12px; color:var(--text-muted); line-height:1.4; flex:1;}
+      .ml-colors{display:flex; gap:6px; flex-wrap:wrap; margin-top:4px;}
+      .ml-swatch{width:34px; height:34px; border-radius:8px; border:1.5px solid var(--border); overflow:hidden;
+        background:var(--surface-2); cursor:pointer; display:flex; align-items:center; justify-content:center;
+        font-size:9px; color:var(--text-muted); text-align:center; line-height:1.05;}
+      .ml-swatch img{width:100%; height:100%; object-fit:cover;}
+      .ml-swatch.addc{border-style:dashed; font-size:16px;}
+      .ml-actions{display:flex; gap:8px; margin-top:8px;}
+      .ml-empty{padding:30px; text-align:center; color:var(--text-muted); background:var(--surface);
+        border:1px solid var(--border); border-radius:12px;}
+
+      /* modal */
+      .ml-overlay{position:fixed; inset:0; background:rgba(0,0,0,.55); display:none;
+        align-items:center; justify-content:center; z-index:80; padding:14px;}
+      .ml-overlay.open{display:flex;}
+      .ml-modal{background:var(--surface); color:var(--text); border:1px solid var(--border);
+        border-radius:13px; width:100%; max-width:620px; max-height:92vh; overflow:auto; padding:20px;}
+      .ml-modal h3{margin:0 0 10px;}
+      .ml-mgrid{display:grid; grid-template-columns:1fr 1fr; gap:0 14px;}
+      .ml-mgrid .full{grid-column:1/-1;}
+      @media (max-width:560px){ .ml-mgrid{grid-template-columns:1fr;} }
+      .ml-mactions{display:flex; justify-content:flex-end; gap:8px; margin-top:14px;}
+      label{margin-top:10px;}
+      .ml-picprev{width:120px; height:120px; border-radius:10px; border:1px solid var(--border);
+        background:var(--surface-2); object-fit:cover; display:block;}
+      .ml-picrow{display:flex; gap:14px; align-items:flex-start; margin-top:6px;}
+    </style>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/png" href="icon-192.png" />
+  <link rel="apple-touch-icon" href="icon-180.png" />
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#171d25" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="DCR Portal" />
+  </head>
+  <body>
+    <div class="topbar">
+      <div class="brand"><img class="brand-logo" src="logo.png" alt="DCR Framing" /><h1 id="companyName">DCR Portal</h1></div>
+      <div class="top-actions">
+        <span class="pill" id="userPill">…</span>
+        <a class="btn btn-ghost btn-sm" href="estimates.html">← Estimates</a>
+        <button class="btn btn-ghost btn-sm" id="logoutBtn">Log out</button>
+      </div>
+    </div>
+
+    <div class="ml">
+      <div class="ml-head">
+        <h2>🧱 Materials Library</h2>
+        <input id="mlSearch" type="search" placeholder="Search materials, colors…" style="max-width:240px">
+        <button class="btn btn-sm" id="mlAdd">+ Add material</button>
+      </div>
+      <p class="ml-sub">The product lines and colors offered in estimates. Click a card to edit it, a color square to edit that color — add a photo to each so the estimate wizard shows them.</p>
+      <div id="mlGrid" class="ml-grid"></div>
+    </div>
+
+    <!-- editor modal (product or color) -->
+    <div class="ml-overlay" id="mlModal">
+      <div class="ml-modal">
+        <h3 id="mTitle">Edit material</h3>
+        <div class="ml-picrow">
+          <img class="ml-picprev" id="mPicPrev" alt="" />
+          <div style="flex:1">
+            <label>Picture URL <span style="color:var(--text-muted);font-weight:400">(paste a link…)</span></label>
+            <input id="mPicUrl" placeholder="https://…/photo.jpg">
+            <label>…or upload a photo <span style="color:var(--text-muted);font-weight:400">(max 3 MB)</span></label>
+            <input id="mPicFile" type="file" accept="image/png,image/jpeg,image/gif,image/webp">
+            <div id="mPicMsg" style="font-size:12px;color:var(--text-muted);margin-top:4px"></div>
+          </div>
+        </div>
+        <div class="ml-mgrid">
+          <div class="full"><label>Name</label><input id="mName"></div>
+          <div><label>Brand</label><input id="mBrand"></div>
+          <div id="mTierWrap"><label>Market tier</label>
+            <select id="mTier"><option>Entry</option><option>Value</option><option>Mid</option><option>Premium</option><option>Luxury</option></select></div>
+          <div><label>Status</label>
+            <select id="mStatus"><option value="active">Active</option><option value="pending_catalog_review">Pending review</option><option value="retired">Retired</option></select></div>
+          <div><label>Offered in estimates</label>
+            <select id="mSelectable"><option value="true">Yes</option><option value="false">No</option></select></div>
+          <div class="full" id="mDescWrap"><label>Description</label><textarea id="mDesc" rows="2"></textarea></div>
+          <div class="full" id="mHighWrap"><label>Sales highlights (one per line)</label><textarea id="mHigh" rows="2"></textarea></div>
+          <div><label>Warranty</label><input id="mWarranty" placeholder="25-years limited residential"></div>
+          <div><label>Manufacturer page</label><input id="mManUrl" placeholder="https://…"></div>
+        </div>
+        <div class="ml-mactions">
+          <button class="btn btn-ghost" id="mCancel">Cancel</button>
+          <button class="btn btn-danger" id="mDelete" style="display:none">Delete</button>
+          <button class="btn" id="mSave">Save</button>
+        </div>
+        <div id="mMsg" style="font-size:12.5px;margin-top:8px"></div>
+      </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="common.js"></script>
+    <script src="materials-library.js"></script>
+  </body>
+</html>
