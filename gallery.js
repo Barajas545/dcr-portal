@@ -153,7 +153,20 @@
         srcInto(img, p);
       });
       grid.querySelectorAll("[data-del]").forEach(function (b) {
-        b.onclick = function () { entries.splice(Number(b.dataset.del), 1); render(); changed(); };
+        b.onclick = function () {
+          // never silently discard work: say exactly what would be lost
+          var i = Number(b.dataset.del), e = entries[i] || {};
+          var what = e.cad
+            ? "Delete this DRAWING?\n\nIts CAD lines, dimensions and takeoff will be lost and cannot be undone."
+            : (e.ann && e.ann.items && e.ann.items.length)
+              ? "Delete this photo?\n\nIt has " + e.ann.items.length + " markup item" +
+                (e.ann.items.length === 1 ? "" : "s") + " (arrows/notes/measurements) that will be lost."
+              : "Delete this photo?\n\nThis cannot be undone.";
+          if (!confirm(what)) return;
+          entries.splice(i, 1);
+          render();
+          changed();
+        };
       });
       grid.querySelectorAll("[data-star]").forEach(function (b) {
         b.onclick = function () {

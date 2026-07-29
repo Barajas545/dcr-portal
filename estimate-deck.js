@@ -533,7 +533,11 @@
     });
     el("edNotesList").querySelectorAll(".delNote").forEach(function (b) {
       b.onclick = function () {
-        if (!confirm("Delete this voice note?")) return;
+        var n = list[Number(b.dataset.i)] || {};
+        var preview = (n.transcript || "").trim().replace(/\s+/g, " ").slice(0, 70);
+        if (!confirm("Delete this voice note?\n\nThe recording" +
+          (n.transcript ? ' and its transcript ("' + preview + (preview.length >= 70 ? "…" : "") + '")' : "") +
+          " will be removed from this estimate. This cannot be undone.")) return;
         list.splice(Number(b.dataset.i), 1);
         renderAudioList();
         autoSaveMedia();

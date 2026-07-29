@@ -16,7 +16,15 @@
   var SNAPS = [0.5, 1, 0.25, 0];        // ft: 6in → 1ft → 3in → off
   var ORTHO_STEPS = [45, 22.5, 90, 0];  // deg between allowed directions (0 = free)
   var TAKEOFF_SUGGEST = ["Deck area", "Decking", "Framing", "Railing", "Stairs",
-    "Fascia", "Posts", "Footings", "Beams", "Lights", "Doors", "Windows"];
+    "Fascia", "Posts", "Footings", "Beams", "Lights", "Doors", "Windows", "Gates", "Pillars"];
+  // tools whose symbol has a user-chosen size (asked on first use / re-tap)
+  var SIZE_TOOLS = {
+    door: { key: "doorW", title: "🚪 Door width", label: "Width", name: "Door", after: "tap on a wall to place it." },
+    window: { key: "winW", title: "🪟 Window width", label: "Width", name: "Window", after: "tap on a wall to place it." },
+    gate: { key: "gateW", title: "🚧 Gate width", label: "Width", name: "Gate", after: "tap on a railing to place it." },
+    stairs: { key: "stairW", title: "🪜 Stair width", label: "Width", name: "Stairs", after: "drag the run out from the deck." },
+    pillar: { key: "pillarSize", title: "▪ Pillar size", label: "Size (square)", name: "Pillar", after: "tap to place each one." },
+  };
   var ui = null, st = null;
 
   /* ── ui ── */
@@ -66,12 +74,19 @@
       '<button class="cs-tool" data-tool="select" title="Select / move">✥</button>' +
       '<button class="cs-tool" data-tool="pan" title="Pan (or drag with two fingers any time)">🖐</button>' +
       '<button class="cs-tool on" data-tool="line" title="Line / wall — live length">╱</button>' +
+      '<button class="cs-tool" data-tool="arc" title="Arc / curve — tap start, end, then a point on the curve">◡</button>' +
       '<button class="cs-tool" data-tool="rect" title="Rectangle — auto W×H + area">▭</button>' +
       '<button class="cs-tool" data-tool="poly" title="Outline — tap corners; tap the first corner to close">⬠</button>' +
       '<button class="cs-tool" data-tool="tri" title="Triangle — tap 3 corners">◺</button>' +
       '<button class="cs-tool" data-tool="circle" title="Circle — drag from the center">◯</button>' +
+      '<span style="width:6px"></span>' +
+      '<button class="cs-tool" data-tool="railing" title="Railing run — tap along the edge, ✓ Finish (lineal feet)">⌗</button>' +
+      '<button class="cs-tool" data-tool="beam" title="Beam / joist — drag the span">═</button>' +
+      '<button class="cs-tool" data-tool="stairs" title="Stairs — drag the run (tap the tool again for the width)">🪜</button>' +
+      '<button class="cs-tool" data-tool="gate" title="Gate on a railing (tap the tool again for the width)">🚧</button>' +
       '<button class="cs-tool" data-tool="door" title="Door symbol (tap the tool again to change the size)">🚪</button>' +
       '<button class="cs-tool" data-tool="window" title="Window symbol (tap the tool again to change the size)">🪟</button>' +
+      '<button class="cs-tool" data-tool="pillar" title="Pillar / column (tap the tool again for the size)">▪</button>' +
       '<button class="cs-tool" data-tool="post" title="Post marker">⊙</button>' +
       '<button class="cs-tool" data-tool="count" title="Count items — tap to drop numbered markers">🔢</button>' +
       '<button class="cs-tool" data-tool="dim" title="Dimension line">📏</button>' +
@@ -154,10 +169,50 @@
     var t = L2 ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L2)) : 0;
     return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
   }
+  /* ── arcs: defined by 3 taps — start, end, then a point the curve passes
+     through (standard 3-point arc). Everything downstream (length, hit-test,
+     takeoff) works off a sampled polyline, which keeps the math honest. ── */
+  function arcGeom(p0, p1, pm) {
+    var ax = p0[0], ay = p0[1], bx = pm[0], by = pm[1], cx = p1[0], cy = p1[1];
+    var d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by));
+    if (Math.abs(d) < 1e-9) return null; // three points in a line
+    var ux = ((ax * ax + ay * ay) * (by - cy) + (bx * bx + by * by) * (cy - ay) + (cx * cx + cy * cy) * (ay - by)) / d;
+    var uy = ((ax * ax + ay * ay) * (cx - bx) + (bx * bx + by * by) * (ax - cx) + (cx * cx + cy * cy) * (bx - ax)) / d;
+    var r = Math.hypot(ax - ux, ay - uy);
+    var a0 = Math.atan2(ay - uy, ax - ux);
+    var am = Math.atan2(by - uy, bx - ux);
+    var a1 = Math.atan2(cy - uy, cx - ux);
+    function norm(t) { t %= 2 * Math.PI; return t < 0 ? t + 2 * Math.PI : t; }
+    var em = norm(am - a0), e1 = norm(a1 - a0);
+    var sweep = em <= e1 ? e1 : e1 - 2 * Math.PI; // the way round that hits the mid point
+    return { c: [ux, uy], r: r, a0: a0, sweep: sweep, len: r * Math.abs(sweep) };
+  }
+  function arcPoints(it, n) {
+    var p = it.pts;
+    if (p.length < 3) return p.slice();
+    var g = arcGeom(p[0], p[1], p[2]);
+    if (!g) return [p[0], p[2], p[1]];
+    n = n || 40;
+    var out = [];
+    for (var i = 0; i <= n; i++) {
+      var a = g.a0 + g.sweep * (i / n);
+      out.push([g.c[0] + Math.cos(a) * g.r, g.c[1] + Math.sin(a) * g.r]);
+    }
+    return out;
+  }
+  function treadCount(it) {
+    return Math.max(1, Math.round(dist(it.pts[0], it.pts[1]) / (11 / 12))); // 11" treads
+  }
+
   // Every edge of an item, as [a,b] pairs (drives hit-testing, wall snapping
   // for openings, and lineal-foot takeoff).
   function segmentsOf(it) {
     var p = it.pts || [], out = [];
+    if (it.type === "arc") {
+      var ap = arcPoints(it, 24);
+      for (var k = 1; k < ap.length; k++) out.push([ap[k - 1], ap[k]]);
+      return out;
+    }
     if (it.type === "rect" && p.length === 2) {
       var c = [p[0], [p[1][0], p[0][1]], p[1], [p[0][0], p[1][1]]];
       for (var i = 0; i < 4; i++) out.push([c[i], c[(i + 1) % 4]]);
@@ -168,14 +223,18 @@
     return out;
   }
   function itemLength(it) {
-    return segmentsOf(it).reduce(function (s, g) { return s + dist(g[0], g[1]); }, 0);
+    if (it.type === "arc" && it.pts.length >= 3) {
+      var g = arcGeom(it.pts[0], it.pts[1], it.pts[2]);
+      if (g) return g.len;
+    }
+    return segmentsOf(it).reduce(function (s, g2) { return s + dist(g2[0], g2[1]); }, 0);
   }
-  // Openings sit ON a wall: find the nearest edge and align/center to it.
+  // Openings sit ON a wall/railing: find the nearest edge and align/center to it.
   function placeOpening(type, w) {
-    var width = type === "door" ? st.doorW : st.winW;
+    var width = type === "door" ? st.doorW : type === "gate" ? st.gateW : st.winW;
     var best = null, bd = 3; // ft search radius
     st.items.forEach(function (it) {
-      if (["line", "rect", "poly"].indexOf(it.type) === -1) return;
+      if (["line", "rect", "poly", "railing", "beam", "arc"].indexOf(it.type) === -1) return;
       segmentsOf(it).forEach(function (s) {
         var d = ptSeg(w, s[0], s[1]);
         if (d < bd) { bd = d; best = s; }
@@ -192,7 +251,7 @@
     var h = width / 2;
     return {
       type: type, color: st.color,
-      takeoff: type === "door" ? "Doors" : "Windows",
+      takeoff: type === "door" ? "Doors" : type === "gate" ? "Gates" : "Windows",
       pts: [[center[0] - dir[0] * h, center[1] - dir[1] * h],
             [center[0] + dir[0] * h, center[1] + dir[1] * h]],
     };
@@ -372,6 +431,107 @@
       }
       label(ctx, (a[0] + b[0]) / 2 + nx * 16, (a[1] + b[1]) / 2 + ny * 16,
         (it.type === "door" ? "D " : "W ") + fmtFtIn(dist(it.pts[0], it.pts[1])), it.color);
+    } else if (it.type === "arc") {
+      var ap = arcPoints(it, 48).map(toScreen);
+      ctx.beginPath();
+      ap.forEach(function (p, i) { i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]); });
+      ctx.stroke();
+      if (it.pts.length >= 3) {
+        var mid = ap[Math.floor(ap.length / 2)];
+        label(ctx, mid[0], mid[1] - 13, fmtFtIn(itemLength(it)), it.color);
+      }
+    } else if (it.type === "railing" && P.length >= 2) {
+      ctx.beginPath();
+      P.forEach(function (p, i) { i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]); });
+      ctx.stroke();
+      // baluster ticks along each run
+      ctx.lineWidth = 1.2;
+      for (var ri = 1; ri < P.length; ri++) {
+        var a3 = P[ri - 1], b3 = P[ri];
+        var L3 = Math.hypot(b3[0] - a3[0], b3[1] - a3[1]);
+        if (L3 < 6) continue;
+        var ux3 = (b3[0] - a3[0]) / L3, uy3 = (b3[1] - a3[1]) / L3;
+        var nx3 = -uy3 * 4, ny3 = ux3 * 4;
+        for (var d3 = 6; d3 < L3; d3 += 9) {
+          ctx.beginPath();
+          ctx.moveTo(a3[0] + ux3 * d3 + nx3, a3[1] + uy3 * d3 + ny3);
+          ctx.lineTo(a3[0] + ux3 * d3 - nx3, a3[1] + uy3 * d3 - ny3);
+          ctx.stroke();
+        }
+      }
+      var lastR = P[P.length - 1];
+      label(ctx, lastR[0], lastR[1] - 14, "Railing " + fmtFtIn(itemLength(it)), it.color);
+    } else if (it.type === "beam" && P.length === 2) {
+      ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.moveTo(P[0][0], P[0][1]); ctx.lineTo(P[1][0], P[1][1]); ctx.stroke();
+      ctx.save();
+      ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(P[0][0], P[0][1]); ctx.lineTo(P[1][0], P[1][1]); ctx.stroke();
+      ctx.restore();
+      label(ctx, (P[0][0] + P[1][0]) / 2, (P[0][1] + P[1][1]) / 2 - 14,
+        "Beam " + fmtFtIn(dist(it.pts[0], it.pts[1])), it.color);
+    } else if (it.type === "stairs" && P.length === 2) {
+      var wft = it.size || 4;
+      var L4 = dist(it.pts[0], it.pts[1]);
+      var ux4 = L4 > 1e-6 ? (it.pts[1][0] - it.pts[0][0]) / L4 : 1;
+      var uy4 = L4 > 1e-6 ? (it.pts[1][1] - it.pts[0][1]) / L4 : 0;
+      var px4 = -uy4 * (wft / 2), py4 = ux4 * (wft / 2);
+      var c1 = toScreen([it.pts[0][0] + px4, it.pts[0][1] + py4]);
+      var c2 = toScreen([it.pts[1][0] + px4, it.pts[1][1] + py4]);
+      var c3 = toScreen([it.pts[1][0] - px4, it.pts[1][1] - py4]);
+      var c4 = toScreen([it.pts[0][0] - px4, it.pts[0][1] - py4]);
+      ctx.beginPath();
+      ctx.moveTo(c1[0], c1[1]); ctx.lineTo(c2[0], c2[1]);
+      ctx.lineTo(c3[0], c3[1]); ctx.lineTo(c4[0], c4[1]); ctx.closePath();
+      ctx.stroke();
+      // treads
+      var n4 = treadCount(it);
+      ctx.lineWidth = 1.4;
+      for (var ti = 1; ti < n4; ti++) {
+        var f4 = ti / n4;
+        var s1 = toScreen([it.pts[0][0] + (it.pts[1][0] - it.pts[0][0]) * f4 + px4,
+                           it.pts[0][1] + (it.pts[1][1] - it.pts[0][1]) * f4 + py4]);
+        var s2 = toScreen([it.pts[0][0] + (it.pts[1][0] - it.pts[0][0]) * f4 - px4,
+                           it.pts[0][1] + (it.pts[1][1] - it.pts[0][1]) * f4 - py4]);
+        ctx.beginPath(); ctx.moveTo(s1[0], s1[1]); ctx.lineTo(s2[0], s2[1]); ctx.stroke();
+      }
+      label(ctx, (P[0][0] + P[1][0]) / 2, (P[0][1] + P[1][1]) / 2,
+        n4 + " treads · " + fmtFtIn(wft) + " wide", it.color);
+    } else if (it.type === "gate" && P.length === 2) {
+      var ag = Math.atan2(P[1][1] - P[0][1], P[1][0] - P[0][0]);
+      var wg = Math.hypot(P[1][0] - P[0][0], P[1][1] - P[0][1]);
+      var ngx = Math.cos(ag - Math.PI / 2), ngy = Math.sin(ag - Math.PI / 2);
+      ctx.save();
+      ctx.strokeStyle = "#fff"; ctx.lineWidth = 7;
+      ctx.beginPath(); ctx.moveTo(P[0][0], P[0][1]); ctx.lineTo(P[1][0], P[1][1]); ctx.stroke();
+      ctx.restore();
+      ctx.lineWidth = 2;
+      [P[0], P[1]].forEach(function (p) {
+        ctx.beginPath();
+        ctx.moveTo(p[0] + ngx * 6, p[1] + ngy * 6);
+        ctx.lineTo(p[0] - ngx * 6, p[1] - ngy * 6);
+        ctx.stroke();
+      });
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath(); ctx.arc(P[0][0], P[0][1], wg, ag - Math.PI / 2, ag, false); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(P[0][0], P[0][1]);
+      ctx.lineTo(P[0][0] + ngx * wg, P[0][1] + ngy * wg); ctx.stroke();
+      label(ctx, (P[0][0] + P[1][0]) / 2 + ngx * 16, (P[0][1] + P[1][1]) / 2 + ngy * 16,
+        "G " + fmtFtIn(dist(it.pts[0], it.pts[1])), it.color);
+    } else if (it.type === "pillar" && P.length === 1) {
+      var sPx = Math.max(6, (it.size || 0.5) * st.ppf);
+      ctx.lineWidth = 2;
+      ctx.fillStyle = it.color;
+      ctx.globalAlpha = 0.25;
+      ctx.fillRect(P[0][0] - sPx / 2, P[0][1] - sPx / 2, sPx, sPx);
+      ctx.globalAlpha = 1;
+      ctx.strokeRect(P[0][0] - sPx / 2, P[0][1] - sPx / 2, sPx, sPx);
+      // diagonal cross marks a column
+      ctx.beginPath();
+      ctx.moveTo(P[0][0] - sPx / 2, P[0][1] - sPx / 2); ctx.lineTo(P[0][0] + sPx / 2, P[0][1] + sPx / 2);
+      ctx.moveTo(P[0][0] + sPx / 2, P[0][1] - sPx / 2); ctx.lineTo(P[0][0] - sPx / 2, P[0][1] + sPx / 2);
+      ctx.stroke();
     } else if (it.type === "count" && P.length === 1) {
       ctx.globalAlpha = 0.9;
       ctx.beginPath(); ctx.arc(P[0][0], P[0][1], 9, 0, 7); ctx.fill();
@@ -407,9 +567,15 @@
     q("#csDelSel").style.display = it ? "" : "none";
     q("#csEditSel").style.display = it && it.type === "text" ? "" : "none";
     var dimBtn = q("#csDimSel");
-    if (it && (it.type === "line" || it.type === "dim" || it.type === "door" || it.type === "window")) {
+    if (it && ["line", "dim", "door", "window", "gate", "beam"].indexOf(it.type) !== -1) {
       dimBtn.style.display = "";
       dimBtn.textContent = "📐 " + fmtFtIn(dist(it.pts[0], it.pts[1]));
+    } else if (it && it.type === "stairs") {
+      dimBtn.style.display = "";
+      dimBtn.textContent = "📐 run " + fmtFtIn(dist(it.pts[0], it.pts[1])) + " × " + fmtFtIn(it.size || 4);
+    } else if (it && it.type === "pillar") {
+      dimBtn.style.display = "";
+      dimBtn.textContent = "📐 " + fmtFtIn(it.size || 0.5);
     } else if (it && it.type === "rect") {
       dimBtn.style.display = "";
       dimBtn.textContent = "📐 " + fmtFtIn(Math.abs(it.pts[1][0] - it.pts[0][0])) + " × " + fmtFtIn(Math.abs(it.pts[1][1] - it.pts[0][1]));
@@ -436,23 +602,51 @@
     var it = st.sel >= 0 ? st.items[st.sel] : null;
     if (!it) return;
     var isRect = it.type === "rect", isCircle = it.type === "circle";
-    if (!isRect && !isCircle && ["line", "dim", "door", "window"].indexOf(it.type) === -1) return;
+    var isStairs = it.type === "stairs", isPillar = it.type === "pillar";
+    if (!isRect && !isCircle && !isStairs && !isPillar &&
+        ["line", "dim", "door", "window", "gate", "beam"].indexOf(it.type) === -1) return;
+    var twoRow = isRect || isStairs;
     q("#csPromptText").style.display = "none";
     q("#csPromptDims").style.display = "";
-    q("#csDimRowB").style.display = isRect ? "flex" : "none";
-    q("#csDimLabelA").textContent = (isRect ? "Width" : isCircle ? "Diameter" : "Length") + " — feet";
+    q("#csDimRowB").style.display = twoRow ? "flex" : "none";
+    q("#csDimLabelA").textContent =
+      (isRect ? "Width" : isCircle ? "Diameter" : isStairs ? "Run length" : isPillar ? "Size" : "Length") + " — feet";
     var a = isRect ? splitFtIn(Math.abs(it.pts[1][0] - it.pts[0][0]))
       : isCircle ? splitFtIn(dist(it.pts[0], it.pts[1]) * 2)
+      : isPillar ? splitFtIn(it.size || 0.5)
       : splitFtIn(dist(it.pts[0], it.pts[1]));
     q("#csDimAft").value = a[0]; q("#csDimAin").value = a[1];
     if (isRect) {
       var b = splitFtIn(Math.abs(it.pts[1][1] - it.pts[0][1]));
       q("#csDimBft").value = b[0]; q("#csDimBin").value = b[1];
     }
-    openPromptRaw(isRect ? "📐 Exact size (width × height)" : isCircle ? "📐 Exact diameter" : "📐 Exact length", function () {
+    if (twoRow) {
+      var bFeet = isStairs ? (it.size || 4) : Math.abs(it.pts[1][1] - it.pts[0][1]);
+      var bb = splitFtIn(bFeet);
+      q("#csDimBft").value = bb[0]; q("#csDimBin").value = bb[1];
+      q("#csDimRowB").querySelector("label").textContent = (isStairs ? "Width" : "Height") + " — feet";
+    }
+    openPromptRaw(isRect ? "📐 Exact size (width × height)"
+      : isStairs ? "📐 Exact stairs (run × width)"
+      : isCircle ? "📐 Exact diameter"
+      : isPillar ? "📐 Exact pillar size" : "📐 Exact length", function () {
       var lenA = (Number(q("#csDimAft").value) || 0) + (Number(q("#csDimAin").value) || 0) / 12;
       if (!(lenA > 0)) return;
       snapshot();
+      if (isPillar) { it.size = lenA; render(); return; }
+      if (isStairs) {
+        var wid = (Number(q("#csDimBft").value) || 0) + (Number(q("#csDimBin").value) || 0) / 12;
+        if (wid > 0) it.size = wid;
+        var curS = dist(it.pts[0], it.pts[1]);
+        if (curS < 1e-6) it.pts[1] = [it.pts[0][0] + lenA, it.pts[0][1]];
+        else {
+          var fS = lenA / curS;
+          it.pts[1] = [it.pts[0][0] + (it.pts[1][0] - it.pts[0][0]) * fS,
+                       it.pts[0][1] + (it.pts[1][1] - it.pts[0][1]) * fS];
+        }
+        render();
+        return;
+      }
       if (isCircle) {
         var cur0 = dist(it.pts[0], it.pts[1]);
         var ux = cur0 > 1e-6 ? (it.pts[1][0] - it.pts[0][0]) / cur0 : 1;
@@ -500,6 +694,13 @@
       var it = st.items[i], pts = it.pts;
       if (it.type === "text") { if (dist(w, pts[0]) < Math.max(th * 3, (it.text || "").length * 4 / st.ppf)) return i; continue; }
       if (it.type === "post" || it.type === "count") { if (dist(w, pts[0]) < th * 2) return i; continue; }
+      if (it.type === "pillar") { if (dist(w, pts[0]) < Math.max(th * 1.5, (it.size || 0.5))) return i; continue; }
+      if (it.type === "stairs" && pts.length === 2) {
+        // anywhere within the run's footprint
+        var wf = (it.size || 4) / 2;
+        if (ptSeg(w, pts[0], pts[1]) < Math.max(th, wf)) return i;
+        continue;
+      }
       if (it.type === "circle" && pts.length === 2) {
         // the ring itself, or anywhere inside a small circle
         var rr = dist(pts[0], pts[1]);
@@ -528,7 +729,12 @@
      AND their perimeter (railing/fascia), listed separately. */
   function defaultLabel(it) {
     if (it.type === "rect" || it.type === "circle" || (it.type === "poly" && it.closed)) return "Deck area";
-    if (it.type === "line" || it.type === "poly") return "Lineal";
+    if (it.type === "line" || it.type === "poly" || it.type === "arc") return "Lineal";
+    if (it.type === "railing") return "Railing";
+    if (it.type === "beam") return "Beams";
+    if (it.type === "stairs") return "Stairs";
+    if (it.type === "gate") return "Gates";
+    if (it.type === "pillar") return "Pillars";
     if (it.type === "dim") return "Dimension";
     if (it.type === "post") return "Posts";
     if (it.type === "door") return "Doors";
@@ -554,9 +760,13 @@
       if (a > 0) {
         add(areas, lbl, a);
         add(lineals, lbl + " perimeter", itemLength(it)); // railing / fascia runs
-      } else if (it.type === "line" || it.type === "poly" || it.type === "dim") {
+      } else if (["line", "poly", "dim", "arc", "railing", "beam"].indexOf(it.type) !== -1) {
         add(lineals, lbl, itemLength(it));
-      } else if (["post", "count", "door", "window"].indexOf(it.type) !== -1) {
+      } else if (it.type === "stairs") {
+        add(counts, lbl, 1);
+        // tread material: width × number of treads
+        add(lineals, lbl + " treads", (it.size || 4) * treadCount(it));
+      } else if (["post", "count", "door", "window", "gate", "pillar"].indexOf(it.type) !== -1) {
         add(counts, lbl, 1);
       }
     });
@@ -685,22 +895,41 @@
       render();
       return;
     }
-    if (t === "door" || t === "window") {
+    if (t === "door" || t === "window" || t === "gate") {
       snapshot();
       st.items.push(placeOpening(t, raw));
       render();
       return;
     }
-    if (t === "poly" || t === "tri") {
-      var cap = t === "tri" ? 3 : 0; // triangles auto-close at 3 corners
-      if (!st.draw) { st.draw = { type: "poly", pts: [w], color: st.color, _cap: cap }; q("#csCtx").classList.add("open"); }
+    if (t === "pillar") {
+      snapshot();
+      st.items.push({ type: "pillar", pts: [w], color: st.color, size: st.pillarSize, takeoff: "Pillars" });
+      render();
+      return;
+    }
+    // multi-tap tools: outline, triangle (3), arc (3), railing run
+    if (t === "poly" || t === "tri" || t === "arc" || t === "railing") {
+      var cap = (t === "tri" || t === "arc") ? 3 : 0;
+      var kind = t === "tri" ? "poly" : t;
+      if (!st.draw) { st.draw = { type: kind, pts: [w], color: st.color, _cap: cap }; q("#csCtx").classList.add("open"); }
       else {
-        // tapping the first point closes the shape
-        if (st.draw.pts.length >= 3 && dist(raw, st.draw.pts[0]) < 14 / st.ppf) { finishPoly(true); return; }
-        st.draw.pts.push(applyOrtho(st.draw.pts[st.draw.pts.length - 1], w));
-        if (st.draw._cap && st.draw.pts.length >= st.draw._cap) { finishPoly(true); return; }
+        // tapping the first point closes an outline
+        if (kind === "poly" && st.draw.pts.length >= 3 && dist(raw, st.draw.pts[0]) < 14 / st.ppf) { finishPoly(true); return; }
+        // arcs take their 3rd point raw (the curve's bulge), not ortho-locked
+        st.draw.pts.push(kind === "arc" && st.draw.pts.length === 2 ? w : applyOrtho(st.draw.pts[st.draw.pts.length - 1], w));
+        if (st.draw._cap && st.draw.pts.length >= st.draw._cap) { finishPoly(kind === "poly"); return; }
       }
       render();
+      return;
+    }
+    if (t === "stairs") {
+      st.draw = { type: "stairs", pts: [w, w], color: st.color, size: st.stairW, takeoff: "Stairs" };
+      st.drag = { mode: "draw" };
+      return;
+    }
+    if (t === "beam") {
+      st.draw = { type: "beam", pts: [w, w], color: st.color, takeoff: "Beams" };
+      st.drag = { mode: "draw" };
       return;
     }
     // line / rect / dim / circle: drag from anchor
@@ -723,7 +952,7 @@
       render();
       return;
     }
-    if (!st.drag && !(st.draw && st.draw.type === "poly")) return;
+    if (!st.drag && !(st.draw && isMultiTap(st.draw.type))) return;
     var raw = toWorld(e.clientX, e.clientY);
     if (st.drag && st.drag.mode === "pan") {
       st.offX = st.drag.offX - (e.clientX - st.drag.x) / st.ppf;
@@ -759,7 +988,7 @@
       render();
       return;
     }
-    if (st.draw && st.draw.type === "poly") {
+    if (st.draw && isMultiTap(st.draw.type)) {
       st.draw._hover = applyOrtho(st.draw.pts[st.draw.pts.length - 1], snapPoint(raw));
       renderPolyPreview();
     }
@@ -769,6 +998,11 @@
     render();
     if (!st.draw || !st.draw._hover) return;
     var ctx = q("#csCanvas").getContext("2d");
+    // an arc with both ends placed previews the real curve through the cursor
+    if (st.draw.type === "arc" && st.draw.pts.length === 2) {
+      drawItem(ctx, { type: "arc", color: st.draw.color, pts: [st.draw.pts[0], st.draw.pts[1], st.draw._hover] }, false);
+      return;
+    }
     var a = toScreen(st.draw.pts[st.draw.pts.length - 1]), b = toScreen(st.draw._hover);
     ctx.save();
     ctx.strokeStyle = st.color; ctx.setLineDash([6, 5]); ctx.lineWidth = 1.5;
@@ -801,13 +1035,16 @@
     st.drag = null;
   }
 
+  function isMultiTap(type) { return ["poly", "arc", "railing"].indexOf(type) !== -1; }
+
   function finishPoly(close) {
-    if (!st.draw || st.draw.type !== "poly") return;
+    if (!st.draw || !isMultiTap(st.draw.type)) return;
     var d = st.draw;
     st.draw = null;
     q("#csCtx").classList.remove("open");
-    if (d.pts.length >= 2) {
-      d.closed = !!close && d.pts.length >= 3;
+    var enough = d.type === "arc" ? d.pts.length >= 3 : d.pts.length >= 2;
+    if (enough) {
+      if (d.type === "poly") d.closed = !!close && d.pts.length >= 3;
       delete d._hover;
       delete d._cap;
       snapshot();
@@ -925,6 +1162,12 @@
     poly: "Outline — tap each corner. Tap the FIRST corner to close the shape (area computes), or ✓ Finish.",
     tri: "Triangle — tap 3 corners; it closes itself and labels each side plus the area.",
     circle: "Circle — drag from the center out. Shows diameter and area.",
+    arc: "Arc — tap the start, then the end, then a point the curve passes through. Length counts as lineal feet.",
+    railing: "Railing — tap along the edge it follows, then ✓ Finish. Total lineal feet is labeled and totalled in the takeoff.",
+    beam: "Beam / joist — drag the span. Counts as lineal feet.",
+    stairs: "Stairs — drag the run out from the deck edge; treads draw automatically. Tap the 🪜 tool again to change the width.",
+    gate: "Gate — tap on a railing; it aligns and shows the swing. Tap the 🚧 tool again to change the width.",
+    pillar: "Pillar / column — tap to place. Tap the ▪ tool again to change the size.",
     door: "Door — tap on a wall; the symbol aligns to it. Tap the 🚪 tool again to change the width.",
     window: "Window — tap on a wall; the symbol aligns to it. Tap the 🪟 tool again to change the width.",
     count: "Count — tap to drop numbered markers. Tap the 🔢 tool again to change what you're counting.",
@@ -941,22 +1184,21 @@
 
   function setTool(t) {
     var reselect = st.tool === t;
-    if (st.draw && st.draw.type === "poly") finishPoly(false);
+    if (st.draw && isMultiTap(st.draw.type)) finishPoly(false);
     st.tool = t;
     if (t !== "select" && st.sel >= 0) { st.sel = -1; }
     ui.querySelectorAll(".cs-tool[data-tool]").forEach(function (b) { b.classList.toggle("on", b.dataset.tool === t); });
     q("#csHint").textContent = HINTS[t] || "";
     render();
-    // openings and counts ask for their size/label the first time (tap the tool
-    // again any time to change it)
-    if ((t === "door" || t === "window") && (reselect || !st[t === "door" ? "doorAsked" : "winAsked"])) {
-      st[t === "door" ? "doorAsked" : "winAsked"] = true;
-      openFtInPrompt(t === "door" ? "🚪 Door width" : "🪟 Window width", "Width",
-        t === "door" ? st.doorW : st.winW,
-        function (v) {
-          if (t === "door") st.doorW = v; else st.winW = v;
-          q("#csHint").textContent = (t === "door" ? "Door" : "Window") + " set to " + fmtFtIn(v) + " — tap on a wall to place it.";
-        });
+    // sized symbols ask for their dimension the first time (tap the tool again
+    // any time to change it)
+    var sz = SIZE_TOOLS[t];
+    if (sz && (reselect || !st._asked[t])) {
+      st._asked[t] = true;
+      openFtInPrompt(sz.title, sz.label, st[sz.key], function (v) {
+        st[sz.key] = v;
+        q("#csHint").textContent = sz.name + " set to " + fmtFtIn(v) + " — " + sz.after;
+      });
     }
     if (t === "count" && (reselect || !st.countLabel)) {
       openPrompt("🔢 What are you counting?", function () {
@@ -1082,7 +1324,8 @@
       offX: -2, offY: -2, ppf: 36,
       snapIdx: 0, snapFt: SNAPS[0], grid: true,
       orthoIdx: 0, orthoDeg: ORTHO_STEPS[0],
-      doorW: 3, winW: 4, countLabel: "", doorAsked: false, winAsked: false,
+      doorW: 3, winW: 4, gateW: 3, stairW: 4, pillarSize: 0.5,
+      countLabel: "", _asked: {},
       pointers: {}, pinch: null,
     };
     q("#csTitle").textContent = opts.title || "New drawing";
