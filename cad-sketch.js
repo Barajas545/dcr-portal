@@ -11,12 +11,26 @@
    API: DCRCad.open({ entry|null, title, getPathParts, onSave(entryPatch) })
         entryPatch = { id, name, cad } — caller merges into its gallery entry. */
 (function () {
-  var COLORS = ["#111111", "#e53935", "#2f80d8", "#2fa679"];
+  var COLORS = ["#111111", "#e53935", "#1f6fc8", "#1f9d55", "#8b5a2b"];
+  // Per-tool default look, so a plan reads by trade at a glance. Used when the
+  // colour picker is on "A" (auto); picking a swatch overrides everything.
+  var DECK_BROWN = "#8b5a2b", DECK_FILL = "rgba(193,154,107,0.28)";
+  var TYPE_STYLE = {
+    rect:    { color: DECK_BROWN, fill: DECK_FILL },   // deck areas
+    poly:    { color: DECK_BROWN, fill: DECK_FILL },
+    circle:  { color: DECK_BROWN, fill: DECK_FILL },
+    stairs:  { color: DECK_BROWN },
+    beam:    { color: "#1f9d55" },                     // green
+    pillar:  { color: "#1f9d55" },
+    railing: { color: "#1f6fc8" },                     // blue
+    joist:   { color: "#d9b83c" },                     // light yellow, dotted
+  };
+  var FILLED = { rect: 1, poly: 1, circle: 1 };
   var TOL = 16;
   var SNAPS = [0.5, 1, 0.25, 0];        // ft: 6in → 1ft → 3in → off
   var ORTHO_STEPS = [45, 22.5, 90, 0];  // deg between allowed directions (0 = free)
   var TAKEOFF_SUGGEST = ["Deck area", "Decking", "Framing", "Railing", "Stairs",
-    "Fascia", "Posts", "Footings", "Beams", "Lights", "Doors", "Windows", "Gates", "Pillars"];
+    "Fascia", "Posts", "Footings", "Beams", "Joists", "Lights", "Doors", "Windows", "Gates", "Pillars"];
   // tools whose symbol has a user-chosen size (asked on first use / re-tap)
   var SIZE_TOOLS = {
     door: { key: "doorW", title: "🚪 Door width", label: "Width", name: "Door", after: "tap on a wall to place it." },
@@ -42,6 +56,8 @@
       ".cs-tool.tog.act{background:#1f6f4a;border-color:#2fa679;color:#fff}" +
       ".cs-color{width:22px;height:22px;border-radius:50%;border:2px solid transparent;cursor:pointer;flex-shrink:0}" +
       ".cs-color.on{border-color:#fff;box-shadow:0 0 0 2px rgba(47,128,216,.5)}" +
+      ".cs-auto{font-size:10px;font-weight:800;color:#fff;text-align:center;line-height:19px;" +
+      "text-shadow:0 1px 2px rgba(0,0,0,.7);background:linear-gradient(135deg,#8b5a2b 0 25%,#1f6fc8 25% 50%,#1f9d55 50% 75%,#d9b83c 75% 100%)}" +
       ".cs-btn{padding:7px 12px;font-size:12.5px;font-weight:600;border-radius:7px;cursor:pointer;border:1px solid #2a333d;background:#171d25;color:#e6ebf1}" +
       ".cs-btn.primary{background:#2f80d8;border-color:#2f80d8;color:#fff}" +
       ".cs-stage{flex:1;position:relative;overflow:hidden;touch-action:none;background:#fff}" +
@@ -81,7 +97,8 @@
       '<button class="cs-tool" data-tool="circle" title="Circle — drag from the center">◯</button>' +
       '<span style="width:6px"></span>' +
       '<button class="cs-tool" data-tool="railing" title="Railing run — tap along the edge, ✓ Finish (lineal feet)">⌗</button>' +
-      '<button class="cs-tool" data-tool="beam" title="Beam / joist — drag the span">═</button>' +
+      '<button class="cs-tool" data-tool="beam" title="Beam — drag the span (green)">═</button>' +
+      '<button class="cs-tool" data-tool="joist" title="Floor joist — dotted line (drag the span)">⋯</button>' +
       '<button class="cs-tool" data-tool="stairs" title="Stairs — drag the run (tap the tool again for the width)">🪜</button>' +
       '<button class="cs-tool" data-tool="gate" title="Gate on a railing (tap the tool again for the width)">🚧</button>' +
       '<button class="cs-tool" data-tool="door" title="Door symbol (tap the tool again to change the size)">🚪</button>' +
@@ -200,6 +217,30 @@
     }
     return out;
   }
+  /* ── per-item styling (auto by tool, or the picked swatch) ── */
+  function hexToRgba(hex, a) {
+    var h = String(hex || "").replace("#", "");
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    var n = parseInt(h, 16);
+    if (!isFinite(n)) return "rgba(140,140,140," + a + ")";
+    return "rgba(" + ((n >> 16) & 255) + "," + ((n >> 8) & 255) + "," + (n & 255) + "," + a + ")";
+  }
+  function itemColor(kind) {
+    return st.color || (TYPE_STYLE[kind] && TYPE_STYLE[kind].color) || "#111111";
+  }
+  function itemFill(kind) {
+    if (!FILLED[kind]) return null;
+    return st.color ? hexToRgba(st.color, 0.18) : TYPE_STYLE[kind].fill;
+  }
+  function pointInPoly(p, pts) {
+    var inside = false;
+    for (var i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      var xi = pts[i][0], yi = pts[i][1], xj = pts[j][0], yj = pts[j][1];
+      if (((yi > p[1]) !== (yj > p[1])) && (p[0] < (xj - xi) * (p[1] - yi) / (yj - yi) + xi)) inside = !inside;
+    }
+    return inside;
+  }
+
   function treadCount(it) {
     return Math.max(1, Math.round(dist(it.pts[0], it.pts[1]) / (11 / 12))); // 11" treads
   }
@@ -250,7 +291,7 @@
     }
     var h = width / 2;
     return {
-      type: type, color: st.color,
+      type: type, color: itemColor(type),
       takeoff: type === "door" ? "Doors" : type === "gate" ? "Gates" : "Windows",
       pts: [[center[0] - dir[0] * h, center[1] - dir[1] * h],
             [center[0] + dir[0] * h, center[1] + dir[1] * h]],
@@ -355,6 +396,7 @@
     } else if (it.type === "rect" && P.length === 2) {
       var x = Math.min(P[0][0], P[1][0]), y = Math.min(P[0][1], P[1][1]);
       var w = Math.abs(P[1][0] - P[0][0]), h = Math.abs(P[1][1] - P[0][1]);
+      if (it.fill) { ctx.save(); ctx.fillStyle = it.fill; ctx.fillRect(x, y, w, h); ctx.restore(); }
       ctx.strokeRect(x, y, w, h);
       var wf = Math.abs(it.pts[1][0] - it.pts[0][0]), hf = Math.abs(it.pts[1][1] - it.pts[0][1]);
       label(ctx, x + w / 2, y - 12, fmtFtIn(wf), it.color);
@@ -365,6 +407,7 @@
       ctx.beginPath();
       P.forEach(function (p, i) { i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]); });
       if (it.closed) ctx.closePath();
+      if (it.closed && it.fill) { ctx.save(); ctx.fillStyle = it.fill; ctx.fill(); ctx.restore(); }
       ctx.stroke();
       for (var i2 = 1; i2 < it.pts.length; i2++) {
         var a = P[i2 - 1], b = P[i2];
@@ -395,7 +438,9 @@
       ctx.beginPath(); ctx.arc(P[0][0], P[0][1], 1.8, 0, 7); ctx.fill();
     } else if (it.type === "circle" && P.length === 2) {
       var rpx = Math.hypot(P[1][0] - P[0][0], P[1][1] - P[0][1]);
-      ctx.beginPath(); ctx.arc(P[0][0], P[0][1], rpx, 0, 7); ctx.stroke();
+      ctx.beginPath(); ctx.arc(P[0][0], P[0][1], rpx, 0, 7);
+      if (it.fill) { ctx.save(); ctx.fillStyle = it.fill; ctx.fill(); ctx.restore(); }
+      ctx.stroke();
       var rft = dist(it.pts[0], it.pts[1]);
       label(ctx, P[0][0], P[0][1] - 12, "Dia " + fmtFtIn(rft * 2), it.color);
       if (rpx > 34) label(ctx, P[0][0], P[0][1] + 9, (Math.round(Math.PI * rft * rft * 10) / 10) + " SF", "#1f6f4a", "rgba(220,245,232,.9)");
@@ -461,6 +506,13 @@
       }
       var lastR = P[P.length - 1];
       label(ctx, lastR[0], lastR[1] - 14, "Railing " + fmtFtIn(itemLength(it)), it.color);
+    } else if (it.type === "joist" && P.length === 2) {
+      ctx.lineWidth = 2;
+      ctx.setLineDash([3, 5]);
+      ctx.beginPath(); ctx.moveTo(P[0][0], P[0][1]); ctx.lineTo(P[1][0], P[1][1]); ctx.stroke();
+      ctx.setLineDash([]);
+      label(ctx, (P[0][0] + P[1][0]) / 2, (P[0][1] + P[1][1]) / 2 - 13,
+        fmtFtIn(dist(it.pts[0], it.pts[1])), "#8a7420");
     } else if (it.type === "beam" && P.length === 2) {
       ctx.lineWidth = 6;
       ctx.beginPath(); ctx.moveTo(P[0][0], P[0][1]); ctx.lineTo(P[1][0], P[1][1]); ctx.stroke();
@@ -567,7 +619,7 @@
     q("#csDelSel").style.display = it ? "" : "none";
     q("#csEditSel").style.display = it && it.type === "text" ? "" : "none";
     var dimBtn = q("#csDimSel");
-    if (it && ["line", "dim", "door", "window", "gate", "beam"].indexOf(it.type) !== -1) {
+    if (it && ["line", "dim", "door", "window", "gate", "beam", "joist"].indexOf(it.type) !== -1) {
       dimBtn.style.display = "";
       dimBtn.textContent = "📐 " + fmtFtIn(dist(it.pts[0], it.pts[1]));
     } else if (it && it.type === "stairs") {
@@ -604,7 +656,7 @@
     var isRect = it.type === "rect", isCircle = it.type === "circle";
     var isStairs = it.type === "stairs", isPillar = it.type === "pillar";
     if (!isRect && !isCircle && !isStairs && !isPillar &&
-        ["line", "dim", "door", "window", "gate", "beam"].indexOf(it.type) === -1) return;
+        ["line", "dim", "door", "window", "gate", "beam", "joist"].indexOf(it.type) === -1) return;
     var twoRow = isRect || isStairs;
     q("#csPromptText").style.display = "none";
     q("#csPromptDims").style.display = "";
@@ -702,16 +754,22 @@
         continue;
       }
       if (it.type === "circle" && pts.length === 2) {
-        // the ring itself, or anywhere inside a small circle
+        // the ring itself, or anywhere inside once it's filled
         var rr = dist(pts[0], pts[1]);
-        if (Math.abs(dist(w, pts[0]) - rr) < th || dist(w, pts[0]) < Math.min(rr, th * 2)) return i;
+        var dc = dist(w, pts[0]);
+        if (Math.abs(dc - rr) < th || dc < (it.fill ? rr : Math.min(rr, th * 2))) return i;
         continue;
       }
       if (it.type === "rect" && pts.length === 2) {
         var edges = segmentsOf(it);
         for (var c = 0; c < edges.length; c++) if (ptSeg(w, edges[c][0], edges[c][1]) < th) return i;
+        // filled decks are solid objects — tapping inside picks them up
+        if (it.fill &&
+            w[0] > Math.min(pts[0][0], pts[1][0]) && w[0] < Math.max(pts[0][0], pts[1][0]) &&
+            w[1] > Math.min(pts[0][1], pts[1][1]) && w[1] < Math.max(pts[0][1], pts[1][1])) return i;
         continue;
       }
+      if (it.type === "poly" && it.closed && it.fill && pts.length >= 3 && pointInPoly(w, pts)) return i;
       var segs = segmentsOf(it);
       for (var s = 0; s < segs.length; s++) if (ptSeg(w, segs[s][0], segs[s][1]) < th) return i;
     }
@@ -732,6 +790,7 @@
     if (it.type === "line" || it.type === "poly" || it.type === "arc") return "Lineal";
     if (it.type === "railing") return "Railing";
     if (it.type === "beam") return "Beams";
+    if (it.type === "joist") return "Joists";
     if (it.type === "stairs") return "Stairs";
     if (it.type === "gate") return "Gates";
     if (it.type === "pillar") return "Pillars";
@@ -760,7 +819,7 @@
       if (a > 0) {
         add(areas, lbl, a);
         add(lineals, lbl + " perimeter", itemLength(it)); // railing / fascia runs
-      } else if (["line", "poly", "dim", "arc", "railing", "beam"].indexOf(it.type) !== -1) {
+      } else if (["line", "poly", "dim", "arc", "railing", "beam", "joist"].indexOf(it.type) !== -1) {
         add(lineals, lbl, itemLength(it));
       } else if (it.type === "stairs") {
         add(counts, lbl, 1);
@@ -882,16 +941,16 @@
     if (t === "text") {
       openPrompt("📝 Text label", function () {
         var v = q("#csPromptInput").value.trim();
-        if (v) { snapshot(); st.items.push({ type: "text", pts: [w], color: st.color, text: v }); render(); }
+        if (v) { snapshot(); st.items.push({ type: "text", pts: [w], color: itemColor("text"), text: v }); render(); }
       });
       return;
     }
-    if (t === "post") { snapshot(); st.items.push({ type: "post", pts: [w], color: st.color, takeoff: "Posts" }); render(); return; }
+    if (t === "post") { snapshot(); st.items.push({ type: "post", pts: [w], color: itemColor("post"), takeoff: "Posts" }); render(); return; }
     if (t === "count") {
       var lbl = st.countLabel || "Count";
       var seq = st.items.filter(function (x) { return x.type === "count" && (x.takeoff || "Count") === lbl; }).length + 1;
       snapshot();
-      st.items.push({ type: "count", pts: [w], color: st.color, takeoff: lbl, seq: seq });
+      st.items.push({ type: "count", pts: [w], color: itemColor("count"), takeoff: lbl, seq: seq });
       render();
       return;
     }
@@ -903,7 +962,7 @@
     }
     if (t === "pillar") {
       snapshot();
-      st.items.push({ type: "pillar", pts: [w], color: st.color, size: st.pillarSize, takeoff: "Pillars" });
+      st.items.push({ type: "pillar", pts: [w], color: itemColor("pillar"), size: st.pillarSize, takeoff: "Pillars" });
       render();
       return;
     }
@@ -911,7 +970,7 @@
     if (t === "poly" || t === "tri" || t === "arc" || t === "railing") {
       var cap = (t === "tri" || t === "arc") ? 3 : 0;
       var kind = t === "tri" ? "poly" : t;
-      if (!st.draw) { st.draw = { type: kind, pts: [w], color: st.color, _cap: cap }; q("#csCtx").classList.add("open"); }
+      if (!st.draw) { st.draw = { type: kind, pts: [w], color: itemColor(kind), fill: itemFill(kind), _cap: cap }; q("#csCtx").classList.add("open"); }
       else {
         // tapping the first point closes an outline
         if (kind === "poly" && st.draw.pts.length >= 3 && dist(raw, st.draw.pts[0]) < 14 / st.ppf) { finishPoly(true); return; }
@@ -923,17 +982,22 @@
       return;
     }
     if (t === "stairs") {
-      st.draw = { type: "stairs", pts: [w, w], color: st.color, size: st.stairW, takeoff: "Stairs" };
+      st.draw = { type: "stairs", pts: [w, w], color: itemColor("stairs"), size: st.stairW, takeoff: "Stairs" };
       st.drag = { mode: "draw" };
       return;
     }
     if (t === "beam") {
-      st.draw = { type: "beam", pts: [w, w], color: st.color, takeoff: "Beams" };
+      st.draw = { type: "beam", pts: [w, w], color: itemColor("beam"), takeoff: "Beams" };
+      st.drag = { mode: "draw" };
+      return;
+    }
+    if (t === "joist") {
+      st.draw = { type: "joist", pts: [w, w], color: itemColor("joist"), takeoff: "Joists" };
       st.drag = { mode: "draw" };
       return;
     }
     // line / rect / dim / circle: drag from anchor
-    st.draw = { type: t, pts: [w, w], color: st.color };
+    st.draw = { type: t, pts: [w, w], color: itemColor(t), fill: itemFill(t) };
     st.drag = { mode: "draw" };
   }
 
@@ -1164,7 +1228,8 @@
     circle: "Circle — drag from the center out. Shows diameter and area.",
     arc: "Arc — tap the start, then the end, then a point the curve passes through. Length counts as lineal feet.",
     railing: "Railing — tap along the edge it follows, then ✓ Finish. Total lineal feet is labeled and totalled in the takeoff.",
-    beam: "Beam / joist — drag the span. Counts as lineal feet.",
+    beam: "Beam — drag the span (green). Counts as lineal feet.",
+    joist: "Floor joist — drag the span; draws as a dotted yellow line. Counts as lineal feet.",
     stairs: "Stairs — drag the run out from the deck edge; treads draw automatically. Tap the 🪜 tool again to change the width.",
     gate: "Gate — tap on a railing; it aligns and shows the swing. Tap the 🚧 tool again to change the width.",
     pillar: "Pillar / column — tap to place. Tap the ▪ tool again to change the size.",
@@ -1210,12 +1275,16 @@
 
   function wireStatic() {
     ui.querySelectorAll(".cs-tool[data-tool]").forEach(function (b) { b.onclick = function () { setTool(b.dataset.tool); }; });
-    q("#csColors").innerHTML = COLORS.map(function (c, i) {
-      return '<span class="cs-color' + (i === 0 ? " on" : "") + '" data-c="' + c + '" style="background:' + c + '"></span>';
-    }).join("");
+    // "A" = auto: each tool draws in its own colour (deck brown, railing blue,
+    // beams/pillars green, joists yellow…). A swatch overrides everything.
+    q("#csColors").innerHTML =
+      '<span class="cs-color cs-auto on" data-c="" title="Auto — each tool uses its own colour">A</span>' +
+      COLORS.map(function (c) {
+        return '<span class="cs-color" data-c="' + c + '" style="background:' + c + '"></span>';
+      }).join("");
     ui.querySelectorAll(".cs-color").forEach(function (s2) {
       s2.onclick = function () {
-        st.color = s2.dataset.c;
+        st.color = s2.dataset.c || null; // "" → auto
         ui.querySelectorAll(".cs-color").forEach(function (x) { x.classList.toggle("on", x === s2); });
       };
     });
@@ -1320,7 +1389,7 @@
       entry: opts.entry || null, onSave: opts.onSave, getPathParts: opts.getPathParts,
       items: (cad.items || []).map(function (x) { return JSON.parse(JSON.stringify(x)); }),
       undo: [], redo: [], draw: null, drag: null, dirty: false,
-      sel: -1, tool: "line", color: COLORS[0],
+      sel: -1, tool: "line", color: null, // null = auto (per-tool colours)
       offX: -2, offY: -2, ppf: 36,
       snapIdx: 0, snapFt: SNAPS[0], grid: true,
       orthoIdx: 0, orthoDeg: ORTHO_STEPS[0],
