@@ -83,7 +83,7 @@
       <h2>💰 Sales Estimates</h2>
       <p class="se-sub">Estimate new work from your completed-project history. Start with a trade:</p>
       <div class="se-trades" id="seTrades">
-        <a class="se-trade" href="estimate-deck.html"><span class="ic">🪵</span><span class="tt">Deck</span>
+        <a class="se-trade" href="estimate-deck.html?new=1"><span class="ic">🪵</span><span class="tt">Deck</span>
           <span class="ds">New decks, resurfacing, expansions — priced from past deck projects.</span></a>
         <a class="se-trade soon" href="#"><span class="ic">🏠</span><span class="tt">Siding</span><span class="ds">Coming next.</span></a>
         <a class="se-trade soon" href="#"><span class="ic">🎨</span><span class="tt">Painting</span><span class="ds">Coming next.</span></a>
@@ -100,6 +100,7 @@
       </div>
 
       <div class="se-head"><h2>Saved estimates</h2>
+        <button class="btn btn-sm" id="seNew">+ New estimate</button>
         <input id="seSearch" type="search" placeholder="Search client, address, status…" style="max-width:260px">
         <button class="btn btn-ghost btn-sm" id="seReload">↻</button></div>
       <div id="seList"><div class="se-empty">Loading…</div></div>

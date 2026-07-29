@@ -41,7 +41,7 @@
           ? money(e2.rangeLowTotal) + (e2.rangeHighTotal && e2.rangeHighTotal !== e2.rangeLowTotal ? " – " + money(e2.rangeHighTotal) : "")
           : "—";
         return '<tr class="row" data-id="' + esc(e2.id) + '">' +
-          "<td><b>" + esc(e2.clientName || "—") + "</b><br><span style='font-size:11.5px;color:var(--text-muted)'>" +
+          "<td><b>" + (e2.clientName ? esc(e2.clientName) : '<span style="color:var(--text-muted);font-weight:400">(untitled draft)</span>') + "</b><br><span style='font-size:11.5px;color:var(--text-muted)'>" +
           esc([e2.siteAddress, e2.city].filter(Boolean).join(", ")) + "</span></td>" +
           "<td>" + esc(e2.trade || "") + "</td><td>" + esc(e2.projectType || "") + "</td>" +
           "<td class='num'>" + (e2.primaryAreaSF || "") + "</td>" +
@@ -63,7 +63,7 @@
         ev.stopPropagation();
         if (!confirm("Delete this estimate? This cannot be undone.")) return;
         try {
-          await DCR.api("/api/portal?action=sales&part=estimates", { method: "DELETE", body: { id: b.dataset.id } });
+          await DCR.api("/api/portal?action=sales&part=estimates&id=" + encodeURIComponent(b.dataset.id), { method: "DELETE" });
           state.estimates = state.estimates.filter(function (x) { return x.id !== b.dataset.id; });
           renderEstimates();
         } catch (e2) { alert(e2.message || "Delete failed."); }
@@ -244,6 +244,7 @@
 
     el("seSearch").oninput = renderEstimates;
     el("seReload").onclick = loadEstimates;
+    el("seNew").onclick = function () { location.href = "estimate-deck.html?new=1"; };
     el("refAdd").onclick = function () { openRefModal(null); };
     el("refCancel").onclick = closeRefModal;
     el("refModal").onclick = function (e2) { if (e2.target === el("refModal")) closeRefModal(); };
@@ -254,7 +255,7 @@
       if (!state.editingRef) return;
       if (!confirm("Delete this reference project?")) return;
       try {
-        await DCR.api("/api/portal?action=sales&part=refs", { method: "DELETE", body: { id: state.editingRef.id } });
+        await DCR.api("/api/portal?action=sales&part=refs&id=" + encodeURIComponent(state.editingRef.id), { method: "DELETE" });
         closeRefModal();
         await loadRefs();
       } catch (e2) { el("refMsg").textContent = e2.message || "Delete failed."; }

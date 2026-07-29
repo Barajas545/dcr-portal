@@ -16,6 +16,7 @@
   var esc = function (v) { return DCR.esc(v); };
   var qs = new URLSearchParams(location.search);
   var EDIT_ID = qs.get("id") || null;      // reopen a saved estimate
+  var START_NEW = qs.get("new") === "1";   // begin a blank estimate
   var DRAFT_KEY = "dcrDeckEstDraft";
 
   var PROJECT_TYPES = [
@@ -1208,7 +1209,11 @@
     el("phCo").innerHTML = "<b>" + esc(CO.legalName || CO.name) + "</b><br>" +
       [CO.address, [CO.phone, CO.license].filter(Boolean).join(" · ")].filter(Boolean).map(esc).join("<br>");
 
-    if (EDIT_ID) {
+    if (START_NEW) {
+      // "+ New estimate" — blank slate. Anything previously in progress was
+      // already auto-saved to SharePoint, so nothing is lost.
+      clearDraftLocal();
+    } else if (EDIT_ID) {
       try { await loadSaved(EDIT_ID); } catch (e) { /* start fresh on failure */ }
     } else {
       try {

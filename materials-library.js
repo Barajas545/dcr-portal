@@ -258,7 +258,7 @@
       : "Delete this color?";
     if (!confirm(warn)) return;
     try {
-      await DCR.api("/api/portal?action=sales&part=materials", { method: "DELETE", body: { id: row.id } });
+      await DCR.api("/api/portal?action=sales&part=materials&id=" + encodeURIComponent(row.id), { method: "DELETE" });
       closeModal();
       await load();
     } catch (e) { el("mMsg").textContent = e.message || "Delete failed."; }
