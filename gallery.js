@@ -30,6 +30,8 @@
       ".dg-tile .dg-star{position:absolute;top:4px;left:4px;width:22px;height:22px;border-radius:50%;border:none;background:rgba(0,0,0,.6);color:#ffd47f;font-size:12px;cursor:pointer;line-height:1}" +
       ".dg-tile.dg-cover{outline:3px solid #d6a13a;outline-offset:-3px}" +
       ".dg-cover-tag{position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.6);color:#ffd47f;font-size:9.5px;font-weight:700;text-align:center;padding:2px 0;letter-spacing:.05em}" +
+      ".dg-act{position:absolute;bottom:4px;right:4px;min-width:22px;height:22px;border-radius:11px;border:none;background:rgba(0,0,0,.65);color:#fff;font-size:11px;cursor:pointer;line-height:1;padding:0 6px}" +
+      ".dg-act:hover{background:rgba(47,128,216,.9)}" +
       ".dg-add{display:flex;flex-direction:column;gap:5px;align-items:stretch;justify-content:center;padding:8px}" +
       ".dg-add button{font-size:11px;padding:5px 6px;border-radius:7px;border:1px solid var(--border,#ccc);background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap}" +
       ".dg-add button:hover{border-color:var(--accent,#1f6fc8);color:var(--accent,#1f6fc8)}" +
@@ -123,11 +125,18 @@
 
     function render() {
       var html = entries.map(function (p, i) {
+        var act = "";
+        if (opts.tileAction) {
+          var label = opts.tileAction.badge ? opts.tileAction.badge(p) : "";
+          act = '<button type="button" class="dg-act" data-act="' + i + '" title="' +
+            (opts.tileAction.title || "") + '">' + (label || opts.tileAction.icon || "…") + "</button>";
+        }
         return '<div class="dg-tile' + (i === 0 ? " dg-cover" : "") + '">' +
           '<img style="display:none" data-i="' + i + '" alt="">' +
           (i === 0 ? '<span class="dg-cover-tag">COVER</span>'
                    : '<button type="button" class="dg-star" data-star="' + i + '" title="Make cover">★</button>') +
           '<button type="button" class="dg-x" data-del="' + i + '" title="Remove">✕</button>' +
+          act +
           "</div>";
       }).join("");
       html += '<div class="dg-tile dg-add">' +
@@ -151,6 +160,13 @@
           var it = entries.splice(Number(b.dataset.star), 1)[0];
           entries.unshift(it);
           render();
+        };
+      });
+      grid.querySelectorAll("[data-act]").forEach(function (b) {
+        b.onclick = function () {
+          if (opts.tileAction && opts.tileAction.onClick) {
+            opts.tileAction.onClick(entries[Number(b.dataset.act)], Number(b.dataset.act), render);
+          }
         };
       });
       grid.querySelector(".dg-bfile").onclick = function () { fileInput.click(); };

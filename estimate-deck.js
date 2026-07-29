@@ -47,6 +47,9 @@
     catalog: null,             // materials
     sel: { primary: null, alternative: null },
     output: null,
+    media: { photos: [], audioNotes: [] }, // photos = gallery entries (+.ann markup); audio = {audioId,txtId,name,when,transcript}
+    _gal: null,                // mounted gallery handle (step 1 only)
+    _rec: null,                // in-progress audio recording state
   };
 
   /* ══ matcher (ported: type 20 + decking 25 + framing 20 + railing 10 + stairs 10 + complexity 15) ══ */
@@ -235,11 +238,16 @@
     return "$" + Number(n).toLocaleString("en-US", { maximumFractionDigits: 0 });
   }
   function matchClass(m) { return m >= 75 ? "hi" : m >= 50 ? "md" : "lo"; }
+  function syncPhotos() {
+    if (state._gal) state.media.photos = state._gal.get();
+  }
   function saveDraftLocal() {
+    syncPhotos();
     try {
       localStorage.setItem(DRAFT_KEY, JSON.stringify({
         estimateId: state.estimateId, estimateRef: state.estimateRef, version: state.version,
         estStatus: state.estStatus, project: state.project, referenceId: state.referenceId, sel: state.sel,
+        media: state.media,
       }));
     } catch (e) {}
   }
@@ -328,13 +336,197 @@
   async function go(step) {
     state.step = step;
     paintSteps();
-    saveDraftLocal();
+    saveDraftLocal(); // also syncs photos from the gallery widget
+    if (state._gal && step !== 1) { state._gal.destroy(); state._gal = null; }
     window.scrollTo(0, 0);
     if (step === 1) renderStep1();
     if (step === 2) await renderStep2();
     if (step === 3) await renderStep3();
     if (step === 4) await renderStep4();
     if (step === 5) await renderStep5();
+  }
+
+  /* ══ project media: photos (annotatable) + voice notes w/ transcripts ══ */
+  function mediaPathParts() {
+    var who = state.project.clientName ? " - " + state.project.clientName : "";
+    return ["Estimates", ((state.estimateRef || "Draft") + who).slice(0, 80)];
+  }
+
+  function mountMedia() {
+    if (state._gal) state._gal.destroy();
+    state._gal = DCRGallery.mount(el("edGallery"), {
+      initial: state.media.photos,
+      getPathParts: mediaPathParts,
+      tileAction: {
+        title: "Open & annotate — arrows, text, measurements, highlights",
+        icon: "✏️",
+        badge: function (p) { return p.ann && p.ann.items && p.ann.items.length ? "✏️ " + p.ann.items.length : "✏️"; },
+        onClick: function (entry, idx, rerender) {
+          DCRAnnotate.open({
+            entry: entry,
+            title: state.project.clientName ? state.project.clientName + " — photo " + (idx + 1) : "Photo " + (idx + 1),
+            onSave: function (ann) {
+              entry.ann = ann;
+              rerender();
+              saveDraftLocal();
+            },
+          });
+        },
+      },
+    });
+    renderAudioList();
+    el("recStart").onclick = startRec;
+    el("recStop").onclick = stopRec;
+    el("recSave").onclick = saveRecNote;
+    el("recDiscard").onclick = function () { setRecPhase("idle"); state._rec = null; };
+  }
+
+  function renderAudioList() {
+    var list = state.media.audioNotes || [];
+    el("edNotesList").innerHTML = !list.length ? "" :
+      list.map(function (n, i) {
+        return '<div style="display:flex;gap:10px;align-items:flex-start;border:1px solid var(--border);border-radius:10px;padding:8px 10px;margin-top:6px">' +
+          '<button type="button" class="btn btn-ghost btn-sm playNote" data-i="' + i + '">▶</button>' +
+          '<div style="flex:1;min-width:0"><div style="font-size:11px;color:var(--text-muted)">🎤 ' +
+          esc(new Date(n.when).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })) +
+          (n.txtId ? " · 📄 transcript saved" : "") + "</div>" +
+          '<div style="font-size:12.5px;white-space:pre-wrap">' + esc(n.transcript || "(no transcript)") + "</div></div>" +
+          '<button type="button" class="btn btn-ghost btn-sm delNote" data-i="' + i + '">🗑</button></div>';
+      }).join("");
+    el("edNotesList").querySelectorAll(".playNote").forEach(function (b) {
+      b.onclick = function () { playNote(list[Number(b.dataset.i)], b); };
+    });
+    el("edNotesList").querySelectorAll(".delNote").forEach(function (b) {
+      b.onclick = function () {
+        if (!confirm("Delete this voice note?")) return;
+        list.splice(Number(b.dataset.i), 1);
+        renderAudioList();
+        saveDraftLocal();
+      };
+    });
+  }
+
+  var audioEl = null;
+  function playNote(note, btn) {
+    if (audioEl) { audioEl.pause(); audioEl = null; document.querySelectorAll(".playNote").forEach(function (x) { x.textContent = "▶"; }); }
+    if (btn.textContent === "⏸") { btn.textContent = "▶"; return; }
+    DCR.blobUrl("/api/portal?action=sales&part=image&id=" + encodeURIComponent(note.audioId))
+      .then(function (u) {
+        audioEl = new Audio(u);
+        btn.textContent = "⏸";
+        audioEl.onended = function () { btn.textContent = "▶"; };
+        audioEl.play();
+      })
+      .catch(function () { alert("Could not load the audio."); });
+  }
+
+  function setRecPhase(phase) {
+    el("edRecIdle").style.display = phase === "idle" ? "" : "none";
+    el("edRecLive").style.display = phase === "rec" ? "" : "none";
+    el("edRecReview").style.display = phase === "review" ? "" : "none";
+  }
+
+  // Recorder — SpeechRecognition first, MediaRecorder after a head start (the
+  // proven Android ordering from the project voice notes), interim tail kept.
+  async function startRec() {
+    var rec = state._rec = { chunks: [], finals: "", interim: "", sr: null, mr: null, t0: Date.now(), timer: null };
+    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SR) {
+      var sr = rec.sr = new SR();
+      sr.continuous = true; sr.interimResults = true; sr.lang = "en-US";
+      sr.onresult = function (ev) {
+        var interim = "";
+        for (var i = ev.resultIndex; i < ev.results.length; i++) {
+          if (ev.results[i].isFinal) rec.finals += ev.results[i][0].transcript + " ";
+          else interim += ev.results[i][0].transcript;
+        }
+        rec.interim = interim;
+        el("recLiveTxt").textContent = (rec.finals + interim).slice(-220) || "Listening…";
+      };
+      sr.onerror = function () {};
+      try { sr.start(); } catch (e) {}
+      await new Promise(function (r) { setTimeout(r, 350); });
+    }
+    try {
+      var stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      var mime = window.MediaRecorder && MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4";
+      rec.mime = mime;
+      var mr = rec.mr = new MediaRecorder(stream, { mimeType: mime });
+      mr.ondataavailable = function (ev) { if (ev.data && ev.data.size) rec.chunks.push(ev.data); };
+      mr.start(1000);
+      setRecPhase("rec");
+      el("recLiveTxt").textContent = rec.sr ? "Listening…" : "Recording (transcript not supported on this device — audio still saves).";
+      rec.timer = setInterval(function () {
+        var s = Math.floor((Date.now() - rec.t0) / 1000);
+        el("recTime").textContent = Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+        if (s >= 180) stopRec(); // 3-minute cap keeps files under the upload limit
+      }, 500);
+    } catch (e) {
+      if (rec.sr) { try { rec.sr.stop(); } catch (e2) {} }
+      state._rec = null;
+      alert("Microphone unavailable: " + (e.message || e.name || "permission denied"));
+    }
+  }
+
+  function stopRec() {
+    var rec = state._rec;
+    if (!rec) return;
+    clearInterval(rec.timer);
+    if (rec.sr) { try { rec.sr.stop(); } catch (e) {} }
+    if (rec.mr && rec.mr.state !== "inactive") {
+      rec.mr.onstop = function () {
+        rec.mr.stream.getTracks().forEach(function (t) { t.stop(); });
+        rec.blob = new Blob(rec.chunks, { type: rec.mime });
+        setRecPhase("review");
+        el("recTxt").value = (rec.finals + rec.interim).trim();
+        el("recMsg").textContent = "";
+      };
+      rec.mr.stop();
+    }
+  }
+
+  async function saveRecNote() {
+    var rec = state._rec;
+    if (!rec || !rec.blob) return;
+    var btn = el("recSave"), msg = el("recMsg");
+    btn.disabled = true;
+    msg.textContent = "Uploading…";
+    try {
+      var ext = rec.mime === "audio/mp4" ? "m4a" : "webm";
+      var b64 = await new Promise(function (res, rej) {
+        var fr = new FileReader();
+        fr.onload = function () { res(String(fr.result)); };
+        fr.onerror = rej;
+        fr.readAsDataURL(rec.blob);
+      });
+      var stamp = Date.now();
+      var up = await DCR.api("/api/portal?action=sales&part=media", {
+        method: "POST",
+        body: { name: "voice-note-" + stamp + "." + ext, dataBase64: b64, pathParts: mediaPathParts() },
+      });
+      var transcript = el("recTxt").value.trim();
+      var txtId = null;
+      if (transcript) {
+        var txtUp = await DCR.api("/api/portal?action=sales&part=media", {
+          method: "POST",
+          body: { name: "voice-note-" + stamp + ".txt",
+            dataBase64: "data:text/plain;base64," + btoa(unescape(encodeURIComponent(transcript))),
+            pathParts: mediaPathParts() },
+        });
+        txtId = txtUp.file.id;
+      }
+      state.media.audioNotes.push({
+        audioId: up.file.id, txtId: txtId, name: up.file.name,
+        when: new Date().toISOString(), transcript: transcript,
+      });
+      state._rec = null;
+      setRecPhase("idle");
+      renderAudioList();
+      saveDraftLocal();
+    } catch (e) {
+      msg.textContent = e.message || "Upload failed.";
+    }
+    btn.disabled = false;
   }
 
   /* ══ STEP 1 — project info ══ */
@@ -369,6 +561,23 @@
       '<div><label>Site access</label><select id="f_access"><option value="">—</option>' +
         ACCESS.map(function (t) { return "<option" + (p.access === t ? " selected" : "") + ">" + t + "</option>"; }).join("") + "</select></div>" +
       '<div class="full"><label>Notes</label><textarea id="f_notes" rows="2">' + esc(p.notes) + "</textarea></div>" +
+      '<div class="full"><label>Project photos <span style="color:var(--text-muted);font-weight:400">— tap ✏️ on a photo to add arrows, text, measurements & highlights</span></label>' +
+      '<div id="edGallery"></div></div>' +
+      '<div class="full"><label>Voice notes <span style="color:var(--text-muted);font-weight:400">— audio + text transcript, saved with the estimate</span></label>' +
+      '<div id="edNotesList"></div>' +
+      '<div id="edRecBox" style="border:1px dashed var(--border);border-radius:10px;padding:10px;margin-top:6px">' +
+        '<div id="edRecIdle"><button type="button" class="btn btn-sm" id="recStart">🎤 Record a voice note</button> ' +
+        '<span style="font-size:11px;color:var(--text-muted)">Speak your site notes — the audio and its transcript are stored together.</span></div>' +
+        '<div id="edRecLive" style="display:none"><span style="color:var(--err);font-weight:700;font-size:12px">● Recording</span> ' +
+        '<span id="recTime" style="font-size:12px;font-weight:700"></span>' +
+        '<div id="recLiveTxt" style="font-size:12px;color:var(--text-muted);margin:6px 0;min-height:16px"></div>' +
+        '<button type="button" class="btn btn-sm" id="recStop">⏹ Stop</button></div>' +
+        '<div id="edRecReview" style="display:none"><div style="font-size:12px;font-weight:600;margin-bottom:4px">Review the transcript (edit as needed):</div>' +
+        '<textarea id="recTxt" rows="3"></textarea>' +
+        '<div style="display:flex;gap:8px;margin-top:8px;align-items:center"><button type="button" class="btn btn-sm" id="recSave">💾 Save note</button>' +
+        '<button type="button" class="btn btn-ghost btn-sm" id="recDiscard">✕ Discard</button>' +
+        '<span id="recMsg" style="font-size:12px;color:var(--text-muted)"></span></div></div>' +
+      "</div></div>" +
       "</div>" +
       '<div class="ed-msg" id="s1msg" style="color:var(--err)"></div>' +
       '<div class="ed-nav"><span></span><button class="btn" id="s1next">Find similar projects →</button></div>' +
@@ -401,6 +610,7 @@
     el("f_deck").addEventListener("input", function () {
       if (state.project.projectType === "new-deck") el("f_frame").value = this.value;
     });
+    mountMedia();
 
     el("s1next").onclick = function () {
       var p2 = state.project;
@@ -709,6 +919,25 @@
           (snap.alternative ? '<div class="ed-kv"><span>Alternative</span><span class="v">' + esc(snap.alternative.officialName) + " · " + esc(snap.alternative.colorName) + "</span></div>" : "") +
           '<div class="ed-note">Material cost: <b>pending</b> — ' + esc(o.materialCost.note) + "</div>"
         : '<p class="ed-sub">No material selection recorded.</p>') +
+      (state.media.photos.length || state.media.audioNotes.length
+        ? '<h3 style="margin:18px 0 4px;font-size:15px">Project documentation</h3>' +
+          (state.media.photos.length
+            ? '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0">' +
+              state.media.photos.slice(0, 8).map(function (ph) {
+                var attrs = ph.id ? ' data-pic-item="' + esc(ph.id) + '"' : (ph.url ? ' data-pic-url="' + esc(ph.url) + '"' : "");
+                return '<span style="width:56px;height:56px;border-radius:8px;overflow:hidden;background:var(--surface-2);position:relative;display:inline-flex">' +
+                  '<img style="display:none;width:100%;height:100%;object-fit:cover"' + attrs + ' alt="">' +
+                  (ph.ann && ph.ann.items && ph.ann.items.length
+                    ? '<span style="position:absolute;bottom:0;right:0;background:rgba(0,0,0,.65);color:#ffd47f;font-size:9px;font-weight:700;padding:1px 4px;border-radius:6px 0 0 0">✏️</span>' : "") +
+                  "</span>";
+              }).join("") +
+              (state.media.photos.length > 8 ? '<span style="font-size:11px;color:var(--text-muted);align-self:center">+' + (state.media.photos.length - 8) + " more</span>" : "") +
+              "</div>"
+            : "") +
+          '<p class="ed-sub" style="margin:2px 0 0">📸 ' + state.media.photos.length + " photo" + (state.media.photos.length === 1 ? "" : "s") +
+          " · 🎤 " + state.media.audioNotes.length + " voice note" + (state.media.audioNotes.length === 1 ? "" : "s") +
+          " — attached to this estimate (edit them on step 1).</p>"
+        : "") +
       '<h3 style="margin:18px 0 4px;font-size:15px">Assumptions & notes</h3>' +
       '<ul class="ed-assump">' + o.assumptions.map(function (a) { return "<li>" + esc(a) + "</li>"; }).join("") + "</ul>" +
       '<div class="ed-warn no-print"><b>Internal preliminary reference.</b> Review by a DCR estimator is required before any number is shared with the client.</div>' +
@@ -727,6 +956,7 @@
       benchImg.onload = function () { benchImg.style.display = ""; };
       DCRGallery.srcInto(benchImg, benchGal[0]);
     }
+    hydratePics(el("edApp")); // project-documentation thumbnails
     el("s5back").onclick = function () { go(4); };
     el("s5print").onclick = function () { window.print(); };
     el("s5save").onclick = saveEstimate;
@@ -745,6 +975,7 @@
       scopeJson: JSON.stringify(p),
       selectionJson: JSON.stringify({ sel: state.sel, snapshot: o.selectionSnapshot }),
       outputJson: JSON.stringify(o),
+      mediaJson: JSON.stringify(state.media),
       referenceProjectId: state.referenceId || "",
       benchmarkTotal: o.benchmark.present && o.benchmark.total != null ? o.benchmark.total : "",
       rangeLowTotal: o.range.st !== "none" ? o.range.loTotal : "",
@@ -780,6 +1011,10 @@
       var selWrap = JSON.parse(est.selectionJson || "{}");
       if (selWrap.sel) state.sel = selWrap.sel;
     } catch (e) {}
+    try {
+      var media = JSON.parse(est.mediaJson || "{}");
+      state.media = { photos: media.photos || [], audioNotes: media.audioNotes || [] };
+    } catch (e) {}
     state.referenceId = est.referenceProjectId || null;
   }
 
@@ -808,6 +1043,7 @@
           state.estimateRef = draft.estimateRef || "";
           state.version = draft.version || 0;
           state.estStatus = draft.estStatus || "draft";
+          if (draft.media) state.media = { photos: draft.media.photos || [], audioNotes: draft.media.audioNotes || [] };
         }
       } catch (e) {}
     }
