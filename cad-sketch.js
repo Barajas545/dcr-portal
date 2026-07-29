@@ -13,7 +13,10 @@
 (function () {
   var COLORS = ["#111111", "#e53935", "#2f80d8", "#2fa679"];
   var TOL = 16;
-  var SNAPS = [0.5, 1, 0.25, 0]; // ft: 6in → 1ft → 3in → off
+  var SNAPS = [0.5, 1, 0.25, 0];        // ft: 6in → 1ft → 3in → off
+  var ORTHO_STEPS = [45, 22.5, 90, 0];  // deg between allowed directions (0 = free)
+  var TAKEOFF_SUGGEST = ["Deck area", "Decking", "Framing", "Railing", "Stairs",
+    "Fascia", "Posts", "Footings", "Beams", "Lights", "Doors", "Windows"];
   var ui = null, st = null;
 
   /* ── ui ── */
@@ -42,7 +45,17 @@
       ".cs-prompt.open{display:flex}" +
       ".cs-prompt .box{background:#171d25;color:#e6ebf1;border:1px solid #2a333d;border-radius:12px;max-width:360px;width:100%;padding:18px}" +
       ".cs-prompt textarea,.cs-prompt input{width:100%;box-sizing:border-box;padding:8px 10px;font-size:14px;border:1px solid #2a333d;border-radius:8px;background:#10151b;color:#e6ebf1}" +
-      ".cs-prompt .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}";
+      ".cs-prompt .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}" +
+      ".cs-chip{font-size:11.5px;padding:4px 10px;border-radius:12px;border:1px solid #2a333d;background:#10151b;color:#e6ebf1;cursor:pointer}" +
+      ".cs-chip:hover{border-color:#2f80d8;color:#7db9f0}" +
+      ".cs-panel{position:absolute;right:0;top:0;bottom:0;width:260px;background:#fff;border-left:1px solid #dfe3e8;display:none;flex-direction:column;box-shadow:-4px 0 18px rgba(0,0,0,.12)}" +
+      ".cs-panel.open{display:flex}" +
+      ".cs-panel .ph{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border-bottom:1px solid #dfe3e8;font-size:13px;color:#1b2733;background:#f7f9fb}" +
+      ".cs-panel .pb{flex:1;overflow:auto;padding:8px 12px 14px;font-size:12.5px;color:#1b2733}" +
+      ".cs-grp{margin:10px 0 4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#5a6b7d}" +
+      ".cs-row{display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px solid #eef1f5}" +
+      ".cs-row b{white-space:nowrap}" +
+      ".cs-tot{display:flex;justify-content:space-between;gap:8px;padding:6px 0;font-weight:700;color:#1f6f4a}";
     document.head.appendChild(css);
 
     ui = document.createElement("div");
@@ -55,12 +68,18 @@
       '<button class="cs-tool on" data-tool="line" title="Line / wall — live length">╱</button>' +
       '<button class="cs-tool" data-tool="rect" title="Rectangle — auto W×H + area">▭</button>' +
       '<button class="cs-tool" data-tool="poly" title="Outline — tap corners; tap the first corner to close">⬠</button>' +
+      '<button class="cs-tool" data-tool="tri" title="Triangle — tap 3 corners">◺</button>' +
+      '<button class="cs-tool" data-tool="circle" title="Circle — drag from the center">◯</button>' +
+      '<button class="cs-tool" data-tool="door" title="Door symbol (tap the tool again to change the size)">🚪</button>' +
+      '<button class="cs-tool" data-tool="window" title="Window symbol (tap the tool again to change the size)">🪟</button>' +
+      '<button class="cs-tool" data-tool="post" title="Post marker">⊙</button>' +
+      '<button class="cs-tool" data-tool="count" title="Count items — tap to drop numbered markers">🔢</button>' +
       '<button class="cs-tool" data-tool="dim" title="Dimension line">📏</button>' +
       '<button class="cs-tool" data-tool="text" title="Text label">T</button>' +
-      '<button class="cs-tool" data-tool="post" title="Post marker">⊙</button>' +
       '<button class="cs-tool" data-tool="erase" title="Eraser">🧽</button>' +
       '<button class="cs-btn" id="csEditSel" style="display:none">✏️</button>' +
       '<button class="cs-btn" id="csDimSel" style="display:none" title="Type the exact dimension">📐</button>' +
+      '<button class="cs-btn" id="csTagSel" style="display:none" title="Takeoff label for this item">🏷</button>' +
       '<button class="cs-btn" id="csDelSel" style="display:none">🗑</button>' +
       '<span style="width:6px"></span>' +
       '<button class="cs-tool tog act" id="csOrtho" title="Keep lines square (horizontal/vertical)">ORTHO</button>' +
@@ -68,6 +87,7 @@
       '<button class="cs-tool tog act" id="csGrid" title="Show grid">GRID</button>' +
       '<span id="csColors" style="display:flex;gap:5px;align-items:center"></span>' +
       '<span style="flex:1"></span>' +
+      '<button class="cs-btn" id="csTakeoff" title="Takeoff — areas, lineal feet and counts">Σ Takeoff</button>' +
       '<button class="cs-tool" id="csZoomOut">−</button>' +
       '<button class="cs-tool" id="csZoomIn">＋</button>' +
       '<button class="cs-tool" id="csFit" title="Fit drawing">⛶</button>' +
@@ -80,11 +100,16 @@
       '<div class="cs-ctx" id="csCtx">' +
       '<button class="cs-btn primary" id="csPolyDone">✓ Finish</button>' +
       '<button class="cs-btn" id="csPolyClose">⭯ Close shape</button>' +
-      '<button class="cs-btn" id="csPolyCancel">✕</button></div></div>' +
+      '<button class="cs-btn" id="csPolyCancel">✕</button></div>' +
+      '<div class="cs-panel" id="csPanel"><div class="ph"><b>Σ Takeoff</b>' +
+      '<span><button class="cs-btn" id="csTakeoffCopy" style="padding:3px 8px">📋 Copy</button> ' +
+      '<button class="cs-btn" id="csPanelClose" style="padding:3px 8px">✕</button></span></div>' +
+      '<div class="pb" id="csPanelBody"></div></div></div>' +
       '<div class="cs-hint" id="csHint"></div>' +
       '<div class="cs-prompt" id="csPrompt"><div class="box">' +
       '<h4 id="csPromptTitle" style="margin:0 0 10px;font-size:14px"></h4>' +
-      '<div id="csPromptText"><textarea id="csPromptInput" rows="2"></textarea></div>' +
+      '<div id="csPromptText"><textarea id="csPromptInput" rows="2"></textarea>' +
+      '<div id="csPromptChips" style="display:none;flex-wrap:wrap;gap:6px;margin-top:8px"></div></div>' +
       '<div id="csPromptDims" style="display:none">' +
         '<div id="csDimRowA" style="display:flex;gap:8px;align-items:end">' +
           '<div style="flex:1"><label id="csDimLabelA" style="font-size:11px;color:#93a1b1">Length — feet</label>' +
@@ -129,6 +154,49 @@
     var t = L2 ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L2)) : 0;
     return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
   }
+  // Every edge of an item, as [a,b] pairs (drives hit-testing, wall snapping
+  // for openings, and lineal-foot takeoff).
+  function segmentsOf(it) {
+    var p = it.pts || [], out = [];
+    if (it.type === "rect" && p.length === 2) {
+      var c = [p[0], [p[1][0], p[0][1]], p[1], [p[0][0], p[1][1]]];
+      for (var i = 0; i < 4; i++) out.push([c[i], c[(i + 1) % 4]]);
+      return out;
+    }
+    for (var j = 1; j < p.length; j++) out.push([p[j - 1], p[j]]);
+    if (it.closed && p.length > 2) out.push([p[p.length - 1], p[0]]);
+    return out;
+  }
+  function itemLength(it) {
+    return segmentsOf(it).reduce(function (s, g) { return s + dist(g[0], g[1]); }, 0);
+  }
+  // Openings sit ON a wall: find the nearest edge and align/center to it.
+  function placeOpening(type, w) {
+    var width = type === "door" ? st.doorW : st.winW;
+    var best = null, bd = 3; // ft search radius
+    st.items.forEach(function (it) {
+      if (["line", "rect", "poly"].indexOf(it.type) === -1) return;
+      segmentsOf(it).forEach(function (s) {
+        var d = ptSeg(w, s[0], s[1]);
+        if (d < bd) { bd = d; best = s; }
+      });
+    });
+    var dir = [1, 0], center = w;
+    if (best) {
+      var dx = best[1][0] - best[0][0], dy = best[1][1] - best[0][1];
+      var L = Math.hypot(dx, dy) || 1;
+      dir = [dx / L, dy / L];
+      var t = Math.max(0, Math.min(1, ((w[0] - best[0][0]) * dx + (w[1] - best[0][1]) * dy) / (L * L)));
+      center = [best[0][0] + dx * t, best[0][1] + dy * t];
+    }
+    var h = width / 2;
+    return {
+      type: type, color: st.color,
+      takeoff: type === "door" ? "Doors" : "Windows",
+      pts: [[center[0] - dir[0] * h, center[1] - dir[1] * h],
+            [center[0] + dir[0] * h, center[1] + dir[1] * h]],
+    };
+  }
 
   /* ── viewport ── */
   function toScreen(w) { return [(w[0] - st.offX) * st.ppf, (w[1] - st.offY) * st.ppf]; }
@@ -150,9 +218,18 @@
     if (st.snapFt > 0) return [Math.round(w[0] / st.snapFt) * st.snapFt, Math.round(w[1] / st.snapFt) * st.snapFt];
     return w;
   }
+  // ORTHO: lock the direction to the nearest multiple of the chosen angle step
+  // (90° = square only, 45° = square + diagonals, 22.5° = eighth-turns), and
+  // land the length on the snap increment so 45° runs get clean numbers too.
   function applyOrtho(prev, pt) {
-    if (!st.ortho || !prev) return pt;
-    return Math.abs(pt[0] - prev[0]) >= Math.abs(pt[1] - prev[1]) ? [pt[0], prev[1]] : [prev[0], pt[1]];
+    if (!st.orthoDeg || !prev) return pt;
+    var dx = pt[0] - prev[0], dy = pt[1] - prev[1];
+    var len = Math.hypot(dx, dy);
+    if (len < 1e-9) return pt;
+    var step = st.orthoDeg * Math.PI / 180;
+    var ang = Math.round(Math.atan2(dy, dx) / step) * step;
+    if (st.snapFt > 0) len = Math.max(st.snapFt, Math.round(len / st.snapFt) * st.snapFt);
+    return [prev[0] + Math.cos(ang) * len, prev[1] + Math.sin(ang) * len];
   }
 
   /* ── rendering ── */
@@ -257,6 +334,51 @@
       ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(P[0][0], P[0][1], 7, 0, 7); ctx.stroke();
       ctx.beginPath(); ctx.arc(P[0][0], P[0][1], 1.8, 0, 7); ctx.fill();
+    } else if (it.type === "circle" && P.length === 2) {
+      var rpx = Math.hypot(P[1][0] - P[0][0], P[1][1] - P[0][1]);
+      ctx.beginPath(); ctx.arc(P[0][0], P[0][1], rpx, 0, 7); ctx.stroke();
+      var rft = dist(it.pts[0], it.pts[1]);
+      label(ctx, P[0][0], P[0][1] - 12, "Dia " + fmtFtIn(rft * 2), it.color);
+      if (rpx > 34) label(ctx, P[0][0], P[0][1] + 9, (Math.round(Math.PI * rft * rft * 10) / 10) + " SF", "#1f6f4a", "rgba(220,245,232,.9)");
+    } else if ((it.type === "door" || it.type === "window") && P.length === 2) {
+      var a = P[0], b = P[1];
+      var ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
+      var wpx = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      // knock a clean opening through the wall beneath the symbol
+      ctx.save();
+      ctx.strokeStyle = "#fff"; ctx.lineWidth = 7;
+      ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+      ctx.restore();
+      ctx.lineWidth = 2;
+      var nx = Math.cos(ang - Math.PI / 2), ny = Math.sin(ang - Math.PI / 2);
+      // jamb ticks
+      [a, b].forEach(function (p) {
+        ctx.beginPath();
+        ctx.moveTo(p[0] + nx * 5, p[1] + ny * 5);
+        ctx.lineTo(p[0] - nx * 5, p[1] - ny * 5);
+        ctx.stroke();
+      });
+      if (it.type === "door") {
+        ctx.beginPath(); ctx.arc(a[0], a[1], wpx, ang - Math.PI / 2, ang, false); ctx.stroke(); // swing
+        ctx.beginPath(); ctx.moveTo(a[0], a[1]);
+        ctx.lineTo(a[0] + nx * wpx, a[1] + ny * wpx); ctx.stroke();                              // leaf
+      } else {
+        [3, -3].forEach(function (o) {
+          ctx.beginPath();
+          ctx.moveTo(a[0] + nx * o, a[1] + ny * o);
+          ctx.lineTo(b[0] + nx * o, b[1] + ny * o);
+          ctx.stroke();
+        });
+      }
+      label(ctx, (a[0] + b[0]) / 2 + nx * 16, (a[1] + b[1]) / 2 + ny * 16,
+        (it.type === "door" ? "D " : "W ") + fmtFtIn(dist(it.pts[0], it.pts[1])), it.color);
+    } else if (it.type === "count" && P.length === 1) {
+      ctx.globalAlpha = 0.9;
+      ctx.beginPath(); ctx.arc(P[0][0], P[0][1], 9, 0, 7); ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = "#fff";
+      ctx.font = "bold 11px Arial"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(String(it.seq || 1), P[0][0], P[0][1]);
     }
     ctx.restore();
   }
@@ -285,15 +407,24 @@
     q("#csDelSel").style.display = it ? "" : "none";
     q("#csEditSel").style.display = it && it.type === "text" ? "" : "none";
     var dimBtn = q("#csDimSel");
-    if (it && (it.type === "line" || it.type === "dim")) {
+    if (it && (it.type === "line" || it.type === "dim" || it.type === "door" || it.type === "window")) {
       dimBtn.style.display = "";
       dimBtn.textContent = "📐 " + fmtFtIn(dist(it.pts[0], it.pts[1]));
     } else if (it && it.type === "rect") {
       dimBtn.style.display = "";
       dimBtn.textContent = "📐 " + fmtFtIn(Math.abs(it.pts[1][0] - it.pts[0][0])) + " × " + fmtFtIn(Math.abs(it.pts[1][1] - it.pts[0][1]));
+    } else if (it && it.type === "circle") {
+      dimBtn.style.display = "";
+      dimBtn.textContent = "📐 Dia " + fmtFtIn(dist(it.pts[0], it.pts[1]) * 2);
     } else {
       dimBtn.style.display = "none";
     }
+    var tagBtn = q("#csTagSel");
+    if (it && it.type !== "text") {
+      tagBtn.style.display = "";
+      tagBtn.textContent = "🏷 " + (it.takeoff || defaultLabel(it));
+    } else tagBtn.style.display = "none";
+    if (q("#csPanel").classList.contains("open")) renderTakeoff();
   }
 
   /* ── type an exact dimension for the selection ── */
@@ -304,22 +435,32 @@
   function openDimPrompt() {
     var it = st.sel >= 0 ? st.items[st.sel] : null;
     if (!it) return;
-    var isRect = it.type === "rect";
-    if (!isRect && it.type !== "line" && it.type !== "dim") return;
+    var isRect = it.type === "rect", isCircle = it.type === "circle";
+    if (!isRect && !isCircle && ["line", "dim", "door", "window"].indexOf(it.type) === -1) return;
     q("#csPromptText").style.display = "none";
     q("#csPromptDims").style.display = "";
     q("#csDimRowB").style.display = isRect ? "flex" : "none";
-    q("#csDimLabelA").textContent = (isRect ? "Width" : "Length") + " — feet";
-    var a = isRect ? splitFtIn(Math.abs(it.pts[1][0] - it.pts[0][0])) : splitFtIn(dist(it.pts[0], it.pts[1]));
+    q("#csDimLabelA").textContent = (isRect ? "Width" : isCircle ? "Diameter" : "Length") + " — feet";
+    var a = isRect ? splitFtIn(Math.abs(it.pts[1][0] - it.pts[0][0]))
+      : isCircle ? splitFtIn(dist(it.pts[0], it.pts[1]) * 2)
+      : splitFtIn(dist(it.pts[0], it.pts[1]));
     q("#csDimAft").value = a[0]; q("#csDimAin").value = a[1];
     if (isRect) {
       var b = splitFtIn(Math.abs(it.pts[1][1] - it.pts[0][1]));
       q("#csDimBft").value = b[0]; q("#csDimBin").value = b[1];
     }
-    openPromptRaw(isRect ? "📐 Exact size (width × height)" : "📐 Exact length", function () {
+    openPromptRaw(isRect ? "📐 Exact size (width × height)" : isCircle ? "📐 Exact diameter" : "📐 Exact length", function () {
       var lenA = (Number(q("#csDimAft").value) || 0) + (Number(q("#csDimAin").value) || 0) / 12;
       if (!(lenA > 0)) return;
       snapshot();
+      if (isCircle) {
+        var cur0 = dist(it.pts[0], it.pts[1]);
+        var ux = cur0 > 1e-6 ? (it.pts[1][0] - it.pts[0][0]) / cur0 : 1;
+        var uy = cur0 > 1e-6 ? (it.pts[1][1] - it.pts[0][1]) / cur0 : 0;
+        it.pts[1] = [it.pts[0][0] + ux * (lenA / 2), it.pts[0][1] + uy * (lenA / 2)];
+        render();
+        return;
+      }
       if (isRect) {
         var lenB = (Number(q("#csDimBft").value) || 0) + (Number(q("#csDimBin").value) || 0) / 12;
         if (!(lenB > 0)) return;
@@ -358,14 +499,20 @@
     for (var i = st.items.length - 1; i >= 0; i--) {
       var it = st.items[i], pts = it.pts;
       if (it.type === "text") { if (dist(w, pts[0]) < Math.max(th * 3, (it.text || "").length * 4 / st.ppf)) return i; continue; }
-      if (it.type === "post") { if (dist(w, pts[0]) < th * 2) return i; continue; }
-      if (it.type === "rect" && pts.length === 2) {
-        var corners = [pts[0], [pts[1][0], pts[0][1]], pts[1], [pts[0][0], pts[1][1]], pts[0]];
-        for (var c = 1; c < corners.length; c++) if (ptSeg(w, corners[c - 1], corners[c]) < th) return i;
+      if (it.type === "post" || it.type === "count") { if (dist(w, pts[0]) < th * 2) return i; continue; }
+      if (it.type === "circle" && pts.length === 2) {
+        // the ring itself, or anywhere inside a small circle
+        var rr = dist(pts[0], pts[1]);
+        if (Math.abs(dist(w, pts[0]) - rr) < th || dist(w, pts[0]) < Math.min(rr, th * 2)) return i;
         continue;
       }
-      var n = it.closed ? pts.length + 1 : pts.length;
-      for (var s = 1; s < n; s++) if (ptSeg(w, pts[s - 1], pts[s % pts.length]) < th) return i;
+      if (it.type === "rect" && pts.length === 2) {
+        var edges = segmentsOf(it);
+        for (var c = 0; c < edges.length; c++) if (ptSeg(w, edges[c][0], edges[c][1]) < th) return i;
+        continue;
+      }
+      var segs = segmentsOf(it);
+      for (var s = 0; s < segs.length; s++) if (ptSeg(w, segs[s][0], segs[s][1]) < th) return i;
     }
     return -1;
   }
@@ -375,6 +522,79 @@
     return -1;
   }
 
+  /* ── takeoff: areas (SF), lineal (LF), counts (each) ──
+     Every item carries an optional `takeoff` label; totals group by it so the
+     sketch doubles as the material takeoff. Closed shapes contribute their area
+     AND their perimeter (railing/fascia), listed separately. */
+  function defaultLabel(it) {
+    if (it.type === "rect" || it.type === "circle" || (it.type === "poly" && it.closed)) return "Deck area";
+    if (it.type === "line" || it.type === "poly") return "Lineal";
+    if (it.type === "dim") return "Dimension";
+    if (it.type === "post") return "Posts";
+    if (it.type === "door") return "Doors";
+    if (it.type === "window") return "Windows";
+    return "Count";
+  }
+  function areaOf(it) {
+    if (it.type === "rect") return Math.abs(it.pts[1][0] - it.pts[0][0]) * Math.abs(it.pts[1][1] - it.pts[0][1]);
+    if (it.type === "circle") { var r = dist(it.pts[0], it.pts[1]); return Math.PI * r * r; }
+    if (it.type === "poly" && it.closed && it.pts.length >= 3) return polyArea(it.pts);
+    return 0;
+  }
+  function takeoffData() {
+    var areas = {}, lineals = {}, counts = {};
+    function add(bag, key, val) {
+      if (!bag[key]) bag[key] = { qty: 0, n: 0 };
+      bag[key].qty += val;
+      bag[key].n++;
+    }
+    st.items.forEach(function (it) {
+      var lbl = it.takeoff || defaultLabel(it);
+      var a = areaOf(it);
+      if (a > 0) {
+        add(areas, lbl, a);
+        add(lineals, lbl + " perimeter", itemLength(it)); // railing / fascia runs
+      } else if (it.type === "line" || it.type === "poly" || it.type === "dim") {
+        add(lineals, lbl, itemLength(it));
+      } else if (["post", "count", "door", "window"].indexOf(it.type) !== -1) {
+        add(counts, lbl, 1);
+      }
+    });
+    function rows(bag) {
+      return Object.keys(bag).sort().map(function (k) {
+        return { label: k, qty: Math.round(bag[k].qty * 10) / 10, n: bag[k].n };
+      });
+    }
+    return { areas: rows(areas), lineals: rows(lineals), counts: rows(counts) };
+  }
+  function renderTakeoff() {
+    var t = takeoffData();
+    var html = "";
+    function block(title, rows, unit) {
+      if (!rows.length) return "";
+      var tot = rows.reduce(function (s, r) { return s + r.qty; }, 0);
+      var h = '<div class="cs-grp">' + title + "</div>";
+      h += rows.map(function (r) {
+        return '<div class="cs-row"><span>' + DCR.esc(r.label) + (r.n > 1 ? " ×" + r.n : "") +
+          "</span><b>" + (Math.round(r.qty * 10) / 10) + " " + unit + "</b></div>";
+      }).join("");
+      if (rows.length > 1) h += '<div class="cs-tot"><span>Total</span><span>' + (Math.round(tot * 10) / 10) + " " + unit + "</span></div>";
+      return h;
+    }
+    html += block("Areas", t.areas, "SF");
+    html += block("Lineal", t.lineals, "LF");
+    html += block("Counts", t.counts, "ea");
+    if (!html) html = '<p style="color:#5a6b7d">Draw shapes and drop markers — areas, lineal feet and counts total up here. Select an item and tap 🏷 to name it (Decking, Railing, Posts…).</p>';
+    q("#csPanelBody").innerHTML = html;
+  }
+  function takeoffText() {
+    var t = takeoffData(), lines = [];
+    t.areas.forEach(function (r) { lines.push("Area\t" + r.label + "\t" + r.qty + "\tSF"); });
+    t.lineals.forEach(function (r) { lines.push("Lineal\t" + r.label + "\t" + r.qty + "\tLF"); });
+    t.counts.forEach(function (r) { lines.push("Count\t" + r.label + "\t" + r.qty + "\tea"); });
+    return lines.join("\n");
+  }
+
   /* ── prompt ── */
   var promptCb = null;
   function openPromptRaw(title, cb) {
@@ -382,12 +602,34 @@
     q("#csPromptTitle").textContent = title;
     q("#csPrompt").classList.add("open");
   }
-  function openPrompt(title, cb, prefill) {
+  function openPrompt(title, cb, prefill, chips) {
     q("#csPromptText").style.display = "";
     q("#csPromptDims").style.display = "none";
     q("#csPromptInput").value = prefill || "";
+    var box = q("#csPromptChips");
+    if (chips && chips.length) {
+      box.style.display = "flex";
+      box.innerHTML = chips.map(function (c) { return '<button type="button" class="cs-chip">' + DCR.esc(c) + "</button>"; }).join("");
+      box.querySelectorAll(".cs-chip").forEach(function (b) {
+        b.onclick = function () { q("#csPromptInput").value = b.textContent; };
+      });
+    } else { box.style.display = "none"; box.innerHTML = ""; }
     openPromptRaw(title, cb);
     setTimeout(function () { q("#csPromptInput").focus(); }, 60);
+  }
+  // Single feet+inches entry (opening sizes, etc.)
+  function openFtInPrompt(title, labelA, feet, cb) {
+    q("#csPromptText").style.display = "none";
+    q("#csPromptDims").style.display = "";
+    q("#csDimRowB").style.display = "none";
+    q("#csDimLabelA").textContent = labelA + " — feet";
+    var a = splitFtIn(feet);
+    q("#csDimAft").value = a[0]; q("#csDimAin").value = a[1];
+    openPromptRaw(title, function () {
+      var v = (Number(q("#csDimAft").value) || 0) + (Number(q("#csDimAin").value) || 0) / 12;
+      if (v > 0) cb(v);
+    });
+    setTimeout(function () { q("#csDimAft").focus(); q("#csDimAft").select(); }, 60);
   }
   function closePrompt() { q("#csPrompt").classList.remove("open"); promptCb = null; }
 
@@ -434,18 +676,34 @@
       });
       return;
     }
-    if (t === "post") { snapshot(); st.items.push({ type: "post", pts: [w], color: st.color }); render(); return; }
-    if (t === "poly") {
-      if (!st.draw) { st.draw = { type: "poly", pts: [w], color: st.color }; q("#csCtx").classList.add("open"); }
+    if (t === "post") { snapshot(); st.items.push({ type: "post", pts: [w], color: st.color, takeoff: "Posts" }); render(); return; }
+    if (t === "count") {
+      var lbl = st.countLabel || "Count";
+      var seq = st.items.filter(function (x) { return x.type === "count" && (x.takeoff || "Count") === lbl; }).length + 1;
+      snapshot();
+      st.items.push({ type: "count", pts: [w], color: st.color, takeoff: lbl, seq: seq });
+      render();
+      return;
+    }
+    if (t === "door" || t === "window") {
+      snapshot();
+      st.items.push(placeOpening(t, raw));
+      render();
+      return;
+    }
+    if (t === "poly" || t === "tri") {
+      var cap = t === "tri" ? 3 : 0; // triangles auto-close at 3 corners
+      if (!st.draw) { st.draw = { type: "poly", pts: [w], color: st.color, _cap: cap }; q("#csCtx").classList.add("open"); }
       else {
         // tapping the first point closes the shape
         if (st.draw.pts.length >= 3 && dist(raw, st.draw.pts[0]) < 14 / st.ppf) { finishPoly(true); return; }
         st.draw.pts.push(applyOrtho(st.draw.pts[st.draw.pts.length - 1], w));
+        if (st.draw._cap && st.draw.pts.length >= st.draw._cap) { finishPoly(true); return; }
       }
       render();
       return;
     }
-    // line / rect / dim: drag from anchor
+    // line / rect / dim / circle: drag from anchor
     st.draw = { type: t, pts: [w, w], color: st.color };
     st.drag = { mode: "draw" };
   }
@@ -496,7 +754,8 @@
     }
     if (st.drag && st.drag.mode === "draw" && st.draw) {
       var w2 = snapPoint(raw);
-      st.draw.pts[1] = st.draw.type === "rect" ? w2 : applyOrtho(st.draw.pts[0], w2);
+      // rectangles need both axes free; a circle's radius is free too
+      st.draw.pts[1] = (st.draw.type === "rect" || st.draw.type === "circle") ? w2 : applyOrtho(st.draw.pts[0], w2);
       render();
       return;
     }
@@ -550,6 +809,7 @@
     if (d.pts.length >= 2) {
       d.closed = !!close && d.pts.length >= 3;
       delete d._hover;
+      delete d._cap;
       snapshot();
       st.items.push(d);
     }
@@ -582,23 +842,57 @@
   }
 
   /* ── save: PNG export + JSON ── */
+  // Export a printable PNG: the drawing, plus the takeoff table beneath it so
+  // the saved image is self-documenting.
   function exportPng() {
     var b = bbox() || [0, 0, 20, 15];
     var margin = 2;
     var w = b[2] - b[0] + margin * 2, h = b[3] - b[1] + margin * 2;
-    var outW = 1600, ppf = outW / w, outH = Math.round(h * ppf);
-    if (outH > 2200) { outH = 2200; ppf = outH / h; outW = Math.round(w * ppf); }
+    var outW = 1600, ppf = outW / w, drawH = Math.round(h * ppf);
+    if (drawH > 2000) { drawH = 2000; ppf = drawH / h; outW = Math.round(w * ppf); }
+
+    var t = takeoffData();
+    var rows = [];
+    t.areas.forEach(function (r) { rows.push(["Area", r.label, r.qty + " SF"]); });
+    t.lineals.forEach(function (r) { rows.push(["Lineal", r.label, r.qty + " LF"]); });
+    t.counts.forEach(function (r) { rows.push(["Count", r.label, r.qty + " ea"]); });
+    var rowH = 30, tableH = rows.length ? 54 + rows.length * rowH + 14 : 0;
+
     var cv = document.createElement("canvas");
-    cv.width = outW; cv.height = outH;
-    // temporarily rebind the viewport to the export surface
-    var keep = { offX: st.offX, offY: st.offY, ppf: st.ppf, sel: st.sel, grid: st.grid };
-    st.offX = b[0] - margin; st.offY = b[1] - margin; st.ppf = ppf; st.sel = -1;
+    cv.width = outW; cv.height = drawH + tableH;
     var ctx = cv.getContext("2d");
-    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, outW, outH);
-    drawGrid(ctx, outW, outH);
-    var realToScreen = toScreen; // uses st.* which we just rebound
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cv.width, cv.height);
+
+    // temporarily rebind the viewport to the export surface
+    var keep = { offX: st.offX, offY: st.offY, ppf: st.ppf, sel: st.sel };
+    st.offX = b[0] - margin; st.offY = b[1] - margin; st.ppf = ppf; st.sel = -1;
+    drawGrid(ctx, outW, drawH);
     st.items.forEach(function (it) { drawItem(ctx, it, false); });
     st.offX = keep.offX; st.offY = keep.offY; st.ppf = keep.ppf; st.sel = keep.sel;
+
+    if (rows.length) {
+      var y = drawH;
+      ctx.fillStyle = "#f2f4f7"; ctx.fillRect(0, y, outW, tableH);
+      ctx.strokeStyle = "#c7d0da"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(0, y + 1); ctx.lineTo(outW, y + 1); ctx.stroke();
+      ctx.fillStyle = "#1b2733";
+      ctx.textAlign = "left"; ctx.textBaseline = "middle";
+      ctx.font = "bold 22px Arial";
+      ctx.fillText("TAKEOFF", 26, y + 30);
+      ctx.font = "18px Arial";
+      rows.forEach(function (r, i) {
+        var ry = y + 54 + i * rowH + rowH / 2;
+        ctx.fillStyle = i % 2 ? "#ffffff" : "#fafbfc";
+        ctx.fillRect(20, y + 54 + i * rowH, outW - 40, rowH);
+        ctx.fillStyle = "#5a6b7d"; ctx.fillText(r[0], 30, ry);
+        ctx.fillStyle = "#1b2733"; ctx.fillText(r[1], 120, ry);
+        ctx.textAlign = "right";
+        ctx.font = "bold 18px Arial";
+        ctx.fillText(r[2], outW - 34, ry);
+        ctx.textAlign = "left";
+        ctx.font = "18px Arial";
+      });
+    }
     return cv.toDataURL("image/png");
   }
 
@@ -612,7 +906,8 @@
         method: "POST",
         body: { name: name, dataBase64: dataUrl, pathParts: st.getPathParts ? st.getPathParts() : [] },
       });
-      var patch = { id: up.image.id, url: "", name: up.image.name, cad: { version: 1, items: st.items } };
+      var patch = { id: up.image.id, url: "", name: up.image.name,
+        cad: { version: 2, items: st.items, takeoff: takeoffData() } };
       if (st.onSave) st.onSave(patch);
       close();
     } catch (e) {
@@ -628,18 +923,47 @@
     line: "Line — drag to draw a wall/edge. Length shows live. ORTHO keeps it square.",
     rect: "Rectangle — drag corner to corner. Width, height and area label automatically.",
     poly: "Outline — tap each corner. Tap the FIRST corner to close the shape (area computes), or ✓ Finish.",
+    tri: "Triangle — tap 3 corners; it closes itself and labels each side plus the area.",
+    circle: "Circle — drag from the center out. Shows diameter and area.",
+    door: "Door — tap on a wall; the symbol aligns to it. Tap the 🚪 tool again to change the width.",
+    window: "Window — tap on a wall; the symbol aligns to it. Tap the 🪟 tool again to change the width.",
+    count: "Count — tap to drop numbered markers. Tap the 🔢 tool again to change what you're counting.",
     dim: "Dimension — drag between two points to place a measurement.",
     text: "Text — tap where the label goes.",
-    post: "Post — tap to place a post symbol.",
+    post: "Post — tap to place a post symbol (counts as Posts in the takeoff).",
     erase: "Eraser — tap items to remove them.",
   };
+  function paintOrtho() {
+    var b = q("#csOrtho");
+    b.textContent = st.orthoDeg ? "ORTHO " + st.orthoDeg + "°" : "ORTHO off";
+    b.classList.toggle("act", st.orthoDeg > 0);
+  }
+
   function setTool(t) {
+    var reselect = st.tool === t;
     if (st.draw && st.draw.type === "poly") finishPoly(false);
     st.tool = t;
     if (t !== "select" && st.sel >= 0) { st.sel = -1; }
     ui.querySelectorAll(".cs-tool[data-tool]").forEach(function (b) { b.classList.toggle("on", b.dataset.tool === t); });
     q("#csHint").textContent = HINTS[t] || "";
     render();
+    // openings and counts ask for their size/label the first time (tap the tool
+    // again any time to change it)
+    if ((t === "door" || t === "window") && (reselect || !st[t === "door" ? "doorAsked" : "winAsked"])) {
+      st[t === "door" ? "doorAsked" : "winAsked"] = true;
+      openFtInPrompt(t === "door" ? "🚪 Door width" : "🪟 Window width", "Width",
+        t === "door" ? st.doorW : st.winW,
+        function (v) {
+          if (t === "door") st.doorW = v; else st.winW = v;
+          q("#csHint").textContent = (t === "door" ? "Door" : "Window") + " set to " + fmtFtIn(v) + " — tap on a wall to place it.";
+        });
+    }
+    if (t === "count" && (reselect || !st.countLabel)) {
+      openPrompt("🔢 What are you counting?", function () {
+        st.countLabel = q("#csPromptInput").value.trim() || "Count";
+        q("#csHint").textContent = 'Counting "' + st.countLabel + '" — tap to drop numbered markers.';
+      }, st.countLabel || "", ["Posts", "Footings", "Lights", "Balusters", "Joist hangers", "Stair treads"]);
+    }
   }
 
   function wireStatic() {
@@ -653,7 +977,30 @@
         ui.querySelectorAll(".cs-color").forEach(function (x) { x.classList.toggle("on", x === s2); });
       };
     });
-    q("#csOrtho").onclick = function () { st.ortho = !st.ortho; this.classList.toggle("act", st.ortho); };
+    q("#csOrtho").onclick = function () {
+      st.orthoIdx = (st.orthoIdx + 1) % ORTHO_STEPS.length;
+      st.orthoDeg = ORTHO_STEPS[st.orthoIdx];
+      paintOrtho();
+    };
+    q("#csTagSel").onclick = function () {
+      var it = st.sel >= 0 ? st.items[st.sel] : null;
+      if (!it) return;
+      openPrompt("🏷 Takeoff label", function () {
+        var v = q("#csPromptInput").value.trim();
+        if (v) { snapshot(); it.takeoff = v; render(); }
+      }, it.takeoff || defaultLabel(it), TAKEOFF_SUGGEST);
+    };
+    q("#csTakeoff").onclick = function () {
+      var p = q("#csPanel");
+      p.classList.toggle("open");
+      if (p.classList.contains("open")) renderTakeoff();
+    };
+    q("#csPanelClose").onclick = function () { q("#csPanel").classList.remove("open"); };
+    q("#csTakeoffCopy").onclick = function () {
+      var txt = takeoffText();
+      if (navigator.clipboard) navigator.clipboard.writeText(txt).catch(function () {});
+      q("#csHint").textContent = "✓ Takeoff copied — paste into the estimate or a spreadsheet.";
+    };
     q("#csSnap").onclick = function () {
       st.snapIdx = (st.snapIdx + 1) % SNAPS.length;
       st.snapFt = SNAPS[st.snapIdx];
@@ -733,13 +1080,17 @@
       undo: [], redo: [], draw: null, drag: null, dirty: false,
       sel: -1, tool: "line", color: COLORS[0],
       offX: -2, offY: -2, ppf: 36,
-      snapIdx: 0, snapFt: SNAPS[0], ortho: true, grid: true,
+      snapIdx: 0, snapFt: SNAPS[0], grid: true,
+      orthoIdx: 0, orthoDeg: ORTHO_STEPS[0],
+      doorW: 3, winW: 4, countLabel: "", doorAsked: false, winAsked: false,
       pointers: {}, pinch: null,
     };
     q("#csTitle").textContent = opts.title || "New drawing";
     q("#csSave").disabled = false; q("#csSave").textContent = "✓ Save drawing";
     q("#csSnap").textContent = 'SNAP 6"'; q("#csSnap").classList.add("act");
-    q("#csOrtho").classList.add("act"); q("#csGrid").classList.add("act");
+    q("#csGrid").classList.add("act");
+    q("#csPanel").classList.remove("open");
+    paintOrtho();
     ui.classList.add("open");
     resize();
     if (st.items.length) fit(); else render();
