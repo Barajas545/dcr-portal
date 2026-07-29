@@ -323,14 +323,72 @@
     return "";
   }
 
-  /* ══ step navigation ══ */
+  /* ══ step navigation ══
+     Steps unlock as their prerequisites are met: fill in step 1 and steps 2-3
+     open immediately; pick a material and 4-5 open too. Going back is always
+     allowed. Locked tabs explain what's missing instead of doing nothing. */
+
+  // Read the step-1 form into state (no-op when step 1 isn't on screen).
+  function commitStep1() {
+    if (!el("f_client")) return;
+    var p = state.project;
+    p.clientName = el("f_client").value.trim();
+    p.clientPhone = el("f_phone").value.trim();
+    p.clientEmail = el("f_email").value.trim();
+    p.address = el("f_addr").value.trim();
+    p.city = el("f_city").value.trim();
+    p.deckingArea = Number(el("f_deck").value);
+    p.framingArea = Number(el("f_frame").value);
+    p.railing = Number(el("f_rail").value) || 0;
+    p.stairs = Number(el("f_stairs").value) || 0;
+    p.terrain = el("f_terrain").value;
+    p.access = el("f_access").value;
+    p.notes = el("f_notes").value;
+  }
+
+  // null when step 1 has everything the estimate needs, else what's missing.
+  function step1Problem() {
+    var p = state.project;
+    if (!p.clientName) return "Please enter the client name.";
+    if (!p.address) return "Please enter the project address.";
+    if (!p.projectType) return "Please select the project type.";
+    if (!(Number(p.deckingArea) > 0)) return "Please enter a valid decking surface area.";
+    if (!isFinite(Number(p.framingArea)) || Number(p.framingArea) < 0) return "Please enter a valid framing area.";
+    if (!p.complexity) return "Please select the project complexity.";
+    return null;
+  }
+  function stepBlockReason(n) {
+    if (n <= 1) return null;
+    var p1 = step1Problem();
+    if (p1) return p1;
+    if (n >= 4 && !state.sel.primary) return "Pick a decking material on step 3 first.";
+    return null;
+  }
+
   function paintSteps() {
     document.querySelectorAll(".ed-step").forEach(function (s) {
       var n = Number(s.dataset.step);
+      var reachable = n < state.step || !stepBlockReason(n); // back is always open
       s.classList.toggle("on", n === state.step);
       s.classList.toggle("done", n < state.step);
-      s.onclick = n < state.step ? function () { go(n); } : null;
+      s.classList.toggle("open", reachable && n !== state.step);
+      s.classList.toggle("locked", !reachable);
+      s.title = reachable ? "" : stepBlockReason(n) || "";
+      s.onclick = n === state.step ? null : function () { tryGo(n); };
     });
+  }
+
+  // Tab navigation: save what's typed first, then either move or say why not.
+  function tryGo(n) {
+    if (state.step === 1) commitStep1();
+    var why = n > state.step ? stepBlockReason(n) : null;
+    if (why) {
+      if (el("s1msg")) el("s1msg").textContent = why;
+      paintSteps();
+      return;
+    }
+    if (state.step === 1 && n > 1) state.ranked = null; // scope may have changed — re-rank
+    go(n);
   }
 
   async function go(step) {
@@ -719,6 +777,7 @@
         c.classList.add("on");
         state.project.projectType = c.dataset.id;
         applyTypeRules(c.dataset.id);
+        commitStep1(); paintSteps();
       };
     });
     document.querySelectorAll(".ed-pick-card.cx").forEach(function (c) {
@@ -726,37 +785,20 @@
         document.querySelectorAll(".ed-pick-card.cx").forEach(function (x) { x.classList.remove("on"); });
         c.classList.add("on");
         state.project.complexity = c.dataset.id;
+        commitStep1(); paintSteps();
       };
     });
     el("f_deck").addEventListener("input", function () {
       if (state.project.projectType === "new-deck") el("f_frame").value = this.value;
     });
+    // keep the step tabs in sync as the form is filled in
+    ["f_client", "f_addr", "f_deck", "f_frame"].forEach(function (id) {
+      el(id).addEventListener("input", function () { commitStep1(); paintSteps(); });
+    });
     mountMedia();
+    paintSteps();
 
-    el("s1next").onclick = function () {
-      var p2 = state.project;
-      p2.clientName = el("f_client").value.trim();
-      p2.clientPhone = el("f_phone").value.trim();
-      p2.clientEmail = el("f_email").value.trim();
-      p2.address = el("f_addr").value.trim();
-      p2.city = el("f_city").value.trim();
-      p2.deckingArea = Number(el("f_deck").value);
-      p2.framingArea = Number(el("f_frame").value);
-      p2.railing = Number(el("f_rail").value) || 0;
-      p2.stairs = Number(el("f_stairs").value) || 0;
-      p2.terrain = el("f_terrain").value;
-      p2.access = el("f_access").value;
-      p2.notes = el("f_notes").value;
-      var msg = el("s1msg");
-      if (!p2.clientName) return (msg.textContent = "Please enter the client name.");
-      if (!p2.address) return (msg.textContent = "Please enter the project address.");
-      if (!p2.projectType) return (msg.textContent = "Please select the project type.");
-      if (!p2.deckingArea || p2.deckingArea <= 0) return (msg.textContent = "Please enter a valid decking surface area.");
-      if (!isFinite(p2.framingArea) || p2.framingArea < 0) return (msg.textContent = "Please enter a valid framing area.");
-      if (!p2.complexity) return (msg.textContent = "Please select the project complexity.");
-      state.ranked = null; // scope changed — re-rank
-      go(2);
-    };
+    el("s1next").onclick = function () { tryGo(2); };
   }
 
   /* ══ STEP 2 — similar projects ══ */
@@ -939,6 +981,7 @@
       if (!state.sel.primary) { el("s3msg").textContent = "Please select a primary material (or go back if you only need the comparison)."; return; }
       go(4);
     };
+    paintSteps(); // a just-picked material unlocks steps 4-5 right away
   }
 
   /* ══ STEP 4 — review ══ */
