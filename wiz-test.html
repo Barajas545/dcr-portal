@@ -168,7 +168,12 @@ window.DCR = {
     window.__CALLS = window.__CALLS || []; window.__CALLS.push({ path: path, opts: opts });
     if (path.indexOf('part=materials') !== -1) return Promise.resolve({ materials: window.__MATS });
     if (path.indexOf('part=refs') !== -1) return Promise.resolve({ refs: window.__REFS });
-    if (path.indexOf('part=estimates') !== -1) return Promise.resolve({ estimates: [] });
+    if (path.indexOf('part=estimates') !== -1) {
+      if (opts && (opts.method === 'POST' || opts.method === 'PATCH')) {
+        return Promise.resolve({ estimate: Object.assign({ id: (opts.body && opts.body.id) || 'e-test-1' }, opts.body ? opts.body.fields : {}) });
+      }
+      return Promise.resolve({ estimates: [] });
+    }
     if (path.indexOf('part=image') !== -1 && opts && opts.method === 'POST') return Promise.resolve({ image: { id: 'fake-' + Math.random().toString(36).slice(2), name: 'up.png' } });
     return Promise.resolve({});
   },
@@ -177,8 +182,8 @@ window.DCR = {
 };
 try { localStorage.setItem('dcrDeckEstDraft', JSON.stringify({"estimateId":null,"estimateRef":"","version":0,"estStatus":"draft","referenceId":null,"sel":{"primary":null,"alternative":null},"project":{"clientName":"Harness Client","clientPhone":"","clientEmail":"","address":"1 Test Way","city":"Atascadero","projectType":"new-deck","deckingArea":400,"framingArea":400,"railing":60,"stairs":1,"complexity":"moderate","terrain":"slope","access":"moderate","notes":""}})); } catch (e) {}
 </script>
-    <script src="gallery.js?v=3"></script>
-    <script src="photo-annotate.js?v=3"></script>
-    <script src="estimate-deck.js?v=3"></script>
+    <script src="gallery.js?v=4"></script>
+    <script src="photo-annotate.js?v=4"></script>
+    <script src="estimate-deck.js?v=4"></script>
   </body>
 </html>
