@@ -59,29 +59,7 @@
       .ml-mactions{display:flex; justify-content:flex-end; gap:8px; margin-top:14px;}
       label{margin-top:10px;}
 
-      /* picture gallery */
-      .g-wrap{border:2px dashed var(--border); border-radius:12px; padding:12px; margin-top:6px;
-        transition:border-color .12s, background .12s;}
-      .g-wrap.drag{border-color:var(--acc); background:var(--tint);}
-      .g-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(104px,1fr)); gap:10px;}
-      .g-tile{position:relative; border:1px solid var(--border); border-radius:10px; overflow:hidden;
-        aspect-ratio:1; background:var(--surface-2); display:flex; align-items:center; justify-content:center;}
-      .g-tile img{width:100%; height:100%; object-fit:cover;}
-      .g-tile .x{position:absolute; top:4px; right:4px; width:22px; height:22px; border-radius:50%;
-        border:none; background:rgba(0,0,0,.6); color:#fff; font-size:12px; cursor:pointer; line-height:1;}
-      .g-tile .star{position:absolute; top:4px; left:4px; width:22px; height:22px; border-radius:50%;
-        border:none; background:rgba(0,0,0,.6); color:#ffd47f; font-size:12px; cursor:pointer; line-height:1;}
-      .g-tile.cover{outline:3px solid var(--gold); outline-offset:-3px;}
-      .g-tile .cover-tag{position:absolute; bottom:0; left:0; right:0; background:rgba(0,0,0,.6); color:#ffd47f;
-        font-size:9.5px; font-weight:700; text-align:center; padding:2px 0; letter-spacing:.05em;}
-      .g-add{display:flex; flex-direction:column; gap:5px; align-items:stretch; justify-content:center; padding:8px;}
-      .g-add button{font-size:11px; padding:5px 6px; border-radius:7px; border:1px solid var(--border);
-        background:var(--surface); color:var(--text); cursor:pointer; white-space:nowrap;}
-      .g-add button:hover{border-color:var(--acc); color:var(--acc);}
-      .g-hint{font-size:11px; color:var(--text-muted); margin-top:8px;}
-      .g-urlrow{display:none; gap:8px; margin-top:8px;}
-      .g-urlrow.open{display:flex;}
-      .g-urlrow input{flex:1;}
+      /* picture gallery styles come from the shared gallery.js widget */
     </style>
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" type="image/png" href="icon-192.png" />
@@ -119,16 +97,7 @@
         <h3 id="mTitle">Edit material</h3>
 
         <label style="margin-top:0">Pictures <span style="color:var(--text-muted);font-weight:400">— first one is the cover shown on cards & estimates</span></label>
-        <div class="g-wrap" id="gWrap">
-          <div class="g-grid" id="gGrid"></div>
-          <div class="g-urlrow" id="gUrlRow">
-            <input id="gUrlInput" placeholder="https://…/photo.jpg" />
-            <button class="btn btn-sm" id="gUrlAdd">Add</button>
-          </div>
-          <div class="g-hint" id="gHint">📥 Drag &amp; drop images here · paste a screenshot with Ctrl+V · big photos are resized automatically</div>
-        </div>
-        <input id="gFile" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple style="display:none">
-        <input id="gCam" type="file" accept="image/*" capture="environment" style="display:none">
+        <div id="mGallery"></div>
 
         <div class="ml-mgrid" style="margin-top:8px">
           <div class="full"><label>Name</label><input id="mName"></div>
@@ -161,6 +130,7 @@
 
     <script src="config.js"></script>
     <script src="common.js"></script>
+    <script src="gallery.js"></script>
     <script src="materials-library.js"></script>
   </body>
 </html>

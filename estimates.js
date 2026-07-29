@@ -5,7 +5,7 @@
 (function () {
   var el = function (id) { return document.getElementById(id); };
   var esc = function (v) { return DCR.esc(v); };
-  var state = { estimates: [], refs: [], editingRef: null, isAdmin: false };
+  var state = { estimates: [], refs: [], editingRef: null, isAdmin: false, refGallery: null };
 
   function money(n) {
     if (n === null || n === undefined || n === "" || !isFinite(Number(n))) return "—";
@@ -83,10 +83,16 @@
       "<th class='num'>Price</th><th class='num'>$/SF</th><th>Active</th>" +
       "</tr></thead><tbody>" +
       state.refs.map(function (r) {
-        return '<tr class="row" data-id="' + esc(r.id) + '"><td><b>' + esc(r.projectName || r.projectRef) + "</b>" +
+        var g = DCRGallery.parse(r);
+        var thumb = g.length
+          ? '<span style="width:44px;height:44px;border-radius:8px;overflow:hidden;background:var(--surface-2);flex-shrink:0;display:inline-flex">' +
+            '<img style="display:none;width:100%;height:100%;object-fit:cover" data-refpic="' + esc(r.id) + '" alt=""></span>'
+          : "";
+        return '<tr class="row" data-id="' + esc(r.id) + '"><td><div style="display:flex;gap:10px;align-items:center">' + thumb + "<div><b>" + esc(r.projectName || r.projectRef) + "</b>" +
           (r.isSample ? ' <span class="se-badge-sample">sample</span>' : "") +
+          (g.length ? ' <span style="font-size:10.5px;color:var(--text-muted)">📷 ' + g.length + "</span>" : "") +
           "<br><span style='font-size:11.5px;color:var(--text-muted)'>" +
-          esc([r.projectRef, r.city, r.completedDate].filter(Boolean).join(" · ")) + "</span></td>" +
+          esc([r.projectRef, r.city, r.completedDate].filter(Boolean).join(" · ")) + "</span></div></div></td>" +
           "<td>" + esc(r.projectType || "") + "</td>" +
           "<td class='num'>" + (r.primaryAreaSF || 0) + "</td>" +
           "<td class='num'>" + (r.railingLF || 0) + "</td>" +
@@ -100,6 +106,13 @@
         var r = state.refs.find(function (x) { return x.id === tr.dataset.id; });
         if (r) openRefModal(r);
       };
+    });
+    // hydrate cover thumbnails
+    state.refs.forEach(function (r) {
+      var img = el("refList").querySelector('img[data-refpic="' + CSS.escape(r.id) + '"]');
+      if (!img) return;
+      img.onload = function () { img.style.display = ""; };
+      DCRGallery.srcInto(img, DCRGallery.parse(r)[0]);
     });
   }
 
@@ -125,7 +138,20 @@
     el("r_active").value = r && r.activeAsReference === false ? "false" : "true";
     el("refDelete").style.display = r ? "" : "none";
     updateCps();
+    if (state.refGallery) state.refGallery.destroy();
+    state.refGallery = DCRGallery.mount(el("refGallery"), {
+      initial: DCRGallery.parse(r),
+      getPathParts: function () {
+        var ref = el("r_ref").value.trim() || "New";
+        var name = el("r_name").value.trim();
+        return ["Reference Projects", (ref + (name ? " - " + name : "")).slice(0, 80)];
+      },
+    });
     el("refModal").classList.add("open");
+  }
+  function closeRefModal() {
+    el("refModal").classList.remove("open");
+    if (state.refGallery) { state.refGallery.destroy(); state.refGallery = null; }
   }
   function updateCps() {
     var sf = Number(el("r_sf").value), price = Number(el("r_price").value);
@@ -149,10 +175,15 @@
       notes: el("r_notes").value,
       activeAsReference: el("r_active").value === "true",
       isSample: state.editingRef ? state.editingRef.isSample === true : false,
+      picturesJson: JSON.stringify(state.refGallery ? state.refGallery.get() : []),
     };
     if (!fields.projectName) { el("refMsg").textContent = "Project name is required."; return; }
     if (!(sf > 0)) { el("refMsg").textContent = "Decking area is required."; return; }
     if (!(price > 0)) { el("refMsg").textContent = "Final price is required — it drives the cost history."; return; }
+    if (state.refGallery && state.refGallery.uploading()) {
+      el("refMsg").textContent = "Still uploading photos — one moment…";
+      return;
+    }
     el("refSave").disabled = true;
     el("refMsg").textContent = "Saving…";
     try {
@@ -160,7 +191,7 @@
         method: "POST",
         body: state.editingRef ? { id: state.editingRef.id, fields: fields } : { fields: fields },
       });
-      el("refModal").classList.remove("open");
+      closeRefModal();
       await loadRefs();
     } catch (e2) { el("refMsg").textContent = e2.message || "Save failed."; }
     el("refSave").disabled = false;
@@ -214,8 +245,8 @@
     el("seSearch").oninput = renderEstimates;
     el("seReload").onclick = loadEstimates;
     el("refAdd").onclick = function () { openRefModal(null); };
-    el("refCancel").onclick = function () { el("refModal").classList.remove("open"); };
-    el("refModal").onclick = function (e2) { if (e2.target === el("refModal")) el("refModal").classList.remove("open"); };
+    el("refCancel").onclick = closeRefModal;
+    el("refModal").onclick = function (e2) { if (e2.target === el("refModal")) closeRefModal(); };
     el("refSave").onclick = saveRef;
     el("r_sf").oninput = updateCps;
     el("r_price").oninput = updateCps;
@@ -224,7 +255,7 @@
       if (!confirm("Delete this reference project?")) return;
       try {
         await DCR.api("/api/portal?action=sales&part=refs", { method: "DELETE", body: { id: state.editingRef.id } });
-        el("refModal").classList.remove("open");
+        closeRefModal();
         await loadRefs();
       } catch (e2) { el("refMsg").textContent = e2.message || "Delete failed."; }
     };

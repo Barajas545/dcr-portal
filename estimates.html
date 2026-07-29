@@ -114,6 +114,9 @@
     <div class="se-overlay" id="refModal">
       <div class="se-modal">
         <h3 id="refTitle">Add past project</h3>
+        <label style="display:block;font-size:13px;font-weight:600;margin:4px 0 6px">Project photos
+          <span style="color:var(--text-muted);font-weight:400">— shown while estimating; first one is the cover</span></label>
+        <div id="refGallery" style="margin-bottom:10px"></div>
         <div class="se-grid">
           <div><label>Project ref (ID)</label><input id="r_ref" placeholder="DCR-DECK-007"></div>
           <div><label>Project name</label><input id="r_name"></div>
@@ -148,6 +151,7 @@
 
     <script src="config.js"></script>
     <script src="common.js"></script>
+    <script src="gallery.js"></script>
     <script src="estimates.js"></script>
   </body>
 </html>

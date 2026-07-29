@@ -442,9 +442,21 @@
     }
     var cards = state.ranked.map(function (r) {
       var selCls = state.referenceId === r.projectRef ? " sel" : "";
+      var gal = DCRGallery.parse(r);
+      var picHtml = gal.length
+        ? '<div class="ed-refpic" data-car="' + esc(r.projectRef) + '" data-idx="0">' +
+          '<img style="display:none" alt="' + esc(r.projectName) + '">' +
+          (gal.length > 1
+            ? '<button type="button" class="nav prev" data-nav="-1" title="Previous photo">‹</button>' +
+              '<button type="button" class="nav next" data-nav="1" title="Next photo">›</button>' +
+              '<span class="ct">1 / ' + gal.length + "</span>"
+            : "") +
+          "</div>"
+        : "";
       return '<div class="ed-match' + selCls + '" data-ref="' + esc(r.projectRef) + '">' +
         '<div class="hd"><span class="nm">' + esc(r.projectName) + (r.isSample ? ' <span class="ed-badge sample">sample</span>' : "") + "</span>" +
         '<span class="ed-badge ' + matchClass(r.match) + '">' + r.match + "% match</span></div>" +
+        picHtml +
         '<div class="ed-facts">' +
         "<span>Type: <b>" + esc(r.projectType || "—") + "</b></span>" +
         "<span>Decking: <b>" + (r.primaryAreaSF || 0) + " SF</b></span>" +
@@ -475,6 +487,28 @@
         state.referenceId = b.dataset.ref === state.referenceId ? null : b.dataset.ref;
         renderStep2();
       };
+    });
+    // photo carousels: load the current photo; ‹ › cycle through that project's gallery
+    document.querySelectorAll(".ed-refpic[data-car]").forEach(function (box) {
+      var ref = state.ranked.find(function (r) { return r.projectRef === box.dataset.car; });
+      var gal = DCRGallery.parse(ref);
+      var img = box.querySelector("img");
+      function show(idx) {
+        idx = ((idx % gal.length) + gal.length) % gal.length;
+        box.dataset.idx = idx;
+        img.style.display = "none";
+        img.onload = function () { img.style.display = ""; };
+        DCRGallery.srcInto(img, gal[idx]);
+        var ct = box.querySelector(".ct");
+        if (ct) ct.textContent = (idx + 1) + " / " + gal.length;
+      }
+      box.querySelectorAll("[data-nav]").forEach(function (btn) {
+        btn.onclick = function (ev) {
+          ev.stopPropagation();
+          show(Number(box.dataset.idx) + Number(btn.dataset.nav));
+        };
+      });
+      show(0);
     });
     el("s2back").onclick = function () { go(1); };
     el("s2next").onclick = function () { go(3); };
@@ -618,8 +652,18 @@
     if (!state.estimateRef) state.estimateRef = "EST-" + Date.now();
 
     var bench = o.benchmark, range = o.range;
+    var benchRef = bench.present && state.ranked
+      ? state.ranked.find(function (r) { return r.projectRef === bench.projectRef; }) : null;
+    var benchGal = benchRef ? DCRGallery.parse(benchRef) : [];
+    var benchPic = benchGal.length
+      ? '<div style="display:flex;gap:12px;align-items:center;margin:6px 0 2px">' +
+        '<span class="ed-benchpic"><img style="display:none" data-bench-pic alt=""></span>' +
+        '<span style="font-size:12px;color:var(--text-muted)">' + esc(bench.projectName) +
+        " — completed project photo" + (benchGal.length > 1 ? "s (📷 " + benchGal.length + ")" : "") + "</span></div>"
+      : "";
     var benchHtml = bench.present
-      ? '<div class="ed-kv"><span>Reference</span><span class="v">' + esc(bench.projectName) + " (" + (bench.match != null ? bench.match + "%" : "—") + ")</span></div>" +
+      ? benchPic +
+        '<div class="ed-kv"><span>Reference</span><span class="v">' + esc(bench.projectName) + " (" + (bench.match != null ? bench.match + "%" : "—") + ")</span></div>" +
         '<div class="ed-kv"><span>Historical cost/SF × your ' + bench.currentAreaSF + ' SF</span><span class="v">$' +
           (bench.costPerSF != null ? bench.costPerSF.toFixed(2) : "—") + " × " + bench.currentAreaSF + "</span></div>" +
         '<div class="ed-kv"><span><b>Benchmark total</b></span><span class="v ed-total">' + money(bench.total) + "</span></div>" +
@@ -678,6 +722,11 @@
       '<button class="btn" id="s5save">💾 Save estimate</button></span></div>' +
       '<div class="ed-msg" id="s5msg"></div></div>';
 
+    var benchImg = document.querySelector("img[data-bench-pic]");
+    if (benchImg && benchGal.length) {
+      benchImg.onload = function () { benchImg.style.display = ""; };
+      DCRGallery.srcInto(benchImg, benchGal[0]);
+    }
     el("s5back").onclick = function () { go(4); };
     el("s5print").onclick = function () { window.print(); };
     el("s5save").onclick = saveEstimate;

@@ -20,36 +20,17 @@
     "28 - Electronic Safety & Security", "31 - Earthwork",
     "32 - Exterior Improvements", "33 - Utilities",
   ];
-  var MAX_BYTES = 3 * 1024 * 1024;
 
   var state = {
     rows: [], editing: null, editingKind: "product", parentMaterialId: null,
-    gallery: [],           // [{id?, url?, name}] — index 0 is the cover
-    busyUploads: 0,
+    galleryHandle: null,   // shared DCRGallery widget (gallery.js)
   };
+  var galleryOf = DCRGallery.parse;
+  var picSrcInto = DCRGallery.srcInto;
 
   function products() { return state.rows.filter(function (r) { return r.itemKind === "product"; }); }
   function colorsOf(materialId) {
     return state.rows.filter(function (r) { return r.itemKind === "color" && r.materialId === materialId; });
-  }
-  function galleryOf(row) {
-    if (row && row.picturesJson) {
-      try {
-        var g = JSON.parse(row.picturesJson);
-        if (Array.isArray(g) && g.length) return g;
-      } catch (e) {}
-    }
-    if (row && row.pictureItemId) return [{ id: row.pictureItemId, name: "photo" }];
-    if (row && row.pictureUrl) return [{ url: row.pictureUrl, name: "photo" }];
-    return [];
-  }
-  function picSrcInto(img, entry) {
-    if (!entry) return;
-    if (entry.id) {
-      DCR.blobUrl("/api/portal?action=sales&part=image&id=" + encodeURIComponent(entry.id))
-        .then(function (u) { img.src = u; })
-        .catch(function () { if (entry.url) img.src = entry.url; });
-    } else if (entry.url) img.src = entry.url;
   }
 
   /* ══ grouped catalog view ══ */
@@ -201,141 +182,22 @@
     ["mTierWrap", "mDescWrap", "mHighWrap", "mWarrWrap"].forEach(function (id) {
       el(id).style.display = kind === "color" ? "none" : "";
     });
-    state.gallery = galleryOf(row).slice();
-    renderGallery();
-    el("gUrlRow").classList.remove("open");
+    if (state.galleryHandle) state.galleryHandle.destroy();
+    state.galleryHandle = DCRGallery.mount(el("mGallery"), {
+      initial: galleryOf(row),
+      getPathParts: currentPathParts,
+    });
     el("mlModal").classList.add("open");
   }
-  function closeModal() { el("mlModal").classList.remove("open"); state.editing = null; }
-
-  /* ══ picture gallery ══ */
-  function renderGallery() {
-    var g = state.gallery;
-    var html = g.map(function (p, i) {
-      return '<div class="g-tile' + (i === 0 ? " cover" : "") + '">' +
-        '<img style="display:none" data-gidx="' + i + '" alt="">' +
-        (i === 0 ? '<span class="cover-tag">COVER</span>'
-                 : '<button type="button" class="star" data-star="' + i + '" title="Make cover">★</button>') +
-        '<button type="button" class="x" data-del="' + i + '" title="Remove">✕</button>' +
-        "</div>";
-    }).join("");
-    html += '<div class="g-tile g-add">' +
-      '<button type="button" id="gaFiles">📁 Upload</button>' +
-      '<button type="button" id="gaCam">📷 Camera</button>' +
-      '<button type="button" id="gaUrl">🔗 URL</button>' +
-      '<button type="button" id="gaPaste">📋 Paste</button>' +
-      "</div>";
-    el("gGrid").innerHTML = html;
-
-    g.forEach(function (p, i) {
-      var img = el("gGrid").querySelector('img[data-gidx="' + i + '"]');
-      if (!img) return;
-      img.onload = function () { img.style.display = ""; };
-      picSrcInto(img, p);
-    });
-    el("gGrid").querySelectorAll("[data-del]").forEach(function (b) {
-      b.onclick = function () { state.gallery.splice(Number(b.dataset.del), 1); renderGallery(); };
-    });
-    el("gGrid").querySelectorAll("[data-star]").forEach(function (b) {
-      b.onclick = function () {
-        var i = Number(b.dataset.star);
-        var it = state.gallery.splice(i, 1)[0];
-        state.gallery.unshift(it);
-        renderGallery();
-      };
-    });
-    el("gaFiles").onclick = function () { el("gFile").click(); };
-    el("gaCam").onclick = function () { el("gCam").click(); };
-    el("gaUrl").onclick = function () {
-      el("gUrlRow").classList.toggle("open");
-      if (el("gUrlRow").classList.contains("open")) el("gUrlInput").focus();
-    };
-    el("gaPaste").onclick = pasteFromClipboard;
+  function closeModal() {
+    el("mlModal").classList.remove("open");
+    if (state.galleryHandle) { state.galleryHandle.destroy(); state.galleryHandle = null; }
+    state.editing = null;
   }
 
-  function setHint(t, isErr) {
-    var h = el("gHint");
-    h.style.color = isErr ? "var(--err)" : "var(--text-muted)";
-    h.textContent = t || "📥 Drag & drop images here · paste a screenshot with Ctrl+V · big photos are resized automatically";
-  }
-
-  // Downscale/compress anything big into a ≤3MB JPEG (keeps camera photos usable).
-  function normalizeImage(file) {
-    return new Promise(function (resolve, reject) {
-      if (file.size <= MAX_BYTES && file.type !== "image/heic") {
-        var fr = new FileReader();
-        fr.onload = function () { resolve({ dataUrl: String(fr.result), name: file.name }); };
-        fr.onerror = reject;
-        fr.readAsDataURL(file);
-        return;
-      }
-      var url = URL.createObjectURL(file);
-      var img = new Image();
-      img.onload = function () {
-        URL.revokeObjectURL(url);
-        var maxDim = 1600;
-        var scale = Math.min(1, maxDim / Math.max(img.width, img.height));
-        var cv = document.createElement("canvas");
-        cv.width = Math.round(img.width * scale);
-        cv.height = Math.round(img.height * scale);
-        cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
-        var q = 0.85, dataUrl = cv.toDataURL("image/jpeg", q);
-        while (dataUrl.length * 0.75 > MAX_BYTES && q > 0.4) {
-          q -= 0.1;
-          dataUrl = cv.toDataURL("image/jpeg", q);
-        }
-        resolve({ dataUrl: dataUrl, name: file.name.replace(/\.[^.]+$/, "") + ".jpg" });
-      };
-      img.onerror = function () { reject(new Error("Could not read that image.")); };
-      img.src = url;
-    });
-  }
-
+  // Where uploads for the item being edited get organized in SharePoint.
   function currentPathParts() {
     return [el("mDivision").value, el("mCategory").value, el("mSubCat").value, el("mName").value || "Unnamed"];
-  }
-
-  async function addFiles(fileList) {
-    var files = Array.prototype.slice.call(fileList || []).filter(function (f) { return /^image\//.test(f.type) || /\.(png|jpe?g|gif|webp)$/i.test(f.name); });
-    if (!files.length) { setHint("No image files found.", true); return; }
-    for (var i = 0; i < files.length; i++) {
-      state.busyUploads++;
-      setHint("Uploading " + (i + 1) + " of " + files.length + "…");
-      try {
-        var norm = await normalizeImage(files[i]);
-        var r = await DCR.api("/api/portal?action=sales&part=image", {
-          method: "POST",
-          body: { name: norm.name || "photo.jpg", dataBase64: norm.dataUrl, pathParts: currentPathParts() },
-        });
-        state.gallery.push({ id: r.image.id, name: r.image.name });
-        renderGallery();
-      } catch (e) {
-        setHint((e && e.message) || "Upload failed.", true);
-        state.busyUploads--;
-        return;
-      }
-      state.busyUploads--;
-    }
-    setHint("✓ " + files.length + " photo" + (files.length > 1 ? "s" : "") + " added.");
-  }
-
-  async function pasteFromClipboard() {
-    try {
-      if (navigator.clipboard && navigator.clipboard.read) {
-        var items = await navigator.clipboard.read();
-        for (var it of items) {
-          var type = it.types.find(function (t) { return t.indexOf("image/") === 0; });
-          if (type) {
-            var blob = await it.getType(type);
-            await addFiles([new File([blob], "screenshot.png", { type: type })]);
-            return;
-          }
-        }
-      }
-      setHint("Nothing on the clipboard — copy a screenshot, then press Ctrl+V here.", true);
-    } catch (e) {
-      setHint("Press Ctrl+V inside this window to paste your screenshot.", false);
-    }
   }
 
   /* ══ save / delete / load ══ */
@@ -343,8 +205,12 @@
     var kind = state.editingKind, row = state.editing;
     var name = el("mName").value.trim();
     if (!name) { el("mMsg").textContent = "Name is required."; return; }
-    if (state.busyUploads > 0) { el("mMsg").textContent = "Still uploading photos — one moment…"; return; }
-    var cover = state.gallery[0] || null;
+    if (state.galleryHandle && state.galleryHandle.uploading()) {
+      el("mMsg").textContent = "Still uploading photos — one moment…";
+      return;
+    }
+    var gallery = state.galleryHandle ? state.galleryHandle.get() : [];
+    var cover = gallery[0] || null;
     var fields = {
       itemKind: kind, trade: "deck",
       itemName: name,
@@ -356,7 +222,7 @@
       selectable: el("mSelectable").value === "true",
       warrantySummary: el("mWarranty").value.trim(),
       manufacturerUrl: el("mManUrl").value.trim(),
-      picturesJson: JSON.stringify(state.gallery),
+      picturesJson: JSON.stringify(gallery),
       pictureItemId: cover && cover.id ? cover.id : "",
       pictureUrl: cover && !cover.id && cover.url ? cover.url : "",
     };
@@ -420,44 +286,8 @@
     el("mlModal").onclick = function (e) { if (e.target === el("mlModal")) closeModal(); };
     el("mSave").onclick = save;
     el("mDelete").onclick = remove;
-    el("gFile").onchange = function () { if (this.files.length) { addFiles(this.files); this.value = ""; } };
-    el("gCam").onchange = function () { if (this.files.length) { addFiles(this.files); this.value = ""; } };
-    el("gUrlAdd").onclick = function () {
-      var u = el("gUrlInput").value.trim();
-      if (!u) return;
-      if (!/^https:\/\//i.test(u)) { setHint("Picture links must start with https://", true); return; }
-      state.gallery.push({ url: u, name: "link" });
-      el("gUrlInput").value = "";
-      el("gUrlRow").classList.remove("open");
-      renderGallery();
-      setHint("✓ Link added.");
-    };
-    el("gUrlInput").addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); el("gUrlAdd").click(); } });
-
-    // paste a screenshot anywhere in the open modal
-    document.addEventListener("paste", function (e) {
-      if (!el("mlModal").classList.contains("open")) return;
-      var items = (e.clipboardData || {}).items || [];
-      for (var i = 0; i < items.length; i++) {
-        if (items[i].type && items[i].type.indexOf("image/") === 0) {
-          e.preventDefault();
-          addFiles([items[i].getAsFile()]);
-          return;
-        }
-      }
-    });
-    // drag & drop onto the gallery
-    var gw = el("gWrap");
-    ["dragenter", "dragover"].forEach(function (ev) {
-      gw.addEventListener(ev, function (e) { e.preventDefault(); gw.classList.add("drag"); });
-    });
-    ["dragleave", "drop"].forEach(function (ev) {
-      gw.addEventListener(ev, function (e) { e.preventDefault(); gw.classList.remove("drag"); });
-    });
-    gw.addEventListener("drop", function (e) {
-      if (e.dataTransfer && e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
-    });
-
+    // gallery intake (upload/camera/URL/paste/drag&drop) is handled by the
+    // shared DCRGallery widget mounted in openModal().
     await load();
   });
 })();
