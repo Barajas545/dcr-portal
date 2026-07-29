@@ -50,13 +50,17 @@
     ui.innerHTML =
       '<div class="pa-bar">' +
       '<span class="pa-title" id="paTitle"></span>' +
+      '<button class="pa-tool" data-tool="select" title="Select / move — drag notes, double-click to edit text">✥</button>' +
       '<button class="pa-tool on" data-tool="arrow" title="Arrow">➤</button>' +
       '<button class="pa-tool" data-tool="text" title="Text note">T</button>' +
+      '<button class="pa-tool" data-tool="callout" title="Text with arrow — drag from the target to where the text goes">💬</button>' +
       '<button class="pa-tool" data-tool="measure" title="Measure">📏</button>' +
       '<button class="pa-tool" data-tool="cal" title="Calibrate scale from a known length">🎯</button>' +
       '<button class="pa-tool" data-tool="hl" title="Highlighter (freehand)">🖍</button>' +
       '<button class="pa-tool" data-tool="hlbox" title="Box highlight">▭</button>' +
       '<button class="pa-tool" data-tool="erase" title="Eraser">🧽</button>' +
+      '<button class="pa-btn" id="paEditSel" style="display:none" title="Edit the selected note\'s text">✏️ Edit text</button>' +
+      '<button class="pa-btn" id="paDelSel" style="display:none" title="Delete the selected item">🗑</button>' +
       '<span style="width:8px"></span>' +
       '<span id="paColors" style="display:flex;gap:5px;align-items:center"></span>' +
       '<select class="pa-sel" id="paWidth"><option value="1.5">Thin</option><option value="3" selected>Medium</option><option value="6">Thick</option></select>' +
@@ -101,13 +105,18 @@
 
   /* ── drawing ── */
   function sf() { return Math.max(1, Math.min(4, st.w / 900)); } // stroke/font scale for big photos
-  function drawItem(ctx, it) {
+  function drawItem(ctx, it, selected) {
     var pts = it.pts;
     ctx.save();
+    if (selected) { ctx.shadowColor = "#4ea3ff"; ctx.shadowBlur = 14 * sf(); }
     ctx.strokeStyle = it.color; ctx.fillStyle = it.color;
     ctx.lineWidth = (it.width || 3) * sf(); ctx.lineCap = "round"; ctx.lineJoin = "round";
     if (it.type === "arrow" && pts.length === 2) {
       line(ctx, pts[0], pts[1]); head(ctx, pts[0], pts[1], 9 * sf());
+    } else if (it.type === "callout" && pts.length === 2) {
+      // arrow from the text position to the target, text pill at the tail
+      line(ctx, pts[1], pts[0]); head(ctx, pts[1], pts[0], 9 * sf());
+      pill(ctx, pts[1][0], pts[1][1], it.text || "", "#fff", it.color);
     } else if (it.type === "measure" && pts.length === 2) {
       line(ctx, pts[0], pts[1]);
       head(ctx, pts[0], pts[1], 7 * sf()); head(ctx, pts[1], pts[0], 7 * sf());
@@ -153,8 +162,14 @@
   function redraw() {
     var ov = q("#paOv"), ctx = ov.getContext("2d");
     ctx.clearRect(0, 0, ov.width, ov.height);
-    st.items.forEach(function (it) { drawItem(ctx, it); });
-    if (st.draw) drawItem(ctx, st.draw);
+    st.items.forEach(function (it, i) { drawItem(ctx, it, i === st.sel); });
+    if (st.draw) drawItem(ctx, st.draw, false);
+    updateCtxButtons();
+  }
+  function updateCtxButtons() {
+    var it = st.sel >= 0 ? st.items[st.sel] : null;
+    q("#paDelSel").style.display = it ? "" : "none";
+    q("#paEditSel").style.display = it && (it.type === "text" || it.type === "callout") ? "" : "none";
   }
 
   /* ── history ── */
@@ -183,11 +198,20 @@
     var t = L2 ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L2)) : 0;
     return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
   }
+  // Approximate half-width of a rendered text pill (for hit-testing notes).
+  function pillRadius(it) {
+    return Math.max(30 * sf(), ((it.text || "").length * 4 + 14) * sf());
+  }
   function hitTest(pt) {
     var TH = 14 * sf();
     for (var i = st.items.length - 1; i >= 0; i--) {
       var it = st.items[i], pts = it.pts;
-      if (it.type === "text") { if (dist(pt, pts[0]) < TH * 2.5) return i; continue; }
+      if (it.type === "text") { if (dist(pt, pts[0]) < pillRadius(it)) return i; continue; }
+      if (it.type === "callout") {
+        if (dist(pt, pts[1]) < pillRadius(it)) return i;
+        if (ptSeg(pt, pts[0], pts[1]) < TH) return i;
+        continue;
+      }
       if (it.type === "hlbox" && pts.length === 2) {
         var x0 = Math.min(pts[0][0], pts[1][0]) - TH, x1 = Math.max(pts[0][0], pts[1][0]) + TH;
         var y0 = Math.min(pts[0][1], pts[1][1]) - TH, y1 = Math.max(pts[0][1], pts[1][1]) + TH;
@@ -198,18 +222,38 @@
     }
     return -1;
   }
+  // Which endpoint of a two-point item is being grabbed (-1 = whole item).
+  function grabEndpoint(it, pt) {
+    if (["arrow", "measure", "callout", "hlbox"].indexOf(it.type) === -1 || it.pts.length !== 2) return -1;
+    var TH = 18 * sf();
+    if (it.type === "callout" && dist(pt, it.pts[1]) < pillRadius(it)) return 1;
+    if (dist(pt, it.pts[0]) < TH) return 0;
+    if (dist(pt, it.pts[1]) < TH) return 1;
+    return -1;
+  }
 
   /* ── prompt modal (text / calibrate) ── */
   var promptCb = null;
-  function openPrompt(mode, title, cb) {
+  function openPrompt(mode, title, cb, prefill) {
     promptCb = cb;
     q("#paPromptTitle").textContent = title;
     q("#paPromptText").style.display = mode === "text" ? "" : "none";
     q("#paPromptCal").style.display = mode === "cal" ? "" : "none";
-    if (mode === "text") { q("#paTextInput").value = ""; }
+    if (mode === "text") { q("#paTextInput").value = prefill || ""; }
     else { q("#paCalFt").value = ""; q("#paCalIn").value = ""; }
     q("#paPrompt").classList.add("open");
     setTimeout(function () { (mode === "text" ? q("#paTextInput") : q("#paCalFt")).focus(); }, 60);
+  }
+
+  // Re-open the text prompt for an existing text/callout item.
+  function editItemText(idx) {
+    var it = st.items[idx];
+    if (!it || (it.type !== "text" && it.type !== "callout")) return;
+    openPrompt("text", "✏️ Edit note", function () {
+      var v = q("#paTextInput").value.trim();
+      if (v && v !== it.text) { snapshot(); it.text = v; markDirty(); }
+      redraw();
+    }, it.text || "");
   }
   function closePrompt() { q("#paPrompt").classList.remove("open"); promptCb = null; }
 
@@ -222,9 +266,29 @@
     if (!st || (e.button !== undefined && e.button !== 0)) return;
     var pt = evPt(e), t = st.tool;
     try { q("#paOv").setPointerCapture(e.pointerId); } catch (e2) { /* synthetic/stale pointer — capture is best-effort */ }
+    if (t === "select") {
+      var hiS = hitTest(pt);
+      if (hiS >= 0) {
+        st.sel = hiS;
+        var it = st.items[hiS];
+        st.move = {
+          idx: hiS,
+          endpoint: grabEndpoint(it, pt),
+          start: pt,
+          orig: JSON.parse(JSON.stringify(it.pts)),
+          before: JSON.stringify(st.items), // snapshot committed only if it actually moves
+          moved: false,
+        };
+        st.drag = "move";
+      } else {
+        st.sel = -1;
+      }
+      redraw();
+      return;
+    }
     if (t === "erase") {
       var hi = hitTest(pt);
-      if (hi >= 0) { snapshot(); st.items.splice(hi, 1); redraw(); }
+      if (hi >= 0) { snapshot(); st.items.splice(hi, 1); st.sel = -1; redraw(); markDirty(); }
       st.drag = "erase";
       return;
     }
@@ -240,16 +304,29 @@
       st.drag = "draw";
       return;
     }
-    // two-point tools: arrow / measure / hlbox / cal
+    // two-point tools: arrow / callout / measure / hlbox / cal
     st.draw = { type: t === "cal" ? "measure" : t, pts: [pt, pt], color: t === "cal" ? "#ff9800" : st.color, width: st.width, _cal: t === "cal" };
     st.drag = "draw";
   }
   function onMove(e) {
     if (!st.drag) return;
     var pt = evPt(e);
+    if (st.drag === "move" && st.move) {
+      var m = st.move, it2 = st.items[m.idx];
+      var dx = pt[0] - m.start[0], dy = pt[1] - m.start[1];
+      if (!m.moved && Math.hypot(dx, dy) > 3 * sf()) m.moved = true;
+      if (!m.moved) return;
+      if (m.endpoint >= 0) {
+        it2.pts[m.endpoint] = [m.orig[m.endpoint][0] + dx, m.orig[m.endpoint][1] + dy];
+      } else {
+        it2.pts = m.orig.map(function (p2) { return [p2[0] + dx, p2[1] + dy]; });
+      }
+      redraw();
+      return;
+    }
     if (st.drag === "erase" && e.buttons) {
       var hi = hitTest(pt);
-      if (hi >= 0) { snapshot(); st.items.splice(hi, 1); redraw(); }
+      if (hi >= 0) { snapshot(); st.items.splice(hi, 1); st.sel = -1; redraw(); markDirty(); }
       return;
     }
     if (st.drag === "draw" && st.draw) {
@@ -259,10 +336,32 @@
     }
   }
   function onUp() {
+    if (st.drag === "move" && st.move) {
+      // commit the pre-move state to undo only when something actually moved
+      if (st.move.moved) {
+        st.undo.push(st.move.before);
+        if (st.undo.length > 60) st.undo.shift();
+        st.redo = [];
+        markDirty();
+      }
+      st.move = null;
+      st.drag = null;
+      return;
+    }
     if (st.drag === "draw" && st.draw) {
       var d = st.draw;
       st.draw = null;
       var isClick = d.pts.length === 2 && dist(d.pts[0], d.pts[1]) < 4 * sf();
+      if (d.type === "callout" && !isClick) {
+        st.drag = null;
+        redraw();
+        openPrompt("text", "💬 Callout text", function () {
+          var v = q("#paTextInput").value.trim();
+          if (v) { snapshot(); d.text = v; st.items.push(d); markDirty(); }
+          redraw();
+        });
+        return;
+      }
       if (d.type === "hl" ? d.pts.length > 2 : !isClick) {
         if (d._cal) {
           // calibrate: ask the real length of the drawn line
@@ -301,8 +400,10 @@
   /* ── ui helpers ── */
   function hint(t) { q("#paHint").textContent = t; }
   var HINTS = {
-    arrow: "Arrow — drag from tail to tip.",
-    text: "Text — click where the note should point.",
+    select: "Select — click a note to select it, drag to move (grab an arrow's end to move just that end), double-click text to edit.",
+    arrow: "Arrow — drag from tail to tip. Use ✥ Select to move it later.",
+    text: "Text — click where the note should point. Double-click it later (✥) to edit.",
+    callout: "Callout — drag FROM the thing you're pointing at TO where the text should sit, then type.",
     measure: "Measure — drag between two points. First measurement calibrates the photo.",
     cal: "Calibrate — drag along something with a KNOWN length (a board, a door…), then enter it.",
     hl: "Highlighter — drag freehand.",
@@ -311,6 +412,7 @@
   };
   function setTool(t) {
     st.tool = t;
+    if (t !== "select" && st.sel >= 0) { st.sel = -1; redraw(); }
     ui.querySelectorAll(".pa-tool").forEach(function (b) { b.classList.toggle("on", b.dataset.tool === t); });
     hint(HINTS[t] || "");
   }
@@ -341,11 +443,38 @@
       closePrompt();
       if (cb) cb();
     };
+    q("#paDelSel").onclick = function () {
+      if (st.sel < 0) return;
+      snapshot();
+      st.items.splice(st.sel, 1);
+      st.sel = -1;
+      redraw();
+      markDirty();
+    };
+    q("#paEditSel").onclick = function () { if (st.sel >= 0) editItemText(st.sel); };
     var ov = q("#paOv");
     ov.addEventListener("pointerdown", onDown);
     ov.addEventListener("pointermove", onMove);
     ov.addEventListener("pointerup", onUp);
     ov.addEventListener("pointercancel", onUp);
+    // double-click (or double-tap) a text/callout in ANY tool to edit its words
+    ov.addEventListener("dblclick", function (e) {
+      if (!st) return;
+      var hi = hitTest(evPt(e));
+      if (hi >= 0 && (st.items[hi].type === "text" || st.items[hi].type === "callout")) {
+        st.sel = hi;
+        redraw();
+        editItemText(hi);
+      }
+    });
+    document.addEventListener("keydown", function (e) {
+      if (!st || !ui.classList.contains("open")) return;
+      if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+      if ((e.key === "Delete" || e.key === "Backspace") && st.sel >= 0) {
+        e.preventDefault();
+        q("#paDelSel").onclick();
+      }
+    });
   }
 
   function close() {
@@ -362,6 +491,7 @@
       items: (ann.items || []).map(function (x) { return JSON.parse(JSON.stringify(x)); }),
       ppf: ann.ppf || null,
       undo: [], redo: [], draw: null, drag: null, dirty: false,
+      sel: -1, move: null,
       tool: "arrow", color: COLORS[0], width: 3, w: 0, h: 0,
     };
     q("#paTitle").textContent = opts.title || opts.entry.name || "Photo";
