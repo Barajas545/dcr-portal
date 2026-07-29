@@ -60,6 +60,7 @@
       '<button class="cs-tool" data-tool="post" title="Post marker">⊙</button>' +
       '<button class="cs-tool" data-tool="erase" title="Eraser">🧽</button>' +
       '<button class="cs-btn" id="csEditSel" style="display:none">✏️</button>' +
+      '<button class="cs-btn" id="csDimSel" style="display:none" title="Type the exact dimension">📐</button>' +
       '<button class="cs-btn" id="csDelSel" style="display:none">🗑</button>' +
       '<span style="width:6px"></span>' +
       '<button class="cs-tool tog act" id="csOrtho" title="Keep lines square (horizontal/vertical)">ORTHO</button>' +
@@ -83,7 +84,19 @@
       '<div class="cs-hint" id="csHint"></div>' +
       '<div class="cs-prompt" id="csPrompt"><div class="box">' +
       '<h4 id="csPromptTitle" style="margin:0 0 10px;font-size:14px"></h4>' +
-      '<textarea id="csPromptInput" rows="2"></textarea>' +
+      '<div id="csPromptText"><textarea id="csPromptInput" rows="2"></textarea></div>' +
+      '<div id="csPromptDims" style="display:none">' +
+        '<div id="csDimRowA" style="display:flex;gap:8px;align-items:end">' +
+          '<div style="flex:1"><label id="csDimLabelA" style="font-size:11px;color:#93a1b1">Length — feet</label>' +
+          '<input id="csDimAft" type="number" min="0" step="1" inputmode="numeric"></div>' +
+          '<div style="flex:1"><label style="font-size:11px;color:#93a1b1">inches</label>' +
+          '<input id="csDimAin" type="number" min="0" step="0.5" inputmode="decimal"></div></div>' +
+        '<div id="csDimRowB" style="display:none;flex-direction:row;gap:8px;align-items:end;margin-top:8px">' +
+          '<div style="flex:1"><label style="font-size:11px;color:#93a1b1">Height — feet</label>' +
+          '<input id="csDimBft" type="number" min="0" step="1" inputmode="numeric"></div>' +
+          '<div style="flex:1"><label style="font-size:11px;color:#93a1b1">inches</label>' +
+          '<input id="csDimBin" type="number" min="0" step="0.5" inputmode="decimal"></div></div>' +
+      "</div>" +
       '<div class="acts"><button class="cs-btn" id="csPromptCancel">Cancel</button>' +
       '<button class="cs-btn primary" id="csPromptOk">✓ OK</button></div></div></div>';
     document.body.appendChild(ui);
@@ -271,6 +284,62 @@
     var it = st.sel >= 0 ? st.items[st.sel] : null;
     q("#csDelSel").style.display = it ? "" : "none";
     q("#csEditSel").style.display = it && it.type === "text" ? "" : "none";
+    var dimBtn = q("#csDimSel");
+    if (it && (it.type === "line" || it.type === "dim")) {
+      dimBtn.style.display = "";
+      dimBtn.textContent = "📐 " + fmtFtIn(dist(it.pts[0], it.pts[1]));
+    } else if (it && it.type === "rect") {
+      dimBtn.style.display = "";
+      dimBtn.textContent = "📐 " + fmtFtIn(Math.abs(it.pts[1][0] - it.pts[0][0])) + " × " + fmtFtIn(Math.abs(it.pts[1][1] - it.pts[0][1]));
+    } else {
+      dimBtn.style.display = "none";
+    }
+  }
+
+  /* ── type an exact dimension for the selection ── */
+  function splitFtIn(feet) {
+    var ft = Math.floor(feet + 1e-9);
+    return [ft, Math.round((feet - ft) * 12 * 2) / 2];
+  }
+  function openDimPrompt() {
+    var it = st.sel >= 0 ? st.items[st.sel] : null;
+    if (!it) return;
+    var isRect = it.type === "rect";
+    if (!isRect && it.type !== "line" && it.type !== "dim") return;
+    q("#csPromptText").style.display = "none";
+    q("#csPromptDims").style.display = "";
+    q("#csDimRowB").style.display = isRect ? "flex" : "none";
+    q("#csDimLabelA").textContent = (isRect ? "Width" : "Length") + " — feet";
+    var a = isRect ? splitFtIn(Math.abs(it.pts[1][0] - it.pts[0][0])) : splitFtIn(dist(it.pts[0], it.pts[1]));
+    q("#csDimAft").value = a[0]; q("#csDimAin").value = a[1];
+    if (isRect) {
+      var b = splitFtIn(Math.abs(it.pts[1][1] - it.pts[0][1]));
+      q("#csDimBft").value = b[0]; q("#csDimBin").value = b[1];
+    }
+    openPromptRaw(isRect ? "📐 Exact size (width × height)" : "📐 Exact length", function () {
+      var lenA = (Number(q("#csDimAft").value) || 0) + (Number(q("#csDimAin").value) || 0) / 12;
+      if (!(lenA > 0)) return;
+      snapshot();
+      if (isRect) {
+        var lenB = (Number(q("#csDimBft").value) || 0) + (Number(q("#csDimBin").value) || 0) / 12;
+        if (!(lenB > 0)) return;
+        // keep the first-drawn corner anchored; preserve the rectangle's direction
+        var sx = it.pts[1][0] >= it.pts[0][0] ? 1 : -1;
+        var sy = it.pts[1][1] >= it.pts[0][1] ? 1 : -1;
+        it.pts[1] = [it.pts[0][0] + sx * lenA, it.pts[0][1] + sy * lenB];
+      } else {
+        // keep the start point anchored; extend along the current direction
+        var cur = dist(it.pts[0], it.pts[1]);
+        if (cur < 1e-6) { it.pts[1] = [it.pts[0][0] + lenA, it.pts[0][1]]; }
+        else {
+          var f = lenA / cur;
+          it.pts[1] = [it.pts[0][0] + (it.pts[1][0] - it.pts[0][0]) * f,
+                       it.pts[0][1] + (it.pts[1][1] - it.pts[0][1]) * f];
+        }
+      }
+      render();
+    });
+    setTimeout(function () { q("#csDimAft").focus(); q("#csDimAft").select(); }, 60);
   }
 
   /* ── history ── */
@@ -308,11 +377,16 @@
 
   /* ── prompt ── */
   var promptCb = null;
-  function openPrompt(title, cb, prefill) {
+  function openPromptRaw(title, cb) {
     promptCb = cb;
     q("#csPromptTitle").textContent = title;
-    q("#csPromptInput").value = prefill || "";
     q("#csPrompt").classList.add("open");
+  }
+  function openPrompt(title, cb, prefill) {
+    q("#csPromptText").style.display = "";
+    q("#csPromptDims").style.display = "none";
+    q("#csPromptInput").value = prefill || "";
+    openPromptRaw(title, cb);
     setTimeout(function () { q("#csPromptInput").focus(); }, 60);
   }
   function closePrompt() { q("#csPrompt").classList.remove("open"); promptCb = null; }
@@ -549,7 +623,7 @@
 
   /* ── ui wiring ── */
   var HINTS = {
-    select: "Select — tap an item, drag to move it (blue dots = grab a corner). Empty space drags the view.",
+    select: "Select — tap an item, drag to move it (blue dots = grab a corner). Tap 📐 (or double-tap a line) to TYPE its exact dimension. Empty space drags the view.",
     pan: "Pan — drag the view. Pinch with two fingers to zoom anytime.",
     line: "Line — drag to draw a wall/edge. Length shows live. ORTHO keeps it square.",
     rect: "Rectangle — drag corner to corner. Width, height and area label automatically.",
@@ -598,6 +672,12 @@
     };
     q("#csSave").onclick = save;
     q("#csDelSel").onclick = function () { if (st.sel >= 0) { snapshot(); st.items.splice(st.sel, 1); st.sel = -1; render(); } };
+    q("#csDimSel").onclick = openDimPrompt;
+    ["csDimAft", "csDimAin", "csDimBft", "csDimBin"].forEach(function (id) {
+      q("#" + id).addEventListener("keydown", function (e) {
+        if (e.key === "Enter") { e.preventDefault(); q("#csPromptOk").click(); }
+      });
+    });
     q("#csEditSel").onclick = function () {
       var it = st.sel >= 0 ? st.items[st.sel] : null;
       if (!it || it.type !== "text") return;
@@ -618,7 +698,12 @@
     cv.addEventListener("pointercancel", onUp);
     cv.addEventListener("dblclick", function (e) {
       var hi = hitTest(toWorld(e.clientX, e.clientY));
-      if (hi >= 0 && st.items[hi].type === "text") { st.sel = hi; render(); q("#csEditSel").onclick(); }
+      if (hi < 0) return;
+      st.sel = hi;
+      render();
+      var t = st.items[hi].type;
+      if (t === "text") q("#csEditSel").onclick();
+      else if (t === "line" || t === "dim" || t === "rect") openDimPrompt();
     });
     cv.addEventListener("wheel", function (e) { e.preventDefault(); zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.0015)); }, { passive: false });
     document.addEventListener("keydown", function (e) {
