@@ -219,9 +219,9 @@
     return [(e.clientX - r.left) * (st.w / r.width), (e.clientY - r.top) * (st.h / r.height)];
   }
   function onDown(e) {
-    if (e.button !== undefined && e.button !== 0) return;
+    if (!st || (e.button !== undefined && e.button !== 0)) return;
     var pt = evPt(e), t = st.tool;
-    q("#paOv").setPointerCapture(e.pointerId);
+    try { q("#paOv").setPointerCapture(e.pointerId); } catch (e2) { /* synthetic/stale pointer — capture is best-effort */ }
     if (t === "erase") {
       var hi = hitTest(pt);
       if (hi >= 0) { snapshot(); st.items.splice(hi, 1); redraw(); }
