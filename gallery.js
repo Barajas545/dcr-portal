@@ -269,6 +269,8 @@
 
     return {
       get: function () { return entries.slice(); },
+      add: function (entry) { entries.push(entry); render(); changed(); },
+      refresh: render,
       uploading: function () { return busy > 0; },
       destroy: function () {
         document.removeEventListener("paste", onPaste);

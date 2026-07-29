@@ -406,10 +406,27 @@
       getPathParts: mediaPathParts,
       onChange: function () { autoSaveMedia(); },
       tileAction: {
-        title: "Open & annotate — arrows, text, measurements, highlights",
+        title: "Open & edit — markup on photos, full editor on drawings",
         icon: "✏️",
-        badge: function (p) { return p.ann && p.ann.items && p.ann.items.length ? "✏️ " + p.ann.items.length : "✏️"; },
+        badge: function (p) {
+          if (p.cad) return "📐 edit";
+          return p.ann && p.ann.items && p.ann.items.length ? "✏️ " + p.ann.items.length : "✏️";
+        },
         onClick: function (entry, idx, rerender) {
+          if (entry.cad) {
+            // a CAD field sketch — reopen the drafting editor
+            DCRCad.open({
+              entry: entry,
+              title: (state.project.clientName || "Site") + " — drawing",
+              getPathParts: mediaPathParts,
+              onSave: function (patch) {
+                Object.assign(entry, patch);
+                rerender();
+                autoSaveMedia();
+              },
+            });
+            return;
+          }
           DCRAnnotate.open({
             entry: entry,
             title: state.project.clientName ? state.project.clientName + " — photo " + (idx + 1) : "Photo " + (idx + 1),
@@ -422,6 +439,16 @@
         },
       },
     });
+    el("edNewDrawing").onclick = function () {
+      DCRCad.open({
+        entry: null,
+        title: (state.project.clientName || "Site") + " — new drawing",
+        getPathParts: mediaPathParts,
+        onSave: function (patch) {
+          state._gal.add(patch); // fires onChange → auto-save
+        },
+      });
+    };
     renderAudioList();
     el("recStart").onclick = startRec;
     el("recStop").onclick = stopRec;
@@ -657,8 +684,9 @@
       '<div><label>Site access</label><select id="f_access"><option value="">—</option>' +
         ACCESS.map(function (t) { return "<option" + (p.access === t ? " selected" : "") + ">" + t + "</option>"; }).join("") + "</select></div>" +
       '<div class="full"><label>Notes</label><textarea id="f_notes" rows="2">' + esc(p.notes) + "</textarea></div>" +
-      '<div class="full"><label>Project photos <span style="color:var(--text-muted);font-weight:400">— tap ✏️ on a photo to add arrows, text, measurements & highlights</span>' +
+      '<div class="full"><label>Project photos & drawings <span style="color:var(--text-muted);font-weight:400">— tap ✏️ to mark up a photo or edit a drawing</span>' +
       '<span id="autoSaveMsg" style="float:right;font-size:11px;font-weight:600"></span></label>' +
+      '<div style="margin:2px 0 8px"><button type="button" class="btn btn-ghost btn-sm" id="edNewDrawing">📐 New drawing — sketch the deck plan with real dimensions</button></div>' +
       '<div id="edGallery"></div></div>' +
       '<div class="full"><label>Voice notes <span style="color:var(--text-muted);font-weight:400">— saved automatically when you stop recording (audio + transcript); delete any you don\'t need</span></label>' +
       '<div id="edNotesList"></div>' +
