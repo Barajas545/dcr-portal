@@ -100,7 +100,7 @@
     injectStyles();
     var entries = (opts.initial || []).slice();
     var busy = 0;
-    var uid = "dg" + Math.random().toString(36).slice(2, 8);
+    function changed() { if (opts.onChange) { try { opts.onChange(entries.slice()); } catch (e) {} } }
 
     container.innerHTML =
       '<div class="dg-wrap">' +
@@ -153,13 +153,14 @@
         srcInto(img, p);
       });
       grid.querySelectorAll("[data-del]").forEach(function (b) {
-        b.onclick = function () { entries.splice(Number(b.dataset.del), 1); render(); };
+        b.onclick = function () { entries.splice(Number(b.dataset.del), 1); render(); changed(); };
       });
       grid.querySelectorAll("[data-star]").forEach(function (b) {
         b.onclick = function () {
           var it = entries.splice(Number(b.dataset.star), 1)[0];
           entries.unshift(it);
           render();
+          changed();
         };
       });
       grid.querySelectorAll("[data-act]").forEach(function (b) {
@@ -194,6 +195,7 @@
           });
           entries.push({ id: r.image.id, name: r.image.name });
           render();
+          changed();
         } catch (e) {
           setHint((e && e.message) || "Upload failed.", true);
           busy--;
@@ -246,6 +248,7 @@
       urlInput.value = "";
       urlRow.classList.remove("open");
       render();
+      changed();
       setHint("✓ Link added.");
     };
     urlInput.addEventListener("keydown", function (e) {

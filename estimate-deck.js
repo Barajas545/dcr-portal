@@ -346,10 +346,57 @@
     if (step === 5) await renderStep5();
   }
 
-  /* ══ project media: photos (annotatable) + voice notes w/ transcripts ══ */
+  /* ══ project media: photos (annotatable) + voice notes w/ transcripts ══
+     EVERYTHING AUTO-SAVES. Notes upload the moment recording stops; any media
+     change (photo, markup, note) also writes the estimate row to SharePoint
+     (created as a draft on first change) so nothing lives only in this browser.
+     Deleting unused notes beats losing important ones. */
   function mediaPathParts() {
     var who = state.project.clientName ? " - " + state.project.clientName : "";
     return ["Estimates", ((state.estimateRef || "Draft") + who).slice(0, 80)];
+  }
+
+  function autoMsg(t, isErr) {
+    var n = el("autoSaveMsg");
+    if (!n) return;
+    n.style.color = isErr ? "var(--err)" : "var(--ok)";
+    n.textContent = t || "";
+  }
+
+  // Debounced auto-save of the estimate row (media + current scope). Creates the
+  // SharePoint row as a draft on the first change, updates it afterwards.
+  var autoTimer = null;
+  function autoSaveMedia() {
+    saveDraftLocal();
+    clearTimeout(autoTimer);
+    autoMsg("saving…");
+    autoTimer = setTimeout(async function () {
+      try {
+        if (!state.estimateRef) state.estimateRef = "EST-" + Date.now();
+        syncPhotos();
+        var p = state.project;
+        var fields = {
+          estimateRef: state.estimateRef, trade: "deck",
+          estStatus: state.estStatus || "draft", version: state.version || 0,
+          clientName: p.clientName || "", clientPhone: p.clientPhone || "", clientEmail: p.clientEmail || "",
+          siteAddress: p.address || "", city: p.city || "",
+          projectType: p.projectType || "", complexity: p.complexity || "",
+          primaryAreaSF: p.deckingArea || "", secondaryAreaSF: p.framingArea || "",
+          railingLF: p.railing || "", stairs: p.stairs || "",
+          scopeJson: JSON.stringify(p), notes: p.notes || "",
+          mediaJson: JSON.stringify(state.media),
+        };
+        var res = await DCR.api("/api/portal?action=sales&part=estimates", {
+          method: state.estimateId ? "PATCH" : "POST",
+          body: state.estimateId ? { id: state.estimateId, fields: fields } : { fields: fields },
+        });
+        state.estimateId = res.estimate.id;
+        saveDraftLocal();
+        autoMsg("✓ auto-saved " + new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }));
+      } catch (e) {
+        autoMsg("⚠ auto-save failed — will retry on the next change", true);
+      }
+    }, 1500);
   }
 
   function mountMedia() {
@@ -357,6 +404,7 @@
     state._gal = DCRGallery.mount(el("edGallery"), {
       initial: state.media.photos,
       getPathParts: mediaPathParts,
+      onChange: function () { autoSaveMedia(); },
       tileAction: {
         title: "Open & annotate — arrows, text, measurements, highlights",
         icon: "✏️",
@@ -368,7 +416,7 @@
             onSave: function (ann) {
               entry.ann = ann;
               rerender();
-              saveDraftLocal();
+              autoSaveMedia();
             },
           });
         },
@@ -377,20 +425,22 @@
     renderAudioList();
     el("recStart").onclick = startRec;
     el("recStop").onclick = stopRec;
-    el("recSave").onclick = saveRecNote;
-    el("recDiscard").onclick = function () { setRecPhase("idle"); state._rec = null; };
+    el("recCancel").onclick = cancelRec;
   }
 
   function renderAudioList() {
     var list = state.media.audioNotes || [];
     el("edNotesList").innerHTML = !list.length ? "" :
       list.map(function (n, i) {
+        var status = n.pending ? '<span style="color:var(--gold)">⏳ uploading…</span>'
+          : n.failed && n._blob ? '<button type="button" class="btn btn-ghost btn-sm retryNote" data-i="' + i + '" style="padding:2px 8px">⚠ retry upload</button>'
+          : n.failed ? '<span style="color:var(--gold)">⚠ audio not saved — transcript kept</span>'
+          : "🎤 " + esc(new Date(n.when).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })) +
+            (n.txtId ? " · 📄 transcript saved" : "");
         return '<div style="display:flex;gap:10px;align-items:flex-start;border:1px solid var(--border);border-radius:10px;padding:8px 10px;margin-top:6px">' +
-          '<button type="button" class="btn btn-ghost btn-sm playNote" data-i="' + i + '">▶</button>' +
-          '<div style="flex:1;min-width:0"><div style="font-size:11px;color:var(--text-muted)">🎤 ' +
-          esc(new Date(n.when).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })) +
-          (n.txtId ? " · 📄 transcript saved" : "") + "</div>" +
-          '<div style="font-size:12.5px;white-space:pre-wrap">' + esc(n.transcript || "(no transcript)") + "</div></div>" +
+          '<button type="button" class="btn btn-ghost btn-sm playNote" data-i="' + i + '"' + (n.audioId ? "" : " disabled") + ">▶</button>" +
+          '<div style="flex:1;min-width:0"><div style="font-size:11px;color:var(--text-muted)">' + status + "</div>" +
+          '<textarea class="noteTxt" data-i="' + i + '" rows="2" style="margin-top:4px;font-size:12.5px" placeholder="(no transcript — type notes here)">' + esc(n.transcript || "") + "</textarea></div>" +
           '<button type="button" class="btn btn-ghost btn-sm delNote" data-i="' + i + '">🗑</button></div>';
       }).join("");
     el("edNotesList").querySelectorAll(".playNote").forEach(function (b) {
@@ -401,7 +451,31 @@
         if (!confirm("Delete this voice note?")) return;
         list.splice(Number(b.dataset.i), 1);
         renderAudioList();
-        saveDraftLocal();
+        autoSaveMedia();
+      };
+    });
+    el("edNotesList").querySelectorAll(".retryNote").forEach(function (b) {
+      b.onclick = function () { uploadNote(list[Number(b.dataset.i)]); };
+    });
+    // transcript edits save on blur: update the note, refresh its .txt, auto-save
+    el("edNotesList").querySelectorAll(".noteTxt").forEach(function (t) {
+      t.onblur = async function () {
+        var n = list[Number(t.dataset.i)];
+        if (!n || n.transcript === t.value) return;
+        n.transcript = t.value;
+        autoSaveMedia();
+        if (n.audioId && n.transcript.trim()) {
+          try {
+            var up = await DCR.api("/api/portal?action=sales&part=media", {
+              method: "POST",
+              body: { name: (n.name || "voice-note").replace(/\.[^.]+$/, "") + ".txt",
+                dataBase64: "data:text/plain;base64," + btoa(unescape(encodeURIComponent(n.transcript))),
+                pathParts: mediaPathParts() },
+            });
+            n.txtId = up.file.id;
+            autoSaveMedia();
+          } catch (e) { /* transcript stays in the estimate row either way */ }
+        }
       };
     });
   }
@@ -423,7 +497,6 @@
   function setRecPhase(phase) {
     el("edRecIdle").style.display = phase === "idle" ? "" : "none";
     el("edRecLive").style.display = phase === "rec" ? "" : "none";
-    el("edRecReview").style.display = phase === "review" ? "" : "none";
   }
 
   // Recorder — SpeechRecognition first, MediaRecorder after a head start (the
@@ -468,6 +541,8 @@
     }
   }
 
+  // Stop = the note is KEPT and uploads immediately (no save/discard gate —
+  // notes are never lost; delete from the list if unwanted).
   function stopRec() {
     var rec = state._rec;
     if (!rec) return;
@@ -476,57 +551,78 @@
     if (rec.mr && rec.mr.state !== "inactive") {
       rec.mr.onstop = function () {
         rec.mr.stream.getTracks().forEach(function (t) { t.stop(); });
-        rec.blob = new Blob(rec.chunks, { type: rec.mime });
-        setRecPhase("review");
-        el("recTxt").value = (rec.finals + rec.interim).trim();
-        el("recMsg").textContent = "";
+        var blob = new Blob(rec.chunks, { type: rec.mime });
+        var note = {
+          audioId: null, txtId: null,
+          name: "voice-note-" + Date.now() + (rec.mime === "audio/mp4" ? ".m4a" : ".webm"),
+          when: new Date().toISOString(),
+          transcript: (rec.finals + rec.interim).trim(),
+          pending: true,
+        };
+        // keep the blob in memory for retry, but out of JSON serialization
+        Object.defineProperty(note, "_blob", { value: blob, enumerable: false, writable: true });
+        state.media.audioNotes.push(note);
+        state._rec = null;
+        setRecPhase("idle");
+        renderAudioList();
+        uploadNote(note);
       };
       rec.mr.stop();
+    } else {
+      state._rec = null;
+      setRecPhase("idle");
     }
   }
 
-  async function saveRecNote() {
+  function cancelRec() {
     var rec = state._rec;
-    if (!rec || !rec.blob) return;
-    var btn = el("recSave"), msg = el("recMsg");
-    btn.disabled = true;
-    msg.textContent = "Uploading…";
+    if (!rec) return;
+    clearInterval(rec.timer);
+    if (rec.sr) { try { rec.sr.stop(); } catch (e) {} }
+    if (rec.mr && rec.mr.state !== "inactive") {
+      rec.mr.onstop = function () { rec.mr.stream.getTracks().forEach(function (t) { t.stop(); }); };
+      rec.mr.stop();
+    }
+    state._rec = null;
+    setRecPhase("idle");
+  }
+
+  async function uploadNote(note) {
+    if (!note._blob) { note.failed = true; renderAudioList(); return; }
+    note.pending = true; note.failed = false;
+    renderAudioList();
     try {
-      var ext = rec.mime === "audio/mp4" ? "m4a" : "webm";
       var b64 = await new Promise(function (res, rej) {
         var fr = new FileReader();
         fr.onload = function () { res(String(fr.result)); };
         fr.onerror = rej;
-        fr.readAsDataURL(rec.blob);
+        fr.readAsDataURL(note._blob);
       });
-      var stamp = Date.now();
       var up = await DCR.api("/api/portal?action=sales&part=media", {
         method: "POST",
-        body: { name: "voice-note-" + stamp + "." + ext, dataBase64: b64, pathParts: mediaPathParts() },
+        body: { name: note.name, dataBase64: b64, pathParts: mediaPathParts() },
       });
-      var transcript = el("recTxt").value.trim();
-      var txtId = null;
-      if (transcript) {
-        var txtUp = await DCR.api("/api/portal?action=sales&part=media", {
-          method: "POST",
-          body: { name: "voice-note-" + stamp + ".txt",
-            dataBase64: "data:text/plain;base64," + btoa(unescape(encodeURIComponent(transcript))),
-            pathParts: mediaPathParts() },
-        });
-        txtId = txtUp.file.id;
+      note.audioId = up.file.id;
+      if (note.transcript) {
+        try {
+          var txtUp = await DCR.api("/api/portal?action=sales&part=media", {
+            method: "POST",
+            body: { name: note.name.replace(/\.[^.]+$/, "") + ".txt",
+              dataBase64: "data:text/plain;base64," + btoa(unescape(encodeURIComponent(note.transcript))),
+              pathParts: mediaPathParts() },
+          });
+          note.txtId = txtUp.file.id;
+        } catch (e) { /* transcript still lives in the estimate row */ }
       }
-      state.media.audioNotes.push({
-        audioId: up.file.id, txtId: txtId, name: up.file.name,
-        when: new Date().toISOString(), transcript: transcript,
-      });
-      state._rec = null;
-      setRecPhase("idle");
+      note.pending = false;
       renderAudioList();
-      saveDraftLocal();
+      autoSaveMedia();
     } catch (e) {
-      msg.textContent = e.message || "Upload failed.";
+      note.pending = false;
+      note.failed = true;
+      renderAudioList();
+      autoSaveMedia(); // transcript is preserved in the estimate even if audio upload failed
     }
-    btn.disabled = false;
   }
 
   /* ══ STEP 1 — project info ══ */
@@ -561,22 +657,19 @@
       '<div><label>Site access</label><select id="f_access"><option value="">—</option>' +
         ACCESS.map(function (t) { return "<option" + (p.access === t ? " selected" : "") + ">" + t + "</option>"; }).join("") + "</select></div>" +
       '<div class="full"><label>Notes</label><textarea id="f_notes" rows="2">' + esc(p.notes) + "</textarea></div>" +
-      '<div class="full"><label>Project photos <span style="color:var(--text-muted);font-weight:400">— tap ✏️ on a photo to add arrows, text, measurements & highlights</span></label>' +
+      '<div class="full"><label>Project photos <span style="color:var(--text-muted);font-weight:400">— tap ✏️ on a photo to add arrows, text, measurements & highlights</span>' +
+      '<span id="autoSaveMsg" style="float:right;font-size:11px;font-weight:600"></span></label>' +
       '<div id="edGallery"></div></div>' +
-      '<div class="full"><label>Voice notes <span style="color:var(--text-muted);font-weight:400">— audio + text transcript, saved with the estimate</span></label>' +
+      '<div class="full"><label>Voice notes <span style="color:var(--text-muted);font-weight:400">— saved automatically when you stop recording (audio + transcript); delete any you don\'t need</span></label>' +
       '<div id="edNotesList"></div>' +
       '<div id="edRecBox" style="border:1px dashed var(--border);border-radius:10px;padding:10px;margin-top:6px">' +
         '<div id="edRecIdle"><button type="button" class="btn btn-sm" id="recStart">🎤 Record a voice note</button> ' +
-        '<span style="font-size:11px;color:var(--text-muted)">Speak your site notes — the audio and its transcript are stored together.</span></div>' +
+        '<span style="font-size:11px;color:var(--text-muted)">Speak your site notes — stopping saves the audio and transcript instantly.</span></div>' +
         '<div id="edRecLive" style="display:none"><span style="color:var(--err);font-weight:700;font-size:12px">● Recording</span> ' +
         '<span id="recTime" style="font-size:12px;font-weight:700"></span>' +
         '<div id="recLiveTxt" style="font-size:12px;color:var(--text-muted);margin:6px 0;min-height:16px"></div>' +
-        '<button type="button" class="btn btn-sm" id="recStop">⏹ Stop</button></div>' +
-        '<div id="edRecReview" style="display:none"><div style="font-size:12px;font-weight:600;margin-bottom:4px">Review the transcript (edit as needed):</div>' +
-        '<textarea id="recTxt" rows="3"></textarea>' +
-        '<div style="display:flex;gap:8px;margin-top:8px;align-items:center"><button type="button" class="btn btn-sm" id="recSave">💾 Save note</button>' +
-        '<button type="button" class="btn btn-ghost btn-sm" id="recDiscard">✕ Discard</button>' +
-        '<span id="recMsg" style="font-size:12px;color:var(--text-muted)"></span></div></div>' +
+        '<button type="button" class="btn btn-sm" id="recStop">⏹ Stop & save</button> ' +
+        '<button type="button" class="btn btn-ghost btn-sm" id="recCancel">✕ Cancel</button></div>' +
       "</div></div>" +
       "</div>" +
       '<div class="ed-msg" id="s1msg" style="color:var(--err)"></div>' +
@@ -1014,8 +1107,18 @@
     try {
       var media = JSON.parse(est.mediaJson || "{}");
       state.media = { photos: media.photos || [], audioNotes: media.audioNotes || [] };
+      normalizeNotes();
     } catch (e) {}
     state.referenceId = est.referenceProjectId || null;
+  }
+
+  // A restored note can't still be "uploading" — the in-memory audio is gone.
+  // Keep the transcript either way; flag audio-less notes so the row says so.
+  function normalizeNotes() {
+    (state.media.audioNotes || []).forEach(function (n) {
+      n.pending = false;
+      if (!n.audioId) n.failed = true;
+    });
   }
 
   /* ══ init ══ */
@@ -1043,7 +1146,10 @@
           state.estimateRef = draft.estimateRef || "";
           state.version = draft.version || 0;
           state.estStatus = draft.estStatus || "draft";
-          if (draft.media) state.media = { photos: draft.media.photos || [], audioNotes: draft.media.audioNotes || [] };
+          if (draft.media) {
+            state.media = { photos: draft.media.photos || [], audioNotes: draft.media.audioNotes || [] };
+            normalizeNotes();
+          }
         }
       } catch (e) {}
     }
