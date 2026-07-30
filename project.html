@@ -119,6 +119,10 @@
       .pj-chip.on{background:var(--acc); border-color:var(--acc); color:#fff;}
       .pj-search{padding:7px 11px; font-size:13px; border:1px solid var(--border); border-radius:8px;
         background:var(--surface); color:var(--text); min-width:190px;}
+      /* styles.css stretches every input/select to width:100%, which would put each
+         filter on its own line — keep the expenses filter bar on one row */
+      .pj-bar select.pj-btn, .pj-bar input[type="date"]{width:auto; min-width:0;}
+      .pj-bar .pj-search{width:auto; flex:0 1 240px;}
 
       /* logs */
       .pj-log{background:var(--surface); border:1px solid var(--border); border-radius:9px;

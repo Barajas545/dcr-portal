@@ -71,8 +71,24 @@
 
   function fmtMoney(n){ return "$" + (Number(n)||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}); }
   function num(v){ if(typeof v==="number")return v; var n=parseFloat(String(v??"").replace(/[$,]/g,"")); return isFinite(n)?n:0; }
-  function fmtDate(v){ if(!v)return "—"; var d=new Date(v); return isNaN(d)?String(v):d.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}); }
-  function dateInputVal(v){ if(!v)return ""; var d=new Date(v); if(isNaN(d))return ""; return d.toISOString().slice(0,10); }
+  // SharePoint stores these as calendar dates but hands them back as UTC
+  // instants ("2026-07-05T00:00:00Z"). Reading that with new Date() and showing
+  // it in Pacific time lands on Jul 4 — a day early, and it also throws off the
+  // month filters at the 1st. Take the Y-M-D exactly as written instead.
+  function toDate(v){
+    if (!v) return null;
+    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v));
+    if (m) return new Date(+m[1], +m[2]-1, +m[3]);
+    var d = new Date(v); return isNaN(d) ? null : d;
+  }
+  function fmtDate(v){ var d=toDate(v); return !v ? "—" : (d ? d.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : String(v)); }
+  function dateInputVal(v){
+    if(!v)return "";
+    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v));
+    if (m) return m[0];
+    var d=new Date(v); if(isNaN(d))return "";
+    return [d.getFullYear(), String(d.getMonth()+1).padStart(2,"0"), String(d.getDate()).padStart(2,"0")].join("-");
+  }
 
   /* ── header ── */
   async function loadRecord() {
@@ -272,13 +288,15 @@
   // Escape, and keep the line breaks the estimator typed into the description.
   // Notes pasted from Word/email sometimes carry markup; show those as plain
   // text with their breaks, never as live HTML (esc still runs on the result).
-  function escML(v) {
-    var s = String(v == null ? "" : v)
+  // Notes pasted from Word/email carry markup — read it as plain text with its
+  // line breaks intact (never as live HTML).
+  function stripML(v) {
+    return String(v == null ? "" : v)
       .replace(/<\s*br\s*\/?>/gi, "\n")
       .replace(/<\/\s*(div|p|li|tr|h[1-6])\s*>/gi, "\n")
       .replace(/<\/?[a-z][^>]*>/gi, "");
-    return esc(s).split(/\r\n|\r|\n/).join("<br>");
   }
+  function escML(v) { return esc(stripML(v)).split(/\r\n|\r|\n/).join("<br>"); }
 
   function estLineHtml(r) {
     // Money parentheticals are skipped when their fields are absent (e.g. the
@@ -876,8 +894,8 @@
     return rows.filter(function (r) {
       if (f.group !== "*" && (r.gropingName || "(no group)") !== f.group) return false;
       if (per) {
-        var dt = r.expenseDate ? new Date(r.expenseDate) : null;
-        if (!dt || isNaN(dt) || dt < per.a || dt > per.b) return false;
+        var dt = toDate(r.expenseDate);
+        if (!dt || dt < per.a || dt > per.b) return false;
       }
       if (q) {
         var hay = [r.description, r.remarks, r.laborExpenseDescription, r.materialExpenseDescription,
@@ -895,7 +913,7 @@
   function expSortRows(rows) {
     var f = state.expFilter, key = f.sort, dir = f.dir;
     var val = {
-      date: function (r) { var d2 = r.expenseDate ? new Date(r.expenseDate) : null; return d2 && !isNaN(d2) ? d2.getTime() : 0; },
+      date: function (r) { var d2 = toDate(r.expenseDate); return d2 ? d2.getTime() : 0; },
       desc: function (r) { return expDesc(r).toLowerCase(); },
       est: function (r) { return num(r.estimate); }, inv: function (r) { return num(r.invoice); },
       mat: function (r) { return num(r.materials); }, con: function (r) { return num(r.contractors); },
@@ -910,8 +928,9 @@
     function cell(v) { var s = String(v == null ? "" : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
     var out = [["Date", "Group", "Description", "Estimate", "Invoice", "Materials", "Contractors", "Remarks"].join(",")];
     rows.forEach(function (r) {
-      out.push([fmtDate(r.expenseDate), r.gropingName || "", expDesc(r), num(r.estimate) || "",
-        num(r.invoice) || "", num(r.materials) || "", num(r.contractors) || "", r.remarks || ""].map(cell).join(","));
+      // ISO date so Excel/Sheets import it as a date, not as text
+      out.push([dateInputVal(r.expenseDate), r.gropingName || "", stripML(expDesc(r)), num(r.estimate) || "",
+        num(r.invoice) || "", num(r.materials) || "", num(r.contractors) || "", stripML(r.remarks)].map(cell).join(","));
     });
     return out.join("\r\n");
   }
