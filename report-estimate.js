@@ -60,7 +60,7 @@
         (r.taskMaterialUnitPrice != null && num(r.taskMaterialUnitPrice) ? " × " + money(r.taskMaterialUnitPrice) : " pcs") + ")</span>";
       parts.push(m);
     }
-    if (r.taskEstimateNotes) parts.push('<span class="lineb">' + esc(r.taskEstimateNotes) + "</span>");
+    if (r.taskEstimateNotes) parts.push('<span class="lineb">' + escML(r.taskEstimateNotes) + "</span>");
     return parts.join("<br>") || "—";
   }
 
