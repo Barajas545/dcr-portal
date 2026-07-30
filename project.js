@@ -11,6 +11,9 @@
     originals: {}, dirty: {},
     parts: {}, // cache per tab
     estRows: [], estEditing: null,
+    // expenses tab: group / period / text filters + sort, kept across re-renders
+    expRows: [], expCanEdit: false, expQTimer: null,
+    expFilter: { group: "*", range: "all", from: "", to: "", q: "", sort: "date", dir: -1 },
     taskFilter: "pending",
     files: { stack: [] },
     boardList: [],
@@ -768,6 +771,8 @@
     state.subEditing = rowId ? (state[cfg.rowsKey]||[]).find(function(r){ return String(r.id)===String(rowId); }) : null;
     el("subModalTitle").textContent = (rowId?"Edit ":"New ") + cfg.title.toLowerCase();
     el("subMsg").textContent = "";
+    // delete only makes sense on an existing record, and only if you may edit
+    el("subDelete").style.display = rowId && state.canWrite ? "" : "none";
     el("subFields").innerHTML = cfg.defs.map(function(d){
       var v = state.subEditing ? state.subEditing[d[0]] : "";
       if (d[2]==="date") return '<div class="pj-f"><label>'+d[1]+'</label><input type="date" id="sf_'+d[0]+'" value="'+dateInputVal(v)+'"></div>';
@@ -802,6 +807,26 @@
     el("subSave").disabled = false;
   }
 
+  // Delete from inside the open record (the row has no delete button, so this
+  // is a deliberate two-step action: open it, read it, then remove it).
+  async function deleteSubModal() {
+    var kind = state.subKind, row = state.subEditing;
+    if (!row) return;
+    var what = kind === "exp"
+      ? [fmtDate(row.expenseDate), expDesc(row)].filter(Boolean).join(" — ")
+      : (row.itemName || row.description || "this record");
+    if (!confirm("Delete this " + SUB_CFG[kind].title.toLowerCase() + "?\n\n" + what + "\n\nThis cannot be undone.")) return;
+    var btn = el("subDelete");
+    btn.disabled = true;
+    el("subMsg").textContent = "Deleting…";
+    try {
+      await DCR.api("/api/portal?action=project", { method: "POST", body: { op: kind + "Delete", itemId: row.id } });
+      el("subModal").classList.remove("open");
+      SUB_CFG[kind].reload();
+    } catch (e) { el("subMsg").textContent = e.message || "Delete failed"; }
+    btn.disabled = false;
+  }
+
   function wireSubButtons(scope) {
     scope.querySelectorAll("[data-sub-edit]").forEach(function(b){
       b.onclick = function(){ var p=b.getAttribute("data-sub-edit").split(":"); openSubModal(p[0], p[1]); };
@@ -818,46 +843,252 @@
     });
   }
 
-  /* ── expenses (editable) ── */
+  /* ── expenses (editable) ──
+     Filterable by group, date period and free text; sortable; totals always
+     reflect what's on screen. Rows are opened (double-click or ✎) to edit —
+     deleting lives inside that editor so a record can't be lost by a stray tap. */
+
+  // Local-time period bounds. Returns null for "all dates".
+  function expPeriod(key, fromStr, toStr) {
+    var now = new Date(), y = now.getFullYear(), m = now.getMonth();
+    function d(yy, mm, dd) { return new Date(yy, mm, dd, 0, 0, 0, 0); }
+    function endOf(dt) { var e = new Date(dt); e.setHours(23, 59, 59, 999); return e; }
+    if (key === "thisMonth") return { a: d(y, m, 1), b: endOf(d(y, m + 1, 0)) };
+    if (key === "lastMonth") return { a: d(y, m - 1, 1), b: endOf(d(y, m, 0)) };
+    if (key === "last30") return { a: d(y, m, now.getDate() - 29), b: endOf(now) };
+    if (key === "last90") return { a: d(y, m, now.getDate() - 89), b: endOf(now) };
+    if (key === "thisQuarter") { var q = Math.floor(m / 3) * 3; return { a: d(y, q, 1), b: endOf(d(y, q + 3, 0)) }; }
+    if (key === "thisYear") return { a: d(y, 0, 1), b: endOf(d(y, 11, 31)) };
+    if (key === "lastYear") return { a: d(y - 1, 0, 1), b: endOf(d(y - 1, 11, 31)) };
+    if (key === "custom") {
+      var a = fromStr ? new Date(fromStr + "T00:00:00") : null;
+      var b = toStr ? new Date(toStr + "T23:59:59") : null;
+      if (!a && !b) return null;
+      return { a: a || new Date(1900, 0, 1), b: b || new Date(2999, 11, 31) };
+    }
+    return null;
+  }
+
+  function expFiltered() {
+    var f = state.expFilter, rows = state.expRows || [];
+    var per = expPeriod(f.range, f.from, f.to);
+    var q = (f.q || "").trim().toLowerCase();
+    return rows.filter(function (r) {
+      if (f.group !== "*" && (r.gropingName || "(no group)") !== f.group) return false;
+      if (per) {
+        var dt = r.expenseDate ? new Date(r.expenseDate) : null;
+        if (!dt || isNaN(dt) || dt < per.a || dt > per.b) return false;
+      }
+      if (q) {
+        var hay = [r.description, r.remarks, r.laborExpenseDescription, r.materialExpenseDescription,
+          r.estimateDescription, r.gropingName].join(" ").toLowerCase();
+        if (hay.indexOf(q) === -1) return false;
+      }
+      return true;
+    });
+  }
+
+  function expDesc(r) {
+    return r.description || r.laborExpenseDescription || r.materialExpenseDescription || r.estimateDescription || "";
+  }
+
+  function expSortRows(rows) {
+    var f = state.expFilter, key = f.sort, dir = f.dir;
+    var val = {
+      date: function (r) { var d2 = r.expenseDate ? new Date(r.expenseDate) : null; return d2 && !isNaN(d2) ? d2.getTime() : 0; },
+      desc: function (r) { return expDesc(r).toLowerCase(); },
+      est: function (r) { return num(r.estimate); }, inv: function (r) { return num(r.invoice); },
+      mat: function (r) { return num(r.materials); }, con: function (r) { return num(r.contractors); },
+    }[key] || function (r) { return 0; };
+    return rows.slice().sort(function (a, b) {
+      var A = val(a), B = val(b);
+      return (A < B ? -1 : A > B ? 1 : 0) * dir;
+    });
+  }
+
+  function expCsv(rows) {
+    function cell(v) { var s = String(v == null ? "" : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+    var out = [["Date", "Group", "Description", "Estimate", "Invoice", "Materials", "Contractors", "Remarks"].join(",")];
+    rows.forEach(function (r) {
+      out.push([fmtDate(r.expenseDate), r.gropingName || "", expDesc(r), num(r.estimate) || "",
+        num(r.invoice) || "", num(r.materials) || "", num(r.contractors) || "", r.remarks || ""].map(cell).join(","));
+    });
+    return out.join("\r\n");
+  }
+
   async function loadExpenses() {
     var pane = el("pane-expenses");
     pane.innerHTML = '<div class="pj-empty">Loading expenses…</div>';
     try {
-      var d = await DCR.api("/api/portal?action=project&id="+PID+"&part=expenses");
-      var rows = d.rows||[]; var canEdit = !!d.canEdit;
-      state.expRows = rows;
-      var cols = canEdit ? 7 : 6;
-      var bar = '<div class="pj-bar">' +
-        (canEdit?'<button class="pj-btn pj-btn-primary pj-btn-sm" id="expAddBtn">＋ New expense</button>':"") +
-        '<a class="pj-btn pj-btn-sm" href="report-expenses.html?id='+encodeURIComponent(PID)+'">🖨 Print expenses</a>' +
-        '<span class="pj-sub">'+rows.length+' records</span></div>';
-      if (!rows.length) {
-        pane.innerHTML = bar + '<div class="pj-empty">No expense records for this project.</div>';
-        var ab0 = el("expAddBtn"); if (ab0) ab0.onclick = function(){ openSubModal("exp", null); };
-        return;
-      }
-      var groups = {}; rows.forEach(function(r){ var g=r.gropingName||"(no group)"; (groups[g]=groups[g]||[]).push(r); });
-      var grand={est:0,inv:0,mat:0,con:0}, body="";
-      Object.keys(groups).forEach(function(g){
-        var t={est:0,inv:0,mat:0,con:0};
-        body += '<tr class="pj-grp"><td colspan="'+cols+'">'+esc(g)+'</td></tr>';
-        groups[g].forEach(function(r){
-          var desc = r.description || r.laborExpenseDescription || r.materialExpenseDescription || r.estimateDescription || "";
-          t.est+=num(r.estimate); t.inv+=num(r.invoice); t.mat+=num(r.materials); t.con+=num(r.contractors);
-          body += '<tr><td>'+fmtDate(r.expenseDate)+'</td><td>'+esc(desc)+'</td>' +
-            '<td class="num">'+(num(r.estimate)?fmtMoney(r.estimate):"")+'</td><td class="num">'+(num(r.invoice)?fmtMoney(r.invoice):"")+'</td>' +
-            '<td class="num">'+(num(r.materials)?fmtMoney(r.materials):"")+'</td><td class="num">'+(num(r.contractors)?fmtMoney(r.contractors):"")+'</td>' +
-            (canEdit?'<td><div class="pj-rowbtns"><button class="pj-btn pj-btn-sm" data-sub-edit="exp:'+r.id+'">✎</button><button class="pj-btn pj-btn-sm" data-sub-del="exp:'+r.id+'">🗑</button></div></td>':"") + '</tr>';
-        });
-        Object.keys(t).forEach(function(k){ grand[k]+=t[k]; });
-        body += '<tr class="pj-grpTot"><td colspan="2">Subtotal — '+esc(g)+'</td><td class="num">'+fmtMoney(t.est)+'</td><td class="num">'+fmtMoney(t.inv)+'</td><td class="num">'+fmtMoney(t.mat)+'</td><td class="num">'+fmtMoney(t.con)+'</td>'+(canEdit?'<td></td>':"")+'</tr>';
+      var d = await DCR.api("/api/portal?action=project&id=" + PID + "&part=expenses");
+      state.expRows = d.rows || [];
+      state.expCanEdit = !!d.canEdit;
+      renderExpenses();
+    } catch (e) { pane.innerHTML = '<div class="pj-empty">' + esc(e.message) + '</div>'; }
+  }
+
+  function renderExpenses() {
+    var pane = el("pane-expenses");
+    var all = state.expRows || [], canEdit = state.expCanEdit, f = state.expFilter;
+    var cols = canEdit ? 7 : 6;
+
+    var groupNames = [];
+    all.forEach(function (r) { var g = r.gropingName || "(no group)"; if (groupNames.indexOf(g) === -1) groupNames.push(g); });
+    groupNames.sort();
+    if (f.group !== "*" && groupNames.indexOf(f.group) === -1) f.group = "*";
+
+    var PERIODS = [["all", "All dates"], ["thisMonth", "This month"], ["lastMonth", "Last month"],
+      ["last30", "Last 30 days"], ["last90", "Last 90 days"], ["thisQuarter", "This quarter"],
+      ["thisYear", "This year"], ["lastYear", "Last year"], ["custom", "Custom range…"]];
+
+    var bar = '<div class="pj-bar">' +
+      (canEdit ? '<button class="pj-btn pj-btn-primary pj-btn-sm" id="expAddBtn">＋ New expense</button>' : "") +
+      '<select class="pj-btn pj-btn-sm" id="expGroup" style="cursor:pointer" title="Filter by group">' +
+        '<option value="*">All groups (' + groupNames.length + ')</option>' +
+        groupNames.map(function (g) { return '<option value="' + esc(g) + '"' + (f.group === g ? " selected" : "") + '>' + esc(g) + '</option>'; }).join("") +
+      '</select>' +
+      '<select class="pj-btn pj-btn-sm" id="expRange" style="cursor:pointer" title="Filter by date">' +
+        PERIODS.map(function (p) { return '<option value="' + p[0] + '"' + (f.range === p[0] ? " selected" : "") + '>' + p[1] + '</option>'; }).join("") +
+      '</select>' +
+      '<span id="expCustom" style="' + (f.range === "custom" ? "display:inline-flex" : "display:none") + ';gap:6px;align-items:center">' +
+        '<input type="date" id="expFrom" class="pj-btn pj-btn-sm" value="' + esc(f.from) + '" title="From">' +
+        '<span class="pj-sub">to</span>' +
+        '<input type="date" id="expTo" class="pj-btn pj-btn-sm" value="' + esc(f.to) + '" title="To">' +
+      '</span>' +
+      '<input class="pj-search" id="expSearch" placeholder="Search description…" value="' + esc(f.q) + '">' +
+      (f.group !== "*" || f.range !== "all" || f.q ? '<button class="pj-btn pj-btn-sm" id="expClear">✕ Clear filters</button>' : "") +
+      '<a class="pj-btn pj-btn-sm" href="report-expenses.html?id=' + encodeURIComponent(PID) + '">🖨 Print</a>' +
+      '<button class="pj-btn pj-btn-sm" id="expCsvBtn" title="Download what you see as a spreadsheet">⤓ CSV</button>' +
+      '</div>';
+
+    if (!all.length) {
+      pane.innerHTML = bar + '<div class="pj-empty">No expense records for this project.</div>';
+      wireExpBar();
+      return;
+    }
+
+    var rows = expFiltered();
+    var t = { est: 0, inv: 0, mat: 0, con: 0 };
+    rows.forEach(function (r) { t.est += num(r.estimate); t.inv += num(r.invoice); t.mat += num(r.materials); t.con += num(r.contractors); });
+    var spent = t.mat + t.con;
+    var filtered = rows.length !== all.length;
+
+    var summary = '<div class="pj-expsum">' +
+      '<div><span>Records</span><b>' + rows.length + (filtered ? ' <span class="pj-sub">of ' + all.length + '</span>' : "") + '</b></div>' +
+      '<div><span>Materials</span><b>' + fmtMoney(t.mat) + '</b></div>' +
+      '<div><span>Contractors</span><b>' + fmtMoney(t.con) + '</b></div>' +
+      '<div class="hi"><span>Total spent</span><b>' + fmtMoney(spent) + '</b></div>' +
+      '<div><span>Invoiced</span><b>' + fmtMoney(t.inv) + '</b></div>' +
+      '<div><span>Estimated</span><b>' + fmtMoney(t.est) + '</b></div>' +
+      '</div>';
+
+    if (!rows.length) {
+      pane.innerHTML = bar + summary + '<div class="pj-empty">No expenses match these filters.</div>';
+      wireExpBar();
+      return;
+    }
+
+    var groups = {}, order = [];
+    rows.forEach(function (r) {
+      var g = r.gropingName || "(no group)";
+      if (!(g in groups)) { groups[g] = []; order.push(g); }
+      groups[g].push(r);
+    });
+    order.sort();
+
+    var body = "";
+    order.forEach(function (g) {
+      var gt = { est: 0, inv: 0, mat: 0, con: 0 };
+      body += '<tr class="pj-grp"><td colspan="' + cols + '">' + esc(g) + ' <span class="pj-sub" style="font-weight:400">· ' + groups[g].length + ' record' + (groups[g].length === 1 ? "" : "s") + '</span></td></tr>';
+      expSortRows(groups[g]).forEach(function (r) {
+        gt.est += num(r.estimate); gt.inv += num(r.invoice); gt.mat += num(r.materials); gt.con += num(r.contractors);
+        var remark = r.remarks ? '<div class="pj-sub">' + escML(r.remarks) + '</div>' : "";
+        body += '<tr' + (canEdit ? ' data-exp-open="' + r.id + '" style="cursor:pointer" title="Double-click to open"' : "") + '>' +
+          '<td style="white-space:nowrap">' + fmtDate(r.expenseDate) + '</td>' +
+          '<td class="pj-expdesc">' + escML(expDesc(r)) + remark + '</td>' +
+          '<td class="num">' + (num(r.estimate) ? fmtMoney(r.estimate) : "") + '</td>' +
+          '<td class="num">' + (num(r.invoice) ? fmtMoney(r.invoice) : "") + '</td>' +
+          '<td class="num">' + (num(r.materials) ? fmtMoney(r.materials) : "") + '</td>' +
+          '<td class="num">' + (num(r.contractors) ? fmtMoney(r.contractors) : "") + '</td>' +
+          (canEdit ? '<td><button class="pj-btn pj-btn-sm" data-sub-edit="exp:' + r.id + '" title="Open / edit">✎</button></td>' : "") + '</tr>';
       });
-      body += '<tr class="pj-grand"><td colspan="2">GRAND TOTAL</td><td class="num">'+fmtMoney(grand.est)+'</td><td class="num">'+fmtMoney(grand.inv)+'</td><td class="num">'+fmtMoney(grand.mat)+'</td><td class="num">'+fmtMoney(grand.con)+'</td>'+(canEdit?'<td></td>':"")+'</tr>';
-      pane.innerHTML = bar +
-        '<div class="pj-tblwrap"><table class="pj-tbl"><thead><tr><th>Date</th><th>Description</th><th class="num">Estimate</th><th class="num">Invoice</th><th class="num">Materials</th><th class="num">Contractors</th>'+(canEdit?'<th></th>':"")+'</tr></thead><tbody>'+body+'</tbody></table></div>';
-      var ab = el("expAddBtn"); if (ab) ab.onclick = function(){ openSubModal("exp", null); };
-      wireSubButtons(pane);
-    } catch (e) { pane.innerHTML = '<div class="pj-empty">'+esc(e.message)+'</div>'; }
+      body += '<tr class="pj-grpTot"><td colspan="2">Subtotal — ' + esc(g) + '</td><td class="num">' + fmtMoney(gt.est) + '</td><td class="num">' + fmtMoney(gt.inv) + '</td><td class="num">' + fmtMoney(gt.mat) + '</td><td class="num">' + fmtMoney(gt.con) + '</td>' + (canEdit ? '<td></td>' : "") + '</tr>';
+    });
+    body += '<tr class="pj-grand"><td colspan="2">' + (filtered ? "FILTERED TOTAL" : "GRAND TOTAL") + '</td><td class="num">' + fmtMoney(t.est) + '</td><td class="num">' + fmtMoney(t.inv) + '</td><td class="num">' + fmtMoney(t.mat) + '</td><td class="num">' + fmtMoney(t.con) + '</td>' + (canEdit ? '<td></td>' : "") + '</tr>';
+
+    function sortTh(key, label, cls) {
+      var on = f.sort === key;
+      return '<th' + (cls ? ' class="' + cls + '"' : "") + ' data-exp-sort="' + key + '" style="cursor:pointer" title="Sort">' +
+        label + (on ? ' <span class="pj-sortarrow">' + (f.dir > 0 ? "▲" : "▼") + '</span>' : "") + '</th>';
+    }
+    pane.innerHTML = bar + summary +
+      '<div class="pj-tblwrap"><table class="pj-tbl pj-exptbl"><thead><tr>' +
+      sortTh("date", "Date") + sortTh("desc", "Description") +
+      sortTh("est", "Estimate", "num") + sortTh("inv", "Invoice", "num") +
+      sortTh("mat", "Materials", "num") + sortTh("con", "Contractors", "num") +
+      (canEdit ? '<th></th>' : "") + '</tr></thead><tbody>' + body + '</tbody></table></div>';
+
+    wireExpBar();
+    wireSubButtons(pane);
+    if (canEdit) {
+      pane.querySelectorAll("[data-exp-open]").forEach(function (tr) {
+        tr.ondblclick = function () { openSubModal("exp", tr.getAttribute("data-exp-open")); };
+      });
+    }
+    pane.querySelectorAll("[data-exp-sort]").forEach(function (th) {
+      th.onclick = function () {
+        var k = th.getAttribute("data-exp-sort");
+        if (f.sort === k) f.dir = -f.dir; else { f.sort = k; f.dir = k === "desc" ? 1 : -1; }
+        renderExpenses();
+      };
+    });
+  }
+
+  function wireExpBar() {
+    var f = state.expFilter;
+    var ab = el("expAddBtn"); if (ab) ab.onclick = function () { openSubModal("exp", null); };
+    var g = el("expGroup"); if (g) g.onchange = function () { f.group = this.value; renderExpenses(); };
+    var r = el("expRange");
+    if (r) r.onchange = function () {
+      f.range = this.value;
+      if (f.range === "custom" && !f.from && !f.to) {
+        var now = new Date();
+        f.from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+        f.to = now.toISOString().slice(0, 10);
+      }
+      renderExpenses();
+    };
+    var fr = el("expFrom"); if (fr) fr.onchange = function () { f.from = this.value; renderExpenses(); };
+    var to = el("expTo"); if (to) to.onchange = function () { f.to = this.value; renderExpenses(); };
+    var s = el("expSearch");
+    if (s) {
+      s.oninput = function () {
+        f.q = this.value;
+        clearTimeout(state.expQTimer);
+        state.expQTimer = setTimeout(function () {
+          renderExpenses();
+          var box = el("expSearch");
+          if (box) { box.focus(); box.setSelectionRange(box.value.length, box.value.length); }
+        }, 250);
+      };
+    }
+    var c = el("expClear");
+    if (c) c.onclick = function () {
+      state.expFilter = { group: "*", range: "all", from: "", to: "", q: "", sort: f.sort, dir: f.dir };
+      renderExpenses();
+    };
+    var csv = el("expCsvBtn");
+    if (csv) csv.onclick = function () {
+      var rows = expSortRows(expFiltered());
+      if (!rows.length) return;
+      var blob = new Blob(["﻿" + expCsv(rows)], { type: "text/csv;charset=utf-8" });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = "expenses-" + (state.project && state.project.internalIDNumber ? state.project.internalIDNumber : PID) + ".csv";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+    };
   }
 
   /* ── payments (editable) ── */
@@ -1451,6 +1682,7 @@
     el("tkSave").onclick = saveTask;
     el("subCancel").onclick = function(){ el("subModal").classList.remove("open"); };
     el("subSave").onclick = saveSubModal;
+    el("subDelete").onclick = deleteSubModal;
     [el("taskModal"), el("subModal")].forEach(function(m){ m.addEventListener("click", function(e){ if(e.target===m) m.classList.remove("open"); }); });
 
     // item editor wiring (no backdrop-close: large form, avoid accidental loss)
