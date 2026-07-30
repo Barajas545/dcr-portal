@@ -267,7 +267,15 @@
   }
 
   // Escape, and keep the line breaks the estimator typed into the description.
-  function escML(v) { return esc(v).split(/\r\n|\r|\n/).join("<br>"); }
+  // Notes pasted from Word/email sometimes carry markup; show those as plain
+  // text with their breaks, never as live HTML (esc still runs on the result).
+  function escML(v) {
+    var s = String(v == null ? "" : v)
+      .replace(/<\s*br\s*\/?>/gi, "\n")
+      .replace(/<\/\s*(div|p|li|tr|h[1-6])\s*>/gi, "\n")
+      .replace(/<\/?[a-z][^>]*>/gi, "");
+    return esc(s).split(/\r\n|\r|\n/).join("<br>");
+  }
 
   function estLineHtml(r) {
     // Money parentheticals are skipped when their fields are absent (e.g. the
