@@ -266,13 +266,16 @@
     } catch (e) { pane.innerHTML = '<div class="pj-empty">'+esc(e.message)+'</div>'; }
   }
 
+  // Escape, and keep the line breaks the estimator typed into the description.
+  function escML(v) { return esc(v).split(/\r\n|\r|\n/).join("<br>"); }
+
   function estLineHtml(r) {
     // Money parentheticals are skipped when their fields are absent (e.g. the
     // server stripped prices for a Lead) — "(4 guys × 2 days)" reads fine alone.
     var lines = [];
-    if (r.title) lines.push('<b>'+esc(r.title)+'</b>');
+    if (r.title) lines.push('<b>'+escML(r.title)+'</b>');
     if (r.taskLaborName) {
-      var lab = esc(r.taskLaborName);
+      var lab = escML(r.taskLaborName);
       if (r.taskLaborNumberOfGuys) {
         lab += ' <span class="pj-sub">('+r.taskLaborNumberOfGuys+' guys × '+(r.taskLaborDaysToComplete||0)+' days'+
           (r.taskLaborPricePerHour!=null && num(r.taskLaborPricePerHour) ? ' @ '+fmtMoney(r.taskLaborPricePerHour)+'/hr' : '')+')</span>';
@@ -281,14 +284,14 @@
       lines.push(lab);
     }
     if (r.taskMaterialName) {
-      var mat = esc(r.taskMaterialName);
+      var mat = escML(r.taskMaterialName);
       if (num(r.taskMaterialQty)) {
         mat += ' <span class="pj-sub">('+r.taskMaterialQty+
           (r.taskMaterialUnitPrice!=null && num(r.taskMaterialUnitPrice) ? ' × '+fmtMoney(r.taskMaterialUnitPrice) : ' pcs')+')</span>';
       }
       lines.push(mat);
     }
-    if (r.taskEstimateNotes) lines.push('<span class="pj-sub">'+esc(r.taskEstimateNotes)+'</span>');
+    if (r.taskEstimateNotes) lines.push('<span class="pj-sub">'+escML(r.taskEstimateNotes)+'</span>');
     return lines.join("<br>")||"—";
   }
 

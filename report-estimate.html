@@ -44,6 +44,11 @@
         letter-spacing:.08em; text-transform:uppercase;}
       .est th.amt, .est td.amt{text-align:right; white-space:nowrap; width:110px;}
       .est td{padding:6px 8px; border-bottom:1px solid #ddd; vertical-align:top;}
+      /* styles.css clips every cell (nowrap + max-width + ellipsis); the printed
+         estimate must show each description in full, line breaks included */
+      .est td:not(.amt), .est th:not(.amt){
+        white-space:normal; max-width:none; overflow:visible; text-overflow:clip;
+        overflow-wrap:anywhere;}
       .est tr.grp td{background:#f0f0f0; font-weight:700; font-size:12.5px; border-bottom:1px solid #999;
         padding-top:9px;}
       .est tr.sub td{font-weight:700; border-bottom:2px solid #999; background:#fafafa;}

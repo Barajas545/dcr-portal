@@ -86,6 +86,13 @@
       .pj-grand td{background:var(--tint-2); font-weight:800; font-size:14px; color:var(--text);}
       /* estimate item description indented under its group */
       .pj-tbl td.pj-il{padding-left:40px;}
+      /* Estimate rows grow to fit their text. styles.css clips EVERY cell
+         (nowrap + max-width:320px + ellipsis) — undo that inside the estimate
+         cards so long descriptions wrap instead of ending in "…". */
+      .pj-esttable td:not(.num), .pj-esttable th:not(.num){
+        white-space:normal; max-width:none; overflow:visible; text-overflow:clip;
+        overflow-wrap:anywhere;}
+      .pj-esttable td.pj-il{padding-left:40px; line-height:1.55;}
       /* each estimate is its own card, with clear spacing between them */
       .pj-esttable{margin-bottom:26px; border:1px solid var(--border); border-radius:10px; overflow:hidden;}
       .pj-colhead th{background:var(--surface); border-bottom:1px solid var(--border);}

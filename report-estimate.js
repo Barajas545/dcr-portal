@@ -30,12 +30,15 @@
   function num(v){ var n=parseFloat(String(v??"").replace(/[$,]/g,"")); return isFinite(n)?n:0; }
   function today(){ return new Date().toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"}); }
 
+  // Escape, and keep the line breaks the estimator typed into the description.
+  function escML(v) { return esc(v).split(/\r\n|\r|\n/).join("<br>"); }
+
   function lineDesc(r, hideDetail) {
     // Money bits are skipped when their fields are absent (server-stripped for
     // price-hidden users) — the scope of work still reads cleanly.
     var parts = [];
     if (r.taskLaborName) {
-      var d = esc(r.taskLaborName);
+      var d = escML(r.taskLaborName);
       var bits = [];
       if (num(r.taskLaborNumberOfGuys)) bits.push(r.taskLaborNumberOfGuys + " guys × " + (r.taskLaborDaysToComplete||0) + " days" +
         (r.taskLaborPricePerHour != null && num(r.taskLaborPricePerHour) ? " @ " + money(r.taskLaborPricePerHour) + "/hr" : ""));
@@ -44,7 +47,7 @@
       parts.push(d);
     }
     if (r.taskMaterialName) {
-      var m = esc(r.taskMaterialName);
+      var m = escML(r.taskMaterialName);
       if (num(r.taskMaterialQty)) m += ' <span class="lineb">(' + r.taskMaterialQty +
         (r.taskMaterialUnitPrice != null && num(r.taskMaterialUnitPrice) ? " × " + money(r.taskMaterialUnitPrice) : " pcs") + ")</span>";
       parts.push(m);
