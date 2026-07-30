@@ -20,13 +20,28 @@
         max-width:8.5in; margin:18px auto; background:#fff; color:#111;
         padding:0.6in 0.7in; box-shadow:0 3px 20px rgba(0,0,0,.25);
         font-family:Arial,Helvetica,sans-serif; font-size:12px; line-height:1.4;
+        /* a sheet of paper doesn't reflow: on a phone, scroll it rather than
+           squeezing six columns into 375px */
+        min-width:8.5in; box-sizing:border-box;
       }
       .lh{display:flex; align-items:center; justify-content:space-between; gap:14px;
         border-bottom:3px solid #111; padding-bottom:12px; margin-bottom:14px;}
       .lh img{height:44px; width:auto;}
       .lh h1{margin:0; font-size:20px; letter-spacing:.1em;}
       .who{display:flex; justify-content:space-between; margin-bottom:14px; font-size:12.5px;}
+      /* what this sheet covers, when it was printed from a filtered view */
+      .filt{margin:-4px 0 12px; padding:5px 9px; background:#f4f6f8; border-left:3px solid #111;
+        font-size:11px; color:#333; line-height:1.45;}
       table.ex{width:100%; border-collapse:collapse;}
+      /* styles.css clips every cell (nowrap + max-width:320px + ellipsis) and paints
+         th dark in OS dark mode — undo both inside the white sheet. Declared before
+         the .ex rules below so their shading and .amt nowrap still win. */
+      /* break-word, not anywhere: "anywhere" also shrinks the column's min-content
+         width to a word fragment, which starves the description column */
+      .ex th,.ex td{white-space:normal; max-width:none; overflow:visible; text-overflow:clip;
+        overflow-wrap:break-word; background:none; position:static; color:#111;}
+      .ex td.dt{width:80px; white-space:nowrap;}
+      .ex thead{display:table-header-group;}
       .ex th{border-bottom:2px solid #111; padding:5px 7px; text-align:left; font-size:10px;
         letter-spacing:.07em; text-transform:uppercase;}
       .ex th.amt,.ex td.amt{text-align:right; white-space:nowrap; width:88px;}
@@ -65,6 +80,7 @@
 
     <script src="config.js"></script>
     <script src="common.js"></script>
+    <script src="expense-filter.js"></script>
     <script src="report-expenses.js"></script>
   </body>
 </html>

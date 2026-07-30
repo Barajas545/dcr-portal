@@ -1,11 +1,19 @@
 /* DCR portal — printable project Expense Report (web port of
-   ProjectExpenseAnalisisPrint). Frontend-only: action=project record + part=expenses. */
+   ProjectExpenseAnalisisPrint). Frontend-only: action=project record + part=expenses.
+
+   Prints the same view the Expenses tab shows: the tab's Print link passes its
+   filter on the query string (group/range/from/to/q/sort/dir, plus the already
+   resolved pa/pb window so a relative period can't shift on the way here), and
+   ALL of the filter semantics live in expense-filter.js — never re-implement
+   them here or the sheet will stop matching the screen. Opened without those
+   params (a bookmark) it prints everything, as it always did. */
 
 (function () {
   var qs = new URLSearchParams(location.search);
   var PID = qs.get("id");
   var CO = DCR.companyInfo;
   var LOGO = CO.logo;
+  var F = null;   // the filter — resolved inside DOMContentLoaded, never at parse time
 
   function coBlock() {
     var lines = ["<b>" + DCR.esc(CO.legalName || CO.name) + "</b>"];
@@ -19,44 +27,34 @@
 
   var el = function (id) { return document.getElementById(id); };
   var esc = function (v) { return DCR.esc(v); };
-  function money(n){ return "$" + (Number(n)||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}); }
-  function num(v){ var n=parseFloat(String(v??"").replace(/[$,]/g,"")); return isFinite(n)?n:0; }
-  // SharePoint returns calendar dates as UTC instants ("2026-07-05T00:00:00Z");
-  // new Date() + Pacific time would print the day before — read Y-M-D as written.
-  function fmtDate(v){
-    if(!v)return "";
-    var m=/^(\d{4})-(\d{2})-(\d{2})/.exec(String(v));
-    var d=m?new Date(+m[1],+m[2]-1,+m[3]):new Date(v);
-    return isNaN(d)?"":d.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});
-  }
+  function money(n){ return DCR.exp.money(n); }
+  function num(v){ return DCR.exp.num(v); }
+  function fmtDate(v){ return DCR.exp.fmtDay(v); }
   function today(){ return new Date().toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"}); }
+  function backHref(){ return DCR.exp.hrefWith("project.html", { id: PID, tab: "expenses" }, F || DCR.exp.defaults()); }
 
-  function render(p, rows) {
+  function render(p, rows, allCount) {
     document.title = "DCR Expenses — " + (p.internalIDNumber || "") + " " + (p.projectName || "");
-    el("rpBack").href = "project.html?id=" + encodeURIComponent(PID) + "&tab=expenses";
 
-    var groups = {};
-    rows.forEach(function (r) { var g = r.gropingName || "(no group)"; (groups[g] = groups[g] || []).push(r); });
-    var grand = { est: 0, inv: 0, mat: 0, con: 0 };
-
-    var bodyHtml = Object.keys(groups).map(function (g) {
-      var t = { est: 0, inv: 0, mat: 0, con: 0 };
-      var lines = groups[g].map(function (r) {
-        var desc = r.description || r.laborExpenseDescription || r.materialExpenseDescription || r.estimateDescription || "";
-        t.est += num(r.estimate); t.inv += num(r.invoice); t.mat += num(r.materials); t.con += num(r.contractors);
-        return "<tr><td style='width:80px'>" + fmtDate(r.expenseDate) + "</td><td>" + esc(desc) +
-          (r.remarks ? "<br><span style='font-size:10px;color:#555'>" + esc(r.remarks) + "</span>" : "") + "</td>" +
+    var filtered = DCR.exp.isActive(F);
+    var bodyHtml = DCR.exp.group(rows).map(function (b) {
+      var t = DCR.exp.totals(b.rows);
+      var lines = b.rows.map(function (r) {
+        return '<tr><td class="dt">' + fmtDate(r.expenseDate) + "</td><td>" + DCR.exp.escML(DCR.exp.descOf(r)) +
+          (r.remarks ? "<br><span style='font-size:10px;color:#555'>" + DCR.exp.escML(r.remarks) + "</span>" : "") + "</td>" +
           '<td class="amt">' + (num(r.estimate) ? money(r.estimate) : "") + "</td>" +
           '<td class="amt">' + (num(r.invoice) ? money(r.invoice) : "") + "</td>" +
           '<td class="amt">' + (num(r.materials) ? money(r.materials) : "") + "</td>" +
           '<td class="amt">' + (num(r.contractors) ? money(r.contractors) : "") + "</td></tr>";
       }).join("");
-      Object.keys(t).forEach(function (k) { grand[k] += t[k]; });
-      return '<tbody class="group-block"><tr class="grp"><td colspan="6">' + esc(g) + "</td></tr>" + lines +
-        '<tr class="sub"><td colspan="2">Subtotal — ' + esc(g) + "</td>" +
+      return '<tbody class="group-block"><tr class="grp"><td colspan="6">' + esc(b.name) + "</td></tr>" + lines +
+        '<tr class="sub"><td colspan="2">Subtotal — ' + esc(b.name) + "</td>" +
         '<td class="amt">' + money(t.est) + '</td><td class="amt">' + money(t.inv) + "</td>" +
         '<td class="amt">' + money(t.mat) + '</td><td class="amt">' + money(t.con) + "</td></tr></tbody>";
     }).join("");
+    // one pass over the printed rows, not a fold of the subtotals, so this
+    // matches the tab's total to the cent
+    var grand = DCR.exp.totals(rows);
 
     el("rpSheet").innerHTML =
       '<div class="lh"><img src="' + LOGO + '" alt="' + esc(CO.name) + '" />' +
@@ -65,29 +63,48 @@
       '<div class="who"><div>Project: <b>' + esc((p.internalIDNumber || "") + " — " + (p.projectName || "")) + "</b><br>" +
         esc([p.projectAddress, p.projectCity].filter(Boolean).join(", ")) + "</div>" +
       "<div style='text-align:right'>Client: <b>" + esc(p.projectClientName || "—") + "</b><br>Date: " + today() + "</div></div>" +
+      (filtered ? '<div class="filt"><b>Filtered:</b> ' + esc(DCR.exp.label(F)) +
+        "<br>Showing " + rows.length + " of " + allCount + " expense records</div>" : "") +
       '<table class="ex"><thead><tr><th>Date</th><th>Description</th><th class="amt">Estimate</th>' +
         '<th class="amt">Invoice</th><th class="amt">Materials</th><th class="amt">Contractors</th></tr></thead>' +
         bodyHtml +
-        '<tbody><tr class="grand"><td colspan="2">GRAND TOTAL</td>' +
+        '<tbody><tr class="grand"><td colspan="2">' + (filtered ? "FILTERED TOTAL" : "GRAND TOTAL") + "</td>" +
         '<td class="amt">' + money(grand.est) + '</td><td class="amt">' + money(grand.inv) + "</td>" +
         '<td class="amt">' + money(grand.mat) + '</td><td class="amt">' + money(grand.con) + "</td></tr></tbody></table>" +
-      '<div class="foot">Generated ' + today() + " · " + esc(CO.name) + " · " + rows.length + " expense records</div>";
+      '<div class="foot">Generated ' + today() + " · " + esc(CO.name) + " · " + rows.length +
+        (rows.length !== allCount ? " of " + allCount : "") + " expense records</div>";
   }
 
   document.addEventListener("DOMContentLoaded", async function () {
     await DCR.requireAuth();
+    if (!DCR.exp) {
+      el("rpSheet").innerHTML = '<div class="rp-loading">Report helper failed to load — please refresh.</div>';
+      return;
+    }
     if (!PID) { el("rpSheet").innerHTML = '<div class="rp-loading">No project selected.</div>'; return; }
+    // The filter comes from the query string ONLY — a bookmarked link must never
+    // inherit some other tab's saved filter and quietly print a subset.
+    F = DCR.exp.fromQuery(qs) || DCR.exp.defaults();
+    // Set Back before the fetch: the no-rows, no-match and error paths return
+    // early, and every one of them should still lead back to the same view.
+    el("rpBack").href = backHref();
     try {
       var results = await Promise.all([
         DCR.api("/api/portal?action=project&id=" + encodeURIComponent(PID)),
         DCR.api("/api/portal?action=project&id=" + encodeURIComponent(PID) + "&part=expenses"),
       ]);
-      var rows = results[1].rows || [];
-      if (!rows.length) {
+      var allRows = results[1].rows || [];
+      if (!allRows.length) {
         el("rpSheet").innerHTML = '<div class="rp-loading">This project has no expense records.</div>';
         return;
       }
-      render(results[0].project, rows);
+      var rows = DCR.exp.sort(DCR.exp.filter(allRows, F), F);
+      if (!rows.length) {
+        el("rpSheet").innerHTML = '<div class="rp-loading">No expense records match these filters.' +
+          '<div style="margin-top:8px;font-size:12px">' + esc(DCR.exp.label(F)) + "</div></div>";
+        return;
+      }
+      render(results[0].project, rows, allRows.length);
     } catch (e) {
       el("rpSheet").innerHTML = '<div class="rp-loading">' + esc(e.message || "Could not load expenses.") + "</div>";
     }

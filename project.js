@@ -11,9 +11,11 @@
     originals: {}, dirty: {},
     parts: {}, // cache per tab
     estRows: [], estEditing: null,
-    // expenses tab: group / period / text filters + sort, kept across re-renders
-    expRows: [], expCanEdit: false, expQTimer: null,
-    expFilter: { group: "*", range: "all", from: "", to: "", q: "", sort: "date", dir: -1 },
+    // expenses tab: group / period / text filters + sort. Restored from the URL
+    // or from this tab's last session on load (see init), so coming back from
+    // the printed report is not a reset.
+    expRows: [], expCanEdit: false, expQTimer: null, expView: [],
+    expFilter: { group: "*", range: "all", from: "", to: "", q: "", sort: "date", dir: -1, pa: "", pb: "" },
     taskFilter: "pending",
     files: { stack: [] },
     boardList: [],
@@ -69,18 +71,16 @@
     ["checkWeInstallWindows","We install doors & windows"],
   ];
 
-  function fmtMoney(n){ return "$" + (Number(n)||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}); }
-  function num(v){ if(typeof v==="number")return v; var n=parseFloat(String(v??"").replace(/[$,]/g,"")); return isFinite(n)?n:0; }
+  // Money / number / date helpers live in expense-filter.js so the Expenses tab
+  // and the printed expense sheet format identically. These stay function
+  // declarations (not var aliases) so binding happens at call time.
+  function fmtMoney(n){ return DCR.exp.money(n); }
+  function num(v){ return DCR.exp.num(v); }
   // SharePoint stores these as calendar dates but hands them back as UTC
   // instants ("2026-07-05T00:00:00Z"). Reading that with new Date() and showing
   // it in Pacific time lands on Jul 4 — a day early, and it also throws off the
-  // month filters at the 1st. Take the Y-M-D exactly as written instead.
-  function toDate(v){
-    if (!v) return null;
-    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v));
-    if (m) return new Date(+m[1], +m[2]-1, +m[3]);
-    var d = new Date(v); return isNaN(d) ? null : d;
-  }
+  // month filters at the 1st. DCR.exp.toDate takes the Y-M-D exactly as written.
+  function toDate(v){ return DCR.exp.toDate(v); }
   function fmtDate(v){ var d=toDate(v); return !v ? "—" : (d ? d.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : String(v)); }
   function dateInputVal(v){
     if(!v)return "";
@@ -256,6 +256,12 @@
   function switchTab(name) {
     document.querySelectorAll(".pj-tab").forEach(function(t){ t.classList.toggle("active", t.getAttribute("data-tab")===name); });
     document.querySelectorAll(".pj-pane").forEach(function(p){ p.classList.toggle("active", p.id==="pane-"+name); });
+    // keep the tab in the address bar so a reload comes back where you were
+    try {
+      var u = new URL(location.href);
+      u.searchParams.set("tab", name);
+      history.replaceState(null, "", u);
+    } catch (e) {}
     loadTab(name);
   }
 
@@ -289,14 +295,9 @@
   // Notes pasted from Word/email sometimes carry markup; show those as plain
   // text with their breaks, never as live HTML (esc still runs on the result).
   // Notes pasted from Word/email carry markup — read it as plain text with its
-  // line breaks intact (never as live HTML).
-  function stripML(v) {
-    return String(v == null ? "" : v)
-      .replace(/<\s*br\s*\/?>/gi, "\n")
-      .replace(/<\/\s*(div|p|li|tr|h[1-6])\s*>/gi, "\n")
-      .replace(/<\/?[a-z][^>]*>/gi, "");
-  }
-  function escML(v) { return esc(stripML(v)).split(/\r\n|\r|\n/).join("<br>"); }
+  // line breaks intact (never as live HTML). Shared with the printed sheet.
+  function stripML(v) { return DCR.exp.stripML(v); }
+  function escML(v) { return DCR.exp.escML(v); }
 
   function estLineHtml(r) {
     // Money parentheticals are skipped when their fields are absent (e.g. the
@@ -866,62 +867,24 @@
      reflect what's on screen. Rows are opened (double-click or ✎) to edit —
      deleting lives inside that editor so a record can't be lost by a stray tap. */
 
-  // Local-time period bounds. Returns null for "all dates".
-  function expPeriod(key, fromStr, toStr) {
-    var now = new Date(), y = now.getFullYear(), m = now.getMonth();
-    function d(yy, mm, dd) { return new Date(yy, mm, dd, 0, 0, 0, 0); }
-    function endOf(dt) { var e = new Date(dt); e.setHours(23, 59, 59, 999); return e; }
-    if (key === "thisMonth") return { a: d(y, m, 1), b: endOf(d(y, m + 1, 0)) };
-    if (key === "lastMonth") return { a: d(y, m - 1, 1), b: endOf(d(y, m, 0)) };
-    if (key === "last30") return { a: d(y, m, now.getDate() - 29), b: endOf(now) };
-    if (key === "last90") return { a: d(y, m, now.getDate() - 89), b: endOf(now) };
-    if (key === "thisQuarter") { var q = Math.floor(m / 3) * 3; return { a: d(y, q, 1), b: endOf(d(y, q + 3, 0)) }; }
-    if (key === "thisYear") return { a: d(y, 0, 1), b: endOf(d(y, 11, 31)) };
-    if (key === "lastYear") return { a: d(y - 1, 0, 1), b: endOf(d(y - 1, 11, 31)) };
-    if (key === "custom") {
-      var a = fromStr ? new Date(fromStr + "T00:00:00") : null;
-      var b = toStr ? new Date(toStr + "T23:59:59") : null;
-      if (!a && !b) return null;
-      return { a: a || new Date(1900, 0, 1), b: b || new Date(2999, 11, 31) };
-    }
-    return null;
-  }
+  // Matching, sorting and grouping live in expense-filter.js — the printed
+  // report runs the very same code, so the paper can't disagree with the screen.
+  function expFiltered() { return DCR.exp.filter(state.expRows || [], state.expFilter); }
+  function expDesc(r) { return DCR.exp.descOf(r); }
+  function expSortRows(rows) { return DCR.exp.sort(rows, state.expFilter); }
 
-  function expFiltered() {
-    var f = state.expFilter, rows = state.expRows || [];
-    var per = expPeriod(f.range, f.from, f.to);
-    var q = (f.q || "").trim().toLowerCase();
-    return rows.filter(function (r) {
-      if (f.group !== "*" && (r.gropingName || "(no group)") !== f.group) return false;
-      if (per) {
-        var dt = toDate(r.expenseDate);
-        if (!dt || dt < per.a || dt > per.b) return false;
-      }
-      if (q) {
-        var hay = [r.description, r.remarks, r.laborExpenseDescription, r.materialExpenseDescription,
-          r.estimateDescription, r.gropingName].join(" ").toLowerCase();
-        if (hay.indexOf(q) === -1) return false;
-      }
-      return true;
-    });
-  }
-
-  function expDesc(r) {
-    return r.description || r.laborExpenseDescription || r.materialExpenseDescription || r.estimateDescription || "";
-  }
-
-  function expSortRows(rows) {
-    var f = state.expFilter, key = f.sort, dir = f.dir;
-    var val = {
-      date: function (r) { var d2 = toDate(r.expenseDate); return d2 ? d2.getTime() : 0; },
-      desc: function (r) { return expDesc(r).toLowerCase(); },
-      est: function (r) { return num(r.estimate); }, inv: function (r) { return num(r.invoice); },
-      mat: function (r) { return num(r.materials); }, con: function (r) { return num(r.contractors); },
-    }[key] || function (r) { return 0; };
-    return rows.slice().sort(function (a, b) {
-      var A = val(a), B = val(b);
-      return (A < B ? -1 : A > B ? 1 : 0) * dir;
-    });
+  // Remember the filter for this project: in the address bar (so reload, browser
+  // Back and the report's ← Back all land on the same view) and in sessionStorage
+  // (so a plain refresh restores it too). Called from one place — renderExpenses.
+  function expPersist() {
+    try { DCR.exp.save(PID, state.expFilter); } catch (e) {}
+    try {
+      if (activeTab() !== "expenses") return;
+      var u = new URL(location.href);
+      u.searchParams.set("tab", "expenses");
+      DCR.exp.applyToUrl(u, state.expFilter);
+      history.replaceState(null, "", u);
+    } catch (e) {}
   }
 
   function expCsv(rows) {
@@ -952,13 +915,15 @@
     var cols = canEdit ? 7 : 6;
 
     var groupNames = [];
-    all.forEach(function (r) { var g = r.gropingName || "(no group)"; if (groupNames.indexOf(g) === -1) groupNames.push(g); });
+    all.forEach(function (r) { var g = DCR.exp.groupOf(r); if (groupNames.indexOf(g) === -1) groupNames.push(g); });
     groupNames.sort();
     if (f.group !== "*" && groupNames.indexOf(f.group) === -1) f.group = "*";
 
-    var PERIODS = [["all", "All dates"], ["thisMonth", "This month"], ["lastMonth", "Last month"],
-      ["last30", "Last 30 days"], ["last90", "Last 90 days"], ["thisQuarter", "This quarter"],
-      ["thisYear", "This year"], ["lastYear", "Last year"], ["custom", "Custom range…"]];
+    // One choke point: every filter change re-renders, so remembering the view
+    // here covers all of them — and only after a vanished group has been reset.
+    expPersist();
+
+    var PERIODS = DCR.exp.PERIODS;
 
     var bar = '<div class="pj-bar">' +
       (canEdit ? '<button class="pj-btn pj-btn-primary pj-btn-sm" id="expAddBtn">＋ New expense</button>' : "") +
@@ -976,7 +941,11 @@
       '</span>' +
       '<input class="pj-search" id="expSearch" placeholder="Search description…" value="' + esc(f.q) + '">' +
       (f.group !== "*" || f.range !== "all" || f.q ? '<button class="pj-btn pj-btn-sm" id="expClear">✕ Clear filters</button>' : "") +
-      '<a class="pj-btn pj-btn-sm" href="report-expenses.html?id=' + encodeURIComponent(PID) + '">🖨 Print</a>' +
+      // The report prints exactly this view: the filter rides along on the link,
+      // with the date window already resolved so "This month" can't re-resolve
+      // to a different month on the way there.
+      '<a class="pj-btn pj-btn-sm" href="' + esc(DCR.exp.hrefWith("report-expenses.html", { id: PID }, f, true)) +
+        '" title="Print what you see">🖨 Print</a>' +
       '<button class="pj-btn pj-btn-sm" id="expCsvBtn" title="Download what you see as a spreadsheet">⤓ CSV</button>' +
       '</div>';
 
@@ -986,14 +955,16 @@
       return;
     }
 
-    var rows = expFiltered();
-    var t = { est: 0, inv: 0, mat: 0, con: 0 };
-    rows.forEach(function (r) { t.est += num(r.estimate); t.inv += num(r.invoice); t.mat += num(r.materials); t.con += num(r.contractors); });
+    // Filter and sort ONCE, keep the result: the table, the CSV export and the
+    // printed report all read this same array, in this same order.
+    var rows = DCR.exp.sort(DCR.exp.filter(all, f), f);
+    state.expView = rows;
+    var t = DCR.exp.totals(rows);
     var spent = t.mat + t.con;
-    var filtered = rows.length !== all.length;
+    var filtered = DCR.exp.isActive(f);
 
     var summary = '<div class="pj-expsum">' +
-      '<div><span>Records</span><b>' + rows.length + (filtered ? ' <span class="pj-sub">of ' + all.length + '</span>' : "") + '</b></div>' +
+      '<div><span>Records</span><b>' + rows.length + (rows.length !== all.length ? ' <span class="pj-sub">of ' + all.length + '</span>' : "") + '</b></div>' +
       '<div><span>Materials</span><b>' + fmtMoney(t.mat) + '</b></div>' +
       '<div><span>Contractors</span><b>' + fmtMoney(t.con) + '</b></div>' +
       '<div class="hi"><span>Total spent</span><b>' + fmtMoney(spent) + '</b></div>' +
@@ -1007,20 +978,12 @@
       return;
     }
 
-    var groups = {}, order = [];
-    rows.forEach(function (r) {
-      var g = r.gropingName || "(no group)";
-      if (!(g in groups)) { groups[g] = []; order.push(g); }
-      groups[g].push(r);
-    });
-    order.sort();
-
     var body = "";
-    order.forEach(function (g) {
-      var gt = { est: 0, inv: 0, mat: 0, con: 0 };
-      body += '<tr class="pj-grp"><td colspan="' + cols + '">' + esc(g) + ' <span class="pj-sub" style="font-weight:400">· ' + groups[g].length + ' record' + (groups[g].length === 1 ? "" : "s") + '</span></td></tr>';
-      expSortRows(groups[g]).forEach(function (r) {
-        gt.est += num(r.estimate); gt.inv += num(r.invoice); gt.mat += num(r.materials); gt.con += num(r.contractors);
+    // Rows arrive already sorted; grouping only buckets them.
+    DCR.exp.group(rows).forEach(function (grp) {
+      var g = grp.name, gt = DCR.exp.totals(grp.rows);
+      body += '<tr class="pj-grp"><td colspan="' + cols + '">' + esc(g) + ' <span class="pj-sub" style="font-weight:400">· ' + grp.rows.length + ' record' + (grp.rows.length === 1 ? "" : "s") + '</span></td></tr>';
+      grp.rows.forEach(function (r) {
         var remark = r.remarks ? '<div class="pj-sub">' + escML(r.remarks) + '</div>' : "";
         body += '<tr' + (canEdit ? ' data-exp-open="' + r.id + '" style="cursor:pointer" title="Double-click to open"' : "") + '>' +
           '<td style="white-space:nowrap">' + fmtDate(r.expenseDate) + '</td>' +
@@ -1071,9 +1034,11 @@
     if (r) r.onchange = function () {
       f.range = this.value;
       if (f.range === "custom" && !f.from && !f.to) {
+        // local Y-M-D — toISOString() is UTC and would seed tomorrow's date
+        // for a Pacific user after 5pm
         var now = new Date();
-        f.from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-        f.to = now.toISOString().slice(0, 10);
+        f.from = DCR.exp.ymd(new Date(now.getFullYear(), now.getMonth(), 1));
+        f.to = DCR.exp.ymd(now);
       }
       renderExpenses();
     };
@@ -1093,12 +1058,14 @@
     }
     var c = el("expClear");
     if (c) c.onclick = function () {
-      state.expFilter = { group: "*", range: "all", from: "", to: "", q: "", sort: f.sort, dir: f.dir };
+      var d = DCR.exp.defaults();   // keep the column they were sorting by
+      d.sort = f.sort; d.dir = f.dir;
+      state.expFilter = d;
       renderExpenses();
     };
     var csv = el("expCsvBtn");
     if (csv) csv.onclick = function () {
-      var rows = expSortRows(expFiltered());
+      var rows = state.expView || [];   // exactly the rows on screen
       if (!rows.length) return;
       var blob = new Blob(["﻿" + expCsv(rows)], { type: "text/csv;charset=utf-8" });
       var url = URL.createObjectURL(blob);
@@ -1690,6 +1657,13 @@
   /* ── init ── */
   document.addEventListener("DOMContentLoaded", async function () {
     state.profile = await DCR.requireAuth();
+    // expense-filter.js carries the money/date helpers this whole page uses —
+    // fail loudly rather than throwing on every tab.
+    if (!DCR.exp) {
+      el("pjTitle").textContent = "Page failed to load — please refresh";
+      el("pane-overview").innerHTML = '<div class="pj-empty">A required script (expense-filter.js) did not load.</div>';
+      return;
+    }
     el("companyName").textContent = DCR.company + " Portal";
     el("userPill").textContent = (state.profile.displayName || state.profile.email) + " · " + state.profile.role;
     el("logoutBtn").onclick = function(){ DCR.logout(); };
@@ -1819,6 +1793,14 @@
     el("noteSave").onclick = noteSave;
     el("noteCancel").onclick = function(){ el("noteModal").classList.remove("open"); };
     window.addEventListener("beforeunload", function(e){ if (Object.keys(state.dirty).length) { e.preventDefault(); e.returnValue=""; } });
+
+    // Restore the Expenses filter: the URL wins (a shared link, or ← Back from
+    // the printed report), then this tab's last session (a plain reload), then
+    // the defaults. Never let a bad value here break the page.
+    try {
+      var savedF = DCR.exp.fromQuery(qs) || DCR.exp.load(PID);
+      if (savedF) state.expFilter = savedF;
+    } catch (e) {}
 
     try { await loadRecord(); } catch (e) { el("pjTitle").textContent = "Error"; el("pane-overview").innerHTML = '<div class="pj-empty">'+esc(e.message)+'</div>'; return; }
     // Deep-link support (e.g. search results): project.html?id=N&tab=estimate
