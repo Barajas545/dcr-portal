@@ -75,11 +75,11 @@ window.DCR = {
   company:"DCR Framing", companyInfo:{logo:"logo.jpg"},
   requireAuth: function(){ return Promise.resolve({displayName:"Test User",role:"Admin"}); },
   api: function(){ return Promise.resolve({ q:"jason", groups: [{"key":"projects","label":"Projects","total":2,"more":false,"items":[{"title":"A006 — Las canoas","sub":"2243 Las Canoas Rd · Santa Barbara · Completed","href":"project.html?id=47","thumbId":"47"},{"title":"A163 — Studio Shop","sub":"2885 Summer Ranch Rd · Paso Robles · In Progress","href":"project.html?id=185","thumbId":"185"}]}] }); },
-  blobUrl: function(path){ var m=/projectId=(d+)/.exec(path); var d=m&&window.__THUMBS[m[1]];
+  blobUrl: function(path){ var id=String(path).split("projectId=")[1]||""; var d=window.__THUMBS[id];
     if(!d||d==="TOO_BIG") return Promise.reject(new Error("no thumb")); return Promise.resolve(d); },
   getToken:function(){return "x";}, logout:function(){}, API_BASE:""
 };
 </script>
-    <script src="search.js?v=2"></script>
+    <script src="search.js?v=3"></script>
   </body>
 </html>
