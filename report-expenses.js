@@ -21,7 +21,14 @@
   var esc = function (v) { return DCR.esc(v); };
   function money(n){ return "$" + (Number(n)||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}); }
   function num(v){ var n=parseFloat(String(v??"").replace(/[$,]/g,"")); return isFinite(n)?n:0; }
-  function fmtDate(v){ if(!v)return ""; var d=new Date(v); return isNaN(d)?"":d.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}); }
+  // SharePoint returns calendar dates as UTC instants ("2026-07-05T00:00:00Z");
+  // new Date() + Pacific time would print the day before — read Y-M-D as written.
+  function fmtDate(v){
+    if(!v)return "";
+    var m=/^(\d{4})-(\d{2})-(\d{2})/.exec(String(v));
+    var d=m?new Date(+m[1],+m[2]-1,+m[3]):new Date(v);
+    return isNaN(d)?"":d.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});
+  }
   function today(){ return new Date().toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"}); }
 
   function render(p, rows) {
