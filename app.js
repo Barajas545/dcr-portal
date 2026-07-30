@@ -16,6 +16,7 @@
     var sections = [];
 
     sections.push({ label: "Field & Time", cards: [
+      { href: "capture.html", ic: "📸", tt: "Site Photos", ds: "Photograph or film the job you're standing on — filed by week.", show: true },
       { href: "timesheet.html", ic: "🕐", tt: "Time Sheet", ds: "Enter your daily hours, schedule, and leave days.", show: true },
       { href: "tasks-map.html", ic: "🗺️", tt: "Tasks on Map", ds: "Photo & site tasks on a map with directions.", show: true },
       { href: "timesheet-manager.html", ic: "📆", tt: "Team Sheets", ds: "Weekly grid of everyone's hours; edit any entry.", show: isLeadOrMgr },

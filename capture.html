@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>DCR Portal — Site Photos</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      /* Built for a phone held in one hand, outdoors, in the sun:
+         big targets, high contrast, nothing that needs a precise tap. */
+      .cp{max-width:640px; margin:0 auto; padding:12px 14px calc(28px + env(safe-area-inset-bottom));}
+      .cp-step{display:none;} .cp-step.on{display:block;}
+
+      .cp-h{font-size:19px; font-weight:800; color:var(--text); margin:2px 0 3px;}
+      .cp-sub{font-size:13px; color:var(--text-muted); line-height:1.45;}
+      .cp-msg{font-size:13px; min-height:18px; margin:8px 0;}
+      .cp-msg.err{color:#d9614f;} .cp-msg.ok{color:#2fa679;}
+
+      .cp-btn{display:block; width:100%; box-sizing:border-box; padding:15px 16px; font-size:16px;
+        font-weight:700; border-radius:12px; border:1px solid var(--border); background:var(--surface);
+        color:var(--text); cursor:pointer; text-align:center; text-decoration:none; margin-bottom:10px;
+        -webkit-tap-highlight-color:transparent;}
+      .cp-btn:active{transform:scale(.985);}
+      .cp-btn-primary{background:#2f80d8; border-color:#2f80d8; color:#fff;}
+      .cp-btn-ghost{background:none;}
+      .cp-btn:disabled{opacity:.55; cursor:default;}
+      .cp-btn-sm{padding:9px 13px; font-size:13.5px; font-weight:600; width:auto; display:inline-block; margin:0;}
+      .cp-row{display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px;}
+
+      /* project card */
+      .cp-card{display:flex; gap:12px; align-items:center; width:100%; box-sizing:border-box;
+        text-align:left; padding:12px; border:1px solid var(--border); border-radius:12px;
+        background:var(--surface); cursor:pointer; margin-bottom:9px; color:var(--text);
+        -webkit-tap-highlight-color:transparent;}
+      .cp-card.best{border-color:#2f80d8; box-shadow:0 0 0 2px rgba(47,128,216,.18);}
+      .cp-card:active{background:var(--surface-2);}
+      .cp-thumb{width:74px; height:56px; flex-shrink:0; border-radius:8px; overflow:hidden;
+        background:var(--surface-2); border:1px solid var(--border); display:flex;
+        align-items:center; justify-content:center; font-size:20px; color:var(--text-muted);}
+      .cp-thumb img{width:100%; height:100%; object-fit:cover;}
+      /* these are spans (a <button> may not contain block elements), so each
+         line has to be made a block explicitly */
+      .cp-info{display:block; min-width:0; flex:1;}
+      .cp-nm{display:block; font-size:14.5px; font-weight:700; line-height:1.3; word-break:break-word;}
+      .cp-ad{display:block; font-size:12.5px; color:var(--text-muted); margin-top:2px; word-break:break-word;}
+      .cp-meta{display:block; font-size:11.5px; color:var(--text-muted); margin-top:4px;}
+      .cp-dist{display:inline-block; padding:2px 8px; border-radius:11px; font-weight:700;
+        background:rgba(47,128,216,.14); color:#2f80d8; font-size:11.5px;}
+      .cp-stat{display:inline-block; padding:2px 8px; border-radius:11px; background:var(--surface-2);
+        font-size:11.5px; margin-left:5px;}
+
+      .cp-search{width:100%; box-sizing:border-box; padding:13px 14px; font-size:16px;
+        border:1px solid var(--border); border-radius:11px; background:var(--surface); color:var(--text);}
+      .cp-search:focus{outline:none; border-color:#2f80d8;}
+
+      .cp-note{font-size:12.5px; color:var(--text-muted); background:var(--surface-2);
+        border-left:3px solid var(--border); border-radius:0 8px 8px 0; padding:9px 11px; margin:10px 0; line-height:1.5;}
+
+      /* confirmed project banner */
+      .cp-banner{display:flex; gap:11px; align-items:center; padding:11px 12px; border-radius:12px;
+        background:var(--surface); border:1px solid var(--border); margin-bottom:12px;}
+
+      /* upload list */
+      .cp-up{border:1px solid var(--border); border-radius:11px; background:var(--surface);
+        padding:10px 12px; margin-bottom:8px;}
+      .cp-upt{display:flex; gap:8px; align-items:baseline; justify-content:space-between; font-size:13px;}
+      .cp-upn{font-weight:600; word-break:break-all; min-width:0;}
+      .cp-ups{flex-shrink:0; font-size:12px; color:var(--text-muted); white-space:nowrap;}
+      .cp-ups.done{color:#2fa679;} .cp-ups.err{color:#d9614f;}
+      .cp-bar{height:6px; border-radius:3px; background:var(--surface-2); overflow:hidden; margin-top:7px;}
+      .cp-bar i{display:block; height:100%; width:0; background:#2f80d8; transition:width .2s;}
+      .cp-up.done .cp-bar i{background:#2fa679;}
+      .cp-up.err .cp-bar i{background:#d9614f;}
+
+      .cp-hide{display:none;}
+      .cp-spin{display:inline-block; width:13px; height:13px; border:2px solid var(--border);
+        border-top-color:#2f80d8; border-radius:50%; animation:cpspin .8s linear infinite; vertical-align:-2px;}
+      @keyframes cpspin{to{transform:rotate(360deg);}}
+    </style>
+    <link rel="manifest" href="manifest.json" />
+    <link rel="icon" type="image/png" href="icon-192.png" />
+    <link rel="apple-touch-icon" href="icon-180.png" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#171d25" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="DCR Portal" />
+  </head>
+  <body>
+    <div class="topbar">
+      <div class="topbar-in">
+        <a class="brand" href="dashboard.html"><img src="logo.jpg" alt="" class="brand-logo" /><span id="companyName">DCR Portal</span></a>
+        <div class="topbar-right">
+          <span class="pill" id="userPill"></span>
+          <a class="btn btn-ghost" href="dashboard.html">Home</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="cp">
+      <!-- STEP 1 — pick the project -->
+      <div class="cp-step on" id="stepPick">
+        <div class="cp-h">Which job are you on?</div>
+        <div class="cp-sub" id="pickSub">Finding the closest project…</div>
+        <div class="cp-msg" id="pickMsg"></div>
+
+        <div id="pickBest"></div>
+
+        <div class="cp-row" style="margin-top:4px">
+          <input class="cp-search" id="pickSearch" placeholder="Search address, city, client or project #" autocomplete="off" />
+        </div>
+        <div id="pickList"></div>
+        <div class="cp-row">
+          <button class="cp-btn cp-btn-ghost cp-btn-sm" id="pickMore">Show all projects</button>
+          <button class="cp-btn cp-btn-ghost cp-btn-sm" id="pickRetryGps">Use my location again</button>
+        </div>
+      </div>
+
+      <!-- STEP 2 — confirm -->
+      <div class="cp-step" id="stepConfirm">
+        <div class="cp-h">Is this the right job?</div>
+        <div class="cp-sub">Photos and videos go into this project's Pictures folder.</div>
+        <div id="confirmCard" style="margin-top:12px"></div>
+        <div class="cp-note" id="confirmWhere"></div>
+        <button class="cp-btn cp-btn-primary" id="confirmYes">✓ Yes — start capturing</button>
+        <button class="cp-btn cp-btn-ghost" id="confirmNo">← No, pick a different job</button>
+      </div>
+
+      <!-- STEP 3 — capture -->
+      <div class="cp-step" id="stepShoot">
+        <div class="cp-banner" id="shootBanner"></div>
+
+        <button class="cp-btn cp-btn-primary" id="shootPhoto">📷 Take photos</button>
+        <button class="cp-btn cp-btn-primary" id="shootVideo">🎥 Record video</button>
+        <button class="cp-btn cp-btn-ghost" id="shootPick">🖼 Choose from gallery</button>
+
+        <div class="cp-msg" id="shootMsg"></div>
+        <div id="shootList"></div>
+
+        <div class="cp-row cp-hide" id="shootRetryRow">
+          <button class="cp-btn cp-btn-sm cp-btn-primary" id="shootRetry">↻ Retry failed uploads</button>
+        </div>
+        <button class="cp-btn cp-btn-ghost" id="shootDone" style="margin-top:14px">← Different job</button>
+        <div class="cp-note" id="shootWhere"></div>
+
+        <!-- capture=environment opens the rear camera straight away on a phone;
+             on a desktop it is just a file picker. -->
+        <input type="file" id="inPhoto" accept="image/*" capture="environment" multiple class="cp-hide" />
+        <input type="file" id="inVideo" accept="video/*" capture="environment" class="cp-hide" />
+        <input type="file" id="inPick" accept="image/*,video/*" multiple class="cp-hide" />
+      </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="common.js"></script>
+    <script src="capture.js"></script>
+  </body>
+</html>

@@ -1390,8 +1390,11 @@
   // SharePoint upload sessions require chunked PUTs in 320KiB multiples.
   async function uploadToDrive(blob, target, name, mime) {
     if (!blob.size) throw new Error("Nothing to upload (empty file).");
+    // Photos/videos are filed by company week (Sat–Fri), same as the Site Photos
+    // screen; notes stay flat in "Site Notes".
     var s = await DCR.api("/api/portal?action=drive", { method:"POST",
-      body:{ op:"uploadSession", projectId: PID, target: target, name: name, mimeType: mime } });
+      body:{ op:"uploadSession", projectId: PID, target: target, name: name, mimeType: mime,
+             weekFolder: target === "notes" ? "" : DCR.weekFolder() } });
     var CHUNK = 320 * 1024 * 24; // 7.5 MiB, 320KiB-aligned
     var pos = 0, total = blob.size;
     while (pos < total) {

@@ -101,6 +101,53 @@
         ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
       );
     },
+
+    // ── company week + geo (shared by the capture screen and project files) ──
+
+    // The company week runs Saturday→Friday, same as timesheet.js:39,
+    // timesheet-manager.js:20, timesheet-pdf.js:45 and report-timecard.js:29.
+    saturdayOf(date) {
+      const d = new Date(date);
+      d.setHours(0, 0, 0, 0);
+      const day = d.getDay();                       // 0=Sun … 6=Sat
+      d.setDate(d.getDate() - (day === 6 ? 0 : day + 1));
+      return d;
+    },
+
+    // Folder name for a capture date, e.g. "2026-Week #02".
+    // Week #01 is the Saturday–Friday week containing January 1, so the week
+    // straddling New Year belongs to the year that January 1 falls in.
+    weekFolder(date) {
+      const sat = DCR.saturdayOf(date || new Date());
+      // Try the following year first: a late-December week can contain Jan 1.
+      let y = sat.getFullYear() + 1;
+      let anchor = DCR.saturdayOf(new Date(y, 0, 1));
+      if (sat < anchor) {
+        y -= 1;
+        anchor = DCR.saturdayOf(new Date(y, 0, 1));
+      }
+      // 604800000 = 7 days in ms; rounding absorbs any DST shift in between.
+      const n = Math.round((sat - anchor) / 604800000) + 1;
+      return y + "-Week #" + (n < 10 ? "0" + n : String(n));
+    },
+
+    // "lat,lng" or "lat,lng|src" → {lat, lng, src} | null
+    parseCoords(s) {
+      if (!s) return null;
+      const parts = String(s).split("|");
+      const n = parts[0].split(/[,;\s]+/).map(parseFloat).filter((v) => !isNaN(v));
+      if (n.length < 2 || Math.abs(n[0]) > 90 || Math.abs(n[1]) > 180) return null;
+      return { lat: n[0], lng: n[1], src: (parts[1] || "").trim() || "gps" };
+    },
+
+    // Great-circle distance in miles.
+    distanceMi(a, b) {
+      const R = 3958.8, rad = Math.PI / 180;
+      const dLat = (b.lat - a.lat) * rad, dLng = (b.lng - a.lng) * rad;
+      const s = Math.sin(dLat / 2) ** 2 +
+        Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) ** 2;
+      return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
+    },
   };
 
   window.DCR = DCR;
