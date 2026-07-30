@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DCR Portal — Project</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      .pj{
+        --acc:#2f80d8; --acc-2:#1f6fc8; --tint:rgba(47,128,216,0.12); --tint-2:rgba(47,128,216,0.22);
+        --gold:#d6a13a; --ok:#2fa679; --err:#d9614f;
+        max-width:1160px; margin:0 auto; padding:14px 16px 60px;
+      }
+      /* header */
+      .pj-head{display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:10px;}
+      .pj-thumb{width:92px; height:60px; border-radius:8px; border:1px solid var(--border);
+        background:var(--surface-2); object-fit:cover; flex-shrink:0; display:flex; align-items:center;
+        justify-content:center; color:var(--text-muted); font-size:10px; overflow:hidden;}
+      .pj-thumb img{width:100%; height:100%; object-fit:cover;}
+      .pj-title{font-size:19px; font-weight:800; color:var(--text); line-height:1.25;}
+      .pj-sub{font-size:12.5px; color:var(--text-muted); margin-top:2px;}
+      .pj-status{display:inline-block; padding:3px 11px; border-radius:14px; font-size:12px;
+        font-weight:700; background:var(--tint); color:var(--acc);}
+      .pj-switch{position:relative;}
+      .pj-switch input{padding:8px 12px; font-size:13px; border:1px solid var(--border);
+        border-radius:8px; background:var(--surface); color:var(--text); width:210px;}
+      .pj-switch input:focus{outline:none; border-color:var(--acc);}
+      .pj-btn{padding:8px 14px; font-size:13px; font-weight:600; border-radius:8px; cursor:pointer;
+        border:1px solid var(--border); background:var(--surface); color:var(--text); text-decoration:none; display:inline-block;}
+      .pj-btn:hover{background:var(--surface-2);}
+      .pj-btn-primary{background:var(--acc); border-color:var(--acc); color:#fff;}
+      .pj-btn-primary:hover{background:var(--acc-2);}
+      .pj-btn-primary:disabled{background:#7a8595; border-color:#7a8595; cursor:default;}
+      .pj-btn-sm{padding:5px 10px; font-size:12px;}
+      .pj-msg{font-size:12.5px; min-height:16px;}
+      .pj-msg.ok{color:var(--ok);} .pj-msg.err{color:var(--err);}
+
+      /* tabs */
+      .pj-tabs{display:flex; gap:4px; border-bottom:2px solid var(--border); margin:8px 0 16px;
+        overflow-x:auto; scrollbar-width:none;}
+      .pj-tab{padding:9px 15px; font-size:13.5px; font-weight:600; color:var(--text-muted);
+        background:none; border:none; border-bottom:2px solid transparent; margin-bottom:-2px;
+        cursor:pointer; white-space:nowrap;}
+      .pj-tab:hover{color:var(--text);}
+      .pj-tab.active{color:var(--acc); border-bottom-color:var(--acc);}
+      .pj-pane{display:none;}
+      .pj-pane.active{display:block;}
+
+      /* overview form */
+      .pj-sec{background:var(--surface); border:1px solid var(--border); border-radius:12px;
+        padding:16px; margin-bottom:14px;}
+      .pj-sec h3{margin:0 0 12px; font-size:13px; text-transform:uppercase; letter-spacing:.06em;
+        color:var(--text-muted);}
+      .pj-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(215px,1fr)); gap:10px 14px;}
+      .pj-f label{display:block; font-size:11.5px; font-weight:600; color:var(--text-muted); margin-bottom:3px;}
+      .pj-f input,.pj-f select,.pj-f textarea{width:100%; box-sizing:border-box; padding:8px 10px;
+        font-size:13.5px; border:1px solid var(--border); border-radius:7px; background:var(--surface);
+        color:var(--text); color-scheme:light dark;}
+      .pj-f input:focus,.pj-f select:focus,.pj-f textarea:focus{outline:none; border-color:var(--acc);
+        box-shadow:0 0 0 2px var(--tint-2);}
+      .pj-f input:disabled,.pj-f textarea:disabled,.pj-f select:disabled{background:var(--surface-2); color:var(--text-muted);}
+      .pj-f.full{grid-column:1/-1;}
+      .pj-f textarea{resize:vertical; min-height:64px;}
+      /* auto-growing note boxes: no inner scrollbar, height managed by JS */
+      .pj-f textarea[data-type="area"]{overflow-y:hidden;}
+      .pj-check{display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text);
+        padding:7px 4px; cursor:pointer;}
+      .pj-check input{width:16px; height:16px; accent-color:var(--acc);}
+      .pj-links{display:flex; gap:8px; flex-wrap:wrap; margin-top:4px;}
+      .pj-tagwrap{display:flex; gap:6px; flex-wrap:wrap;}
+      .pj-tag{padding:5px 12px; border-radius:15px; font-size:12px; font-weight:600; cursor:pointer;
+        border:1px solid var(--border); background:var(--surface-2); color:var(--text-muted); user-select:none;}
+      .pj-tag.on{background:var(--tint-2); border-color:var(--acc); color:var(--acc);}
+      .pj-tag.disabled{cursor:default; opacity:.7;}
+
+      /* tables */
+      .pj-tblwrap{overflow-x:auto; border:1px solid var(--border); border-radius:10px; background:var(--surface);}
+      table.pj-tbl{border-collapse:collapse; width:100%; font-size:12.5px;}
+      .pj-tbl th{background:var(--surface-2); padding:7px 10px; text-align:left; font-size:11px;
+        text-transform:uppercase; letter-spacing:.04em; color:var(--text-muted); white-space:nowrap;}
+      .pj-tbl td{padding:7px 10px; border-top:1px solid var(--border); color:var(--text); vertical-align:top;}
+      .pj-tbl td.num,.pj-tbl th.num{text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; width:130px;}
+      .pj-grp td{background:var(--tint); font-weight:700; color:var(--acc); font-size:12.5px; padding-left:26px;}
+      .pj-grpTot td:first-child{padding-left:26px;}
+      .pj-grpTot td{background:var(--surface-2); font-weight:700;}
+      .pj-grand td{background:var(--tint-2); font-weight:800; font-size:14px; color:var(--text);}
+      /* estimate item description indented under its group */
+      .pj-tbl td.pj-il{padding-left:40px;}
+      /* Estimate rows grow to fit their text. styles.css clips EVERY cell
+         (nowrap + max-width:320px + ellipsis) — undo that inside the estimate
+         cards so long descriptions wrap instead of ending in "…". */
+      .pj-esttable td:not(.num), .pj-esttable th:not(.num){
+        white-space:normal; max-width:none; overflow:visible; text-overflow:clip;
+        overflow-wrap:anywhere;}
+      .pj-esttable td.pj-il{padding-left:40px; line-height:1.55;}
+      /* each estimate is its own card, with clear spacing between them */
+      .pj-esttable{margin-bottom:26px; border:1px solid var(--border); border-radius:10px; overflow:hidden;}
+      .pj-colhead th{background:var(--surface); border-bottom:1px solid var(--border);}
+      .pj-rowbtns{display:flex; gap:4px;}
+      .pj-empty{padding:26px; text-align:center; color:var(--text-muted); font-size:13.5px;}
+      .pj-bar{display:flex; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap;}
+      .pj-chip{padding:6px 13px; border-radius:15px; font-size:12.5px; font-weight:600; cursor:pointer;
+        border:1px solid var(--border); background:var(--surface); color:var(--text-muted);}
+      .pj-chip.on{background:var(--acc); border-color:var(--acc); color:#fff;}
+      .pj-search{padding:7px 11px; font-size:13px; border:1px solid var(--border); border-radius:8px;
+        background:var(--surface); color:var(--text); min-width:190px;}
+
+      /* logs */
+      .pj-log{background:var(--surface); border:1px solid var(--border); border-radius:9px;
+        padding:9px 12px; margin-bottom:8px;}
+      .pj-log-date{font-size:10.5px; font-weight:700; color:var(--text-muted); text-transform:uppercase;}
+      .pj-log-text{font-size:13px; color:var(--text); margin-top:3px; white-space:pre-wrap;}
+      .pj-log-user{font-size:10.5px; color:var(--text-muted); margin-top:3px;}
+
+      /* files */
+      .pj-crumb{display:flex; gap:4px; align-items:center; flex-wrap:wrap; font-size:13px; margin-bottom:10px;}
+      .pj-crumb a{color:var(--acc); cursor:pointer; text-decoration:none;}
+      .pj-file{display:flex; align-items:center; gap:10px; padding:9px 12px; border-top:1px solid var(--border);
+        cursor:pointer; color:var(--text); font-size:13.5px;}
+      .pj-file:first-child{border-top:none;}
+      .pj-file:hover{background:var(--surface-2);}
+      .pj-file .meta{margin-left:auto; color:var(--text-muted); font-size:11.5px; white-space:nowrap;}
+
+      /* modal */
+      .pj-overlay{position:fixed; inset:0; background:rgba(0,0,0,.55); display:none;
+        align-items:center; justify-content:center; z-index:70; padding:14px;}
+      .pj-overlay.open{display:flex;}
+      .pj-modal{background:var(--surface); color:var(--text); border:1px solid var(--border);
+        border-radius:14px; width:100%; max-width:640px; max-height:90vh; overflow-y:auto;
+        padding:20px; box-shadow:0 8px 32px rgba(0,0,0,.4);}
+      .pj-modal h3{margin:0 0 14px; font-size:16px;}
+      .pj-modal-actions{display:flex; justify-content:flex-end; gap:8px; margin-top:14px;}
+
+      @media (max-width:700px){ .pj-switch input{width:130px;} }
+      .pj-msg.ok{color:var(--ok,#2fa679);}
+      /* ── estimate section rows ── */
+      /* estimate header row: name + its totals, at the top of each card, in orange */
+      .pj-est td{background:var(--surface-2); font-weight:800; font-size:14px;
+        border-top:none; padding-top:12px; padding-bottom:12px;}
+      .pj-estname{color:#e8912d; font-weight:800;}
+      .pj-est td.num{color:#e8912d;}
+      .pj-estTot td{font-weight:800; border-top:2px solid var(--border); background:var(--tint,rgba(47,128,216,.12));}
+
+      /* ── estimate item editor (Access SideForm port) ── */
+      .ie-overlay{position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; z-index:70; padding:10px;}
+      .ie-overlay.open{display:flex; align-items:center; justify-content:center;}
+      .ie-panel{--err:#d9614f; --ok:#2fa679; background:var(--surface); color:var(--text);
+        border:1px solid var(--border); border-radius:14px; width:min(1240px,98vw); height:min(880px,96vh);
+        display:flex; flex-direction:column; overflow:hidden; box-shadow:0 10px 40px rgba(0,0,0,.5);}
+      .ie-head{padding:10px 14px; border-bottom:1px solid var(--border);}
+      .ie-hrow{display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;}
+      .ie-hrow .pj-f{margin:0;}
+      .ie-title-band{background:#7a1f1f; color:#fff; font-weight:700; border:none; border-radius:6px;
+        padding:8px 12px; font-size:15px; flex:1; min-width:160px;}
+      .ie-title-band::placeholder{color:rgba(255,255,255,.55);}
+      .ie-total{font-size:16px; font-weight:800; color:var(--ok,#2fa679); white-space:nowrap; padding-bottom:6px;}
+      .ie-cols{flex:1; display:grid; grid-template-columns:minmax(0,1fr) 400px; overflow:hidden;}
+      .ie-left{overflow-y:auto; padding:12px 14px; border-right:1px solid var(--border);}
+      .ie-right{overflow-y:auto; padding:12px 14px; background:var(--surface-2);}
+      .ie-sec{font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+        color:var(--text-muted); margin:16px 0 6px;}
+      .ie-left .ie-sec:first-child{margin-top:0;}
+      .ie-calcrow{display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; margin:8px 0 4px;}
+      .ie-calcrow .pj-f{margin:0; flex:0 0 auto;}
+      .ie-calcrow .pj-f input, .ie-calcrow .pj-f select{width:88px;}
+      .ie-out{font-size:13.5px; font-weight:700; color:var(--text); padding-bottom:8px; white-space:nowrap;}
+      .ie-out .sub{font-weight:400; color:var(--text-muted); font-size:11px;}
+      .ie-step{display:flex; align-items:center; gap:2px;}
+      .ie-step button{width:26px; height:35px; border:1px solid var(--border); background:var(--surface-2);
+        color:var(--text); border-radius:6px; cursor:pointer; font-weight:700;}
+      .ie-step input{width:52px !important; text-align:center;}
+      .ie-ta{width:100%; box-sizing:border-box; min-height:56px; padding:8px 10px; font-size:13px;
+        border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text); resize:vertical;}
+      .ie-log{background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:8px 10px;
+        font-size:12px; white-space:pre-wrap; max-height:150px; overflow-y:auto; color:var(--text); min-height:34px;}
+      .ie-tabs{display:flex; gap:6px; margin-bottom:10px;}
+      .ie-tab{padding:6px 13px; border-radius:8px; font-size:12.5px; font-weight:600; cursor:pointer;
+        border:1px solid var(--border); background:var(--surface); color:var(--text-muted);}
+      .ie-tab.active{background:var(--acc,#2f80d8); border-color:var(--acc,#2f80d8); color:#fff;}
+      .ie-mini{width:100%; border-collapse:collapse; font-size:12px;}
+      .ie-mini th{text-align:left; color:var(--text-muted); font-size:10px; text-transform:uppercase; padding:4px 6px; border-bottom:1px solid var(--border);}
+      .ie-mini td{padding:5px 6px; border-bottom:1px solid var(--border); color:var(--text); vertical-align:top;}
+      .ie-mini td.num{text-align:right; white-space:nowrap;}
+      .ie-contact-hit{padding:6px 9px; border:1px solid var(--border); border-radius:8px; margin-bottom:5px;
+        cursor:pointer; font-size:12.5px; background:var(--surface);}
+      .ie-contact-hit:hover{border-color:var(--acc,#2f80d8);}
+      .ie-foot{padding:10px 14px; border-top:1px solid var(--border); display:flex; gap:8px; align-items:center;}
+      @media (max-width:900px){
+        .ie-cols{grid-template-columns:1fr; overflow-y:auto;}
+        .ie-left,.ie-right{overflow:visible; border-right:none;}
+      }
+
+      /* ── site documentation capture (Files tab) ── */
+      .cap-bar{display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:10px;
+        padding:10px 12px; border:1px dashed var(--border); border-radius:10px; background:var(--surface);}
+      .cap-bar .cap-title{font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em;
+        color:var(--text-muted); margin-right:4px;}
+      .cap-prog{font-size:12px; color:var(--text-muted); min-height:15px;}
+
+      /* photo annotator */
+      .an-overlay{position:fixed; inset:0; background:#111; display:none; z-index:90; flex-direction:column;}
+      .an-overlay.open{display:flex;}
+      .an-top{display:flex; gap:6px; align-items:center; padding:8px 10px; background:#1c1c1e; flex-wrap:wrap;}
+      .an-tool{width:40px; height:36px; border-radius:8px; border:1px solid #444; background:#2a2a2c;
+        color:#fff; cursor:pointer; font-size:15px; font-weight:700;}
+      .an-tool.active{background:#2f80d8; border-color:#2f80d8;}
+      .an-color{width:26px; height:26px; border-radius:50%; border:2px solid transparent; cursor:pointer;}
+      .an-color.active{border-color:#fff; box-shadow:0 0 0 2px rgba(255,255,255,.4);}
+      .an-canvaswrap{flex:1; display:flex; align-items:center; justify-content:center; overflow:hidden; padding:8px;}
+      #anCanvas{max-width:100%; max-height:100%; touch-action:none; background:#000; border-radius:4px;}
+      .an-top .pj-btn{background:#2a2a2c; border-color:#444; color:#fff;}
+      .an-top .pj-btn-primary{background:#2f80d8; border-color:#2f80d8;}
+    </style>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/png" href="icon-192.png" />
+  <link rel="apple-touch-icon" href="icon-180.png" />
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#171d25" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="DCR Portal" />
+  </head>
+  <body>
+    <div class="topbar">
+      <div class="brand"><img class="brand-logo" src="logo.png" alt="DCR Framing" /><h1 id="companyName">DCR Portal</h1></div>
+      <div class="top-actions">
+        <span class="pill" id="userPill">…</span>
+        <a class="btn btn-ghost btn-sm" href="board.html">Board</a>
+        <a class="btn btn-ghost btn-sm" href="dashboard.html">Dashboard</a>
+        <button class="btn btn-ghost btn-sm" id="logoutBtn">Log out</button>
+      </div>
+    </div>
+
+    <div class="pj">
+      <div class="pj-head">
+        <div class="pj-thumb" id="pjThumb">…</div>
+        <div style="flex:1;min-width:200px">
+          <div class="pj-title" id="pjTitle">Loading…</div>
+          <div class="pj-sub" id="pjSub"></div>
+        </div>
+        <span class="pj-status" id="pjStatus"></span>
+        <div class="pj-switch">
+          <input id="pjJump" list="pjJumpList" placeholder="Jump to project…" autocomplete="off" />
+          <datalist id="pjJumpList"></datalist>
+        </div>
+        <button class="pj-btn pj-btn-primary" id="pjSave" disabled>💾 Save</button>
+      </div>
+      <div class="pj-msg" id="pjMsg"></div>
+
+      <div class="pj-tabs" id="pjTabs">
+        <button class="pj-tab active" data-tab="overview">Overview</button>
+        <button class="pj-tab" data-tab="estimate">Estimate</button>
+        <button class="pj-tab" data-tab="takeoffs">Takeoffs</button>
+        <button class="pj-tab" data-tab="expenses">Expenses</button>
+        <button class="pj-tab" data-tab="payments">Payments</button>
+        <button class="pj-tab" data-tab="tasks">Tasks</button>
+        <button class="pj-tab" data-tab="logs">Logs</button>
+        <button class="pj-tab" data-tab="mailing">Mailing</button>
+        <button class="pj-tab" data-tab="files">Files</button>
+      </div>
+
+      <div class="pj-pane active" id="pane-overview"><div class="pj-empty">Loading…</div></div>
+      <div class="pj-pane" id="pane-estimate"><div class="pj-empty">Loading…</div></div>
+      <div class="pj-pane" id="pane-takeoffs"><div class="pj-empty">Loading…</div></div>
+      <div class="pj-pane" id="pane-expenses"><div class="pj-empty">Loading…</div></div>
+      <div class="pj-pane" id="pane-payments"><div class="pj-empty">Loading…</div></div>
+      <div class="pj-pane" id="pane-tasks"><div class="pj-empty">Loading…</div></div>
+      <div class="pj-pane" id="pane-logs"><div class="pj-empty">Loading…</div></div>
+      <div class="pj-pane" id="pane-mailing"><div class="pj-empty">Loading…</div></div>
+      <div class="pj-pane" id="pane-files"><div class="pj-empty">Loading…</div></div>
+    </div>
+
+    <!-- estimate line modal -->
+    <!-- estimate item editor (Access GeneralProjectTasksSideForm port) -->
+    <div class="ie-overlay" id="ieModal">
+      <div class="ie-panel">
+        <div class="ie-head">
+          <div class="ie-hrow">
+            <div class="pj-f" style="flex:1;min-width:200px"><label>Estimate name</label><input id="ie_estName" list="ieEstNames" /><datalist id="ieEstNames"></datalist></div>
+            <div class="pj-f"><label>Task ID</label><input id="ieTaskId" readonly style="width:72px" /></div>
+            <div class="pj-f"><label>Sorting</label><input id="ie_sort" type="number" step="any" style="width:82px" /></div>
+            <div class="pj-f"><label>Quoted $</label><input id="ie_quoted" type="number" step="any" style="width:104px" /></div>
+            <span class="ie-total" id="ieGrand">Total: $0.00</span>
+          </div>
+          <div class="ie-hrow" style="margin-top:8px">
+            <input class="ie-title-band" id="ie_title" placeholder="Item name…" />
+          </div>
+        </div>
+        <div class="ie-cols">
+          <div class="ie-left">
+            <div class="ie-sec">Labor</div>
+            <textarea class="ie-ta" id="ie_laborName" placeholder="Labor description…"></textarea>
+            <div class="ie-calcrow">
+              <div class="pj-f"><label>Area F²</label><input id="ie_lArea" type="number" step="any" /></div>
+              <div class="pj-f"><label>Rate $/hr</label><input id="ie_lRate" type="number" step="any" /></div>
+              <div class="pj-f"><label>Guys</label><div class="ie-step"><button type="button" data-step="ie_lGuys:-1">−</button><input id="ie_lGuys" type="number" step="1" /><button type="button" data-step="ie_lGuys:1">＋</button></div></div>
+              <div class="pj-f"><label>Days</label><div class="ie-step"><button type="button" data-step="ie_lDays:-0.5">−</button><input id="ie_lDays" type="number" step="0.5" /><button type="button" data-step="ie_lDays:0.5">＋</button></div></div>
+              <div class="ie-out">= <span id="ieLab1">$0.00</span><br><span class="sub" id="ieLabSq"></span></div>
+            </div>
+            <div class="ie-calcrow">
+              <div class="pj-f"><label>Qty</label><input id="ie_lQty" type="number" step="any" /></div>
+              <div class="pj-f"><label>× Price $</label><input id="ie_lPrice" type="number" step="any" /></div>
+              <div class="pj-f"><label>Markup</label><select id="ie_lMk"></select></div>
+              <div class="ie-out">= <span id="ieLab2">$0.00</span><br><span class="sub">labor total <b id="ieLabT">$0.00</b></span></div>
+            </div>
+            <div class="ie-sec">Material</div>
+            <textarea class="ie-ta" id="ie_matName" placeholder="Material description…"></textarea>
+            <div class="ie-calcrow">
+              <div class="pj-f"><label>Qty</label><input id="ie_mQty" type="number" step="any" /></div>
+              <div class="pj-f"><label>× Unit $</label><input id="ie_mPrice" type="number" step="any" /></div>
+              <div class="pj-f"><label>Markup</label><select id="ie_mMk"></select></div>
+              <div class="pj-f"><label>Area F²</label><input id="ie_mArea" type="number" step="any" /></div>
+              <div class="ie-out">= <span id="ieMatT">$0.00</span><br><span class="sub" id="ieMatSq"></span></div>
+            </div>
+            <div class="ie-sec">Assigned to</div>
+            <div class="ie-calcrow" style="margin-top:0">
+              <div class="pj-f" style="flex:1"><label>Contact search</label><input id="ieContactSearch" placeholder="Search contacts…" /></div>
+            </div>
+            <div id="ieContactHits"></div>
+            <textarea class="ie-ta" id="ie_assigned" rows="2" placeholder="Assigned person / contact info…"></textarea>
+            <div class="ie-calcrow">
+              <div class="pj-f" style="flex:1"><label>E-Mail</label><input id="ie_email" type="email" /></div>
+              <button class="pj-btn pj-btn-sm" id="ieQuoteBtn" type="button">✉ Quote</button>
+              <button class="pj-btn pj-btn-sm" id="ieFollowBtn" type="button">✉ Follow</button>
+            </div>
+            <div class="ie-sec">Notes (internal)</div>
+            <textarea class="ie-ta" id="ie_notes" rows="3"></textarea>
+            <div class="ie-sec">Task log</div>
+            <div class="ie-log" id="ieLogView"></div>
+            <div class="ie-calcrow">
+              <div class="pj-f" style="flex:1"><label>New log note</label><input id="ieLogNote" /></div>
+              <button class="pj-btn pj-btn-sm" id="ieLogAdd" type="button">＋ Add time stamp</button>
+            </div>
+            <div style="margin:16px 0 6px"><button class="pj-btn pj-btn-sm" id="ieDelete" type="button" style="color:var(--err,#d9614f)">🗑 Delete item</button></div>
+          </div>
+          <div class="ie-right">
+            <div class="ie-tabs">
+              <span class="ie-tab active" data-ietab="takeoff">Takeoff</span>
+              <span class="ie-tab" data-ietab="expenses">Expenses</span>
+              <span class="ie-tab" data-ietab="files">Files</span>
+            </div>
+            <div id="ieSub"><div class="pj-empty">…</div></div>
+          </div>
+        </div>
+        <div class="ie-foot">
+          <span class="pj-msg" id="ieMsg" style="flex:1"></span>
+          <button class="pj-btn" id="ieExit">Exit</button>
+          <button class="pj-btn pj-btn-primary" id="ieSave">✓ Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- takeoff / expense line modal -->
+    <div class="pj-overlay" id="subModal">
+      <div class="pj-modal">
+        <h3 id="subModalTitle">Item</h3>
+        <div class="pj-grid" id="subFields"></div>
+        <div class="pj-msg err" id="subMsg"></div>
+        <div class="pj-modal-actions">
+          <button class="pj-btn" id="subCancel">Cancel</button>
+          <button class="pj-btn pj-btn-primary" id="subSave">✓ Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- site documentation: hidden capture inputs -->
+    <input type="file" id="capPhotoInput" accept="image/*" capture="environment" multiple style="display:none" />
+    <input type="file" id="capVideoInput" accept="video/*" capture="environment" style="display:none" />
+
+    <!-- photo annotator -->
+    <div class="an-overlay" id="anModal">
+      <div class="an-top">
+        <button class="an-tool active" data-antool="pen" title="Pen">✏</button>
+        <button class="an-tool" data-antool="hl" title="Highlighter">🖍</button>
+        <button class="an-tool" data-antool="arrow" title="Arrow">➤</button>
+        <button class="an-tool" data-antool="text" title="Text">T</button>
+        <span id="anColors" style="display:flex;gap:5px;align-items:center;margin:0 4px"></span>
+        <select id="anWidth" class="pj-btn pj-btn-sm" style="cursor:pointer">
+          <option value="3">Thin</option><option value="6" selected>Medium</option><option value="12">Thick</option>
+        </select>
+        <button class="pj-btn pj-btn-sm" id="anUndo">↶ Undo</button>
+        <button class="pj-btn pj-btn-sm" id="anClear">Clear</button>
+        <span style="flex:1"></span>
+        <span id="anQueue" style="color:#999;font-size:12px"></span>
+        <button class="pj-btn pj-btn-sm" id="anCancel">✗ Cancel</button>
+        <button class="pj-btn pj-btn-sm" id="anOrig">⬆ Original</button>
+        <button class="pj-btn pj-btn-sm pj-btn-primary" id="anSave">⬆ Save to Pictures</button>
+      </div>
+      <div class="an-canvaswrap"><canvas id="anCanvas"></canvas></div>
+    </div>
+
+    <!-- voice note recorder -->
+    <div class="pj-overlay" id="recModal">
+      <div class="pj-modal" style="max-width:460px">
+        <h3>🎙 Voice note</h3>
+        <div style="text-align:center;margin:10px 0">
+          <div id="recTimer" style="font-size:30px;font-weight:700;color:var(--text)">0:00</div>
+          <div class="pj-sub" id="recState">Ready to record</div>
+        </div>
+        <textarea id="recTranscript" readonly
+          style="width:100%;box-sizing:border-box;min-height:90px;max-height:180px;padding:8px 10px;font-size:12.5px;line-height:1.5;border:1px solid var(--border);border-radius:8px;background:var(--surface-2);color:var(--text);resize:vertical"
+          placeholder="Live transcript appears here while you speak…"></textarea>
+        <div class="pj-sub" id="recHint" style="margin-top:5px"></div>
+        <label style="display:flex;gap:7px;align-items:center;margin-top:9px;font-size:12.5px;color:var(--text);cursor:pointer">
+          <input type="checkbox" id="recSaveTx" checked
+            style="width:17px;height:17px;min-width:17px;padding:0;margin:0;accent-color:#2f80d8;flex-shrink:0" />
+          <span style="flex:1;min-width:0">Also save transcript as a text file in Site Notes</span>
+        </label>
+        <div class="pj-msg err" id="recMsg"></div>
+        <div class="pj-modal-actions">
+          <button class="pj-btn" id="recCancel">Cancel</button>
+          <button class="pj-btn pj-btn-primary" id="recBtn">● Start recording</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- site note modal -->
+    <div class="pj-overlay" id="noteModal">
+      <div class="pj-modal" style="max-width:540px">
+        <h3>📝 Site note</h3>
+        <div class="pj-f"><label>Title (optional)</label><input id="noteTitle" /></div>
+        <div class="pj-f" style="margin-top:8px"><label>Note</label><textarea id="noteBody" rows="7"></textarea></div>
+        <div class="pj-msg err" id="noteMsg"></div>
+        <div class="pj-modal-actions">
+          <button class="pj-btn" id="noteCancel">Cancel</button>
+          <button class="pj-btn pj-btn-primary" id="noteSave">⬆ Save to Drive</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- task modal -->
+    <div class="pj-overlay" id="taskModal">
+      <div class="pj-modal" style="max-width:460px">
+        <h3>New task request</h3>
+        <div class="pj-f" style="margin-bottom:10px"><label>Task name *</label><input id="tkName" /></div>
+        <div class="pj-grid" style="grid-template-columns:1fr 1fr">
+          <div class="pj-f"><label>Priority</label>
+            <select id="tkPriority"><option value="">—</option><option>Urgent</option><option>Medium</option><option>Low</option></select></div>
+          <div class="pj-f"><label>Assigned person</label><input id="tkAssigned" /></div>
+        </div>
+        <div class="pj-f" style="margin-top:10px"><label>Description</label><textarea id="tkDesc" rows="3"></textarea></div>
+        <div class="pj-msg err" id="tkMsg"></div>
+        <div class="pj-modal-actions">
+          <button class="pj-btn" id="tkCancel">Cancel</button>
+          <button class="pj-btn pj-btn-primary" id="tkSave">✓ Create task</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+window.__ROWS = [{"id":"1403","sharePointId":"1403","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/1403_.000","title":null,"projectID":185,"taskGroupingName":"Drywall","taskGroupingID":"09.1","taskCountTowarTotalArea":0,"taskLaborName":"Labor and material","taskLaborPricePerHour":90,"taskLaborDaysToComplete":0,"taskLaborNumberOfGuys":4,"taskLaborSurfaceArea":0,"taskLaborMarkup":1.3,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":19500,"taskEstimateName":"General  Contracting","taskSortingNumber":1403,"taskEstimateNotes":"<div>About 17669.08 if priced at 2.2 per square feet</div>","taskAssignedPerson":"Luis","taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"1487","sharePointId":"1487","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/1487_.000","title":null,"projectID":185,"taskGroupingName":"Framing Materials","taskGroupingID":"06.11.11","taskCountTowarTotalArea":0,"taskLaborName":null,"taskLaborPricePerHour":90,"taskLaborDaysToComplete":0,"taskLaborNumberOfGuys":4,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":"Hardware to secure to metal beam","taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":2000,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":0,"taskEstimateName":"Framing Estimate","taskSortingNumber":1487,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"1494","sharePointId":"1494","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/1494_.000","title":null,"projectID":185,"taskGroupingName":"Electrical","taskGroupingID":"26","taskCountTowarTotalArea":0,"taskLaborName":"Rougth Electrical:\r\n- Remove unused wires and conduit\r\n- Relocate or replace existing sub-panel\r\n- Wire new lines, receptable, switches boxes and ligthing\r\n- AFIC breakers as required by code\r\n\r\n(No upgrade on sup-panel power line entering the existing sub0panel)","taskLaborPricePerHour":120,"taskLaborDaysToComplete":7,"taskLaborNumberOfGuys":1,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":"Electrical materials","taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":0,"taskEstimateName":"General  Contracting","taskSortingNumber":1494,"taskEstimateNotes":null,"taskAssignedPerson":"Daniel the electrician","taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"1495","sharePointId":"1495","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/1495_.000","title":null,"projectID":185,"taskGroupingName":"Equipment","taskGroupingID":"11","taskCountTowarTotalArea":0,"taskLaborName":"Scaffold","taskLaborPricePerHour":90,"taskLaborDaysToComplete":0,"taskLaborNumberOfGuys":4,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":600,"taskEstimateName":"General  Contracting","taskSortingNumber":1495,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"1503","sharePointId":"1503","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/1503_.000","title":null,"projectID":185,"taskGroupingName":"Framing Materials","taskGroupingID":"06.11.11","taskCountTowarTotalArea":0,"taskLaborName":null,"taskLaborPricePerHour":90,"taskLaborDaysToComplete":0,"taskLaborNumberOfGuys":4,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":"Framing quote for Weyrick","taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":12104.91,"taskMaterialMarkup":1.3,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":0,"taskEstimateName":"Framing Estimate","taskSortingNumber":1503,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"1505","sharePointId":"1505","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/1505_.000","title":null,"projectID":185,"taskGroupingName":"First Floor Framing","taskGroupingID":"06.11.04","taskCountTowarTotalArea":0,"taskLaborName":"Snap, layout and detail walls","taskLaborPricePerHour":90,"taskLaborDaysToComplete":1,"taskLaborNumberOfGuys":2,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":0,"taskEstimateName":"Framing Estimate","taskSortingNumber":1505,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"1506","sharePointId":"1506","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/1506_.000","title":null,"projectID":185,"taskGroupingName":"First Floor Framing","taskGroupingID":"06.11.04","taskCountTowarTotalArea":0,"taskLaborName":"Frame walls, brace and shear walls","taskLaborPricePerHour":90,"taskLaborDaysToComplete":3,"taskLaborNumberOfGuys":4,"taskLaborSurfaceArea":824,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":0,"taskEstimateName":"Framing Estimate","taskSortingNumber":1506,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"1507","sharePointId":"1507","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/1507_.000","title":null,"projectID":185,"taskGroupingName":"First Floor Framing","taskGroupingID":"06.11.04","taskCountTowarTotalArea":0,"taskLaborName":"Frame stairs","taskLaborPricePerHour":90,"taskLaborDaysToComplete":1,"taskLaborNumberOfGuys":2,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":0,"taskEstimateName":"Framing Estimate","taskSortingNumber":1507,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"1508","sharePointId":"1508","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/1508_.000","title":null,"projectID":185,"taskGroupingName":"First Floor Framing","taskGroupingID":"06.11.04","taskCountTowarTotalArea":0,"taskLaborName":"Frame floor joist for floor above\r\nSheathing","taskLaborPricePerHour":90,"taskLaborDaysToComplete":2,"taskLaborNumberOfGuys":4,"taskLaborSurfaceArea":708,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":0,"taskEstimateName":"Framing Estimate","taskSortingNumber":1508,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"1509","sharePointId":"1509","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/1509_.000","title":null,"projectID":185,"taskGroupingName":"Second Floor Framing","taskGroupingID":"06.11.05","taskCountTowarTotalArea":0,"taskLaborName":"Snap, layout and detail walls","taskLaborPricePerHour":90,"taskLaborDaysToComplete":1,"taskLaborNumberOfGuys":2,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":0,"taskEstimateName":"Framing Estimate","taskSortingNumber":1509,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"1510","sharePointId":"1510","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/1510_.000","title":null,"projectID":185,"taskGroupingName":"Second Floor Framing","taskGroupingID":"06.11.05","taskCountTowarTotalArea":0,"taskLaborName":"Frame walls, brace and shear walls","taskLaborPricePerHour":90,"taskLaborDaysToComplete":3,"taskLaborNumberOfGuys":4,"taskLaborSurfaceArea":708,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":0,"taskEstimateName":"Framing Estimate","taskSortingNumber":1510,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"1511","sharePointId":"1511","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/1511_.000","title":null,"projectID":185,"taskGroupingName":"Second Floor Framing","taskGroupingID":"06.11.05","taskCountTowarTotalArea":0,"taskLaborName":"Frame ceiling joist","taskLaborPricePerHour":90,"taskLaborDaysToComplete":3,"taskLaborNumberOfGuys":4,"taskLaborSurfaceArea":894,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":0,"taskEstimateName":"Framing Estimate","taskSortingNumber":1511,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"1512","sharePointId":"1512","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/1512_.000","title":null,"projectID":185,"taskGroupingName":"Framing Miscellaneous","taskGroupingID":"06.11.10","taskCountTowarTotalArea":0,"taskLaborName":"Pickup and Cleaning","taskLaborPricePerHour":90,"taskLaborDaysToComplete":1,"taskLaborNumberOfGuys":2,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":0,"taskEstimateName":"Framing Estimate","taskSortingNumber":1512,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"1513","sharePointId":"1513","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/1513_.000","title":null,"projectID":185,"taskGroupingName":"Windows and Doors","taskGroupingID":"08.5","taskCountTowarTotalArea":0,"taskLaborName":"Windows installation","taskLaborPricePerHour":90,"taskLaborDaysToComplete":0,"taskLaborNumberOfGuys":4,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":4,"taskLaborPrice":1600,"taskEstimateName":"General  Contracting","taskSortingNumber":1513,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"1514","sharePointId":"1514","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/1514_.000","title":null,"projectID":185,"taskGroupingName":"Windows and Doors","taskGroupingID":"08.5","taskCountTowarTotalArea":0,"taskLaborName":"Front door installation","taskLaborPricePerHour":90,"taskLaborDaysToComplete":0,"taskLaborNumberOfGuys":4,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":2000,"taskEstimateName":"General  Contracting","taskSortingNumber":1514,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"1515","sharePointId":"1515","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/1515_.000","title":null,"projectID":185,"taskGroupingName":"Finish Carpentry","taskGroupingID":"12.20","taskCountTowarTotalArea":0,"taskLaborName":"Hinged  - Interior door installation","taskLaborPricePerHour":90,"taskLaborDaysToComplete":1,"taskLaborNumberOfGuys":1,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":"Materials","taskMaterialSurfaceArea":0,"taskMaterialQty":7,"taskMaterialUnitPrice":550,"taskMaterialMarkup":1.3,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":7,"taskLaborPrice":400,"taskEstimateName":"General  Contracting","taskSortingNumber":1515,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"1516","sharePointId":"1516","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/1516_.000","title":null,"projectID":185,"taskGroupingName":"Finish Carpentry","taskGroupingID":"12.20","taskCountTowarTotalArea":0,"taskLaborName":"Bi-fold - Interior door installation","taskLaborPricePerHour":90,"taskLaborDaysToComplete":0,"taskLaborNumberOfGuys":4,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":800,"taskMaterialMarkup":1.3,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":500,"taskEstimateName":"General  Contracting","taskSortingNumber":1516,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"1517","sharePointId":"1517","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/1517_.000","title":null,"projectID":185,"taskGroupingName":"Finish Carpentry","taskGroupingID":"12.20","taskCountTowarTotalArea":0,"taskLaborName":"Barn door - Interior door installation","taskLaborPricePerHour":90,"taskLaborDaysToComplete":0,"taskLaborNumberOfGuys":4,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":"Materials","taskMaterialSurfaceArea":0,"taskMaterialQty":2,"taskMaterialUnitPrice":850,"taskMaterialMarkup":1.3,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":2,"taskLaborPrice":400,"taskEstimateName":"General  Contracting","taskSortingNumber":1517,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"1518","sharePointId":"1518","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/1518_.000","title":null,"projectID":185,"taskGroupingName":"Painting","taskGroupingID":"09.9","taskCountTowarTotalArea":0,"taskLaborName":"Paint interior walls, baseboars, doors and window trims.","taskLaborPricePerHour":90,"taskLaborDaysToComplete":5,"taskLaborNumberOfGuys":2,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":0,"taskEstimateName":"General  Contracting","taskSortingNumber":1518,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"1519","sharePointId":"1519","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/1519_.000","title":null,"projectID":185,"taskGroupingName":"Finish Carpentry","taskGroupingID":"12.20","taskCountTowarTotalArea":0,"taskLaborName":"T&G installation above living room","taskLaborPricePerHour":90,"taskLaborDaysToComplete":0,"taskLaborNumberOfGuys":4,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":529,"taskLaborPrice":12,"taskEstimateName":"General  Contracting","taskSortingNumber":1519,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"1520","sharePointId":"1520","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/1520_.000","title":null,"projectID":185,"taskGroupingName":"Finish Carpentry","taskGroupingID":"12.20","taskCountTowarTotalArea":0,"taskLaborName":"Base board installation","taskLaborPricePerHour":90,"taskLaborDaysToComplete":5,"taskLaborNumberOfGuys":2,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":0,"taskEstimateName":"General  Contracting","taskSortingNumber":1520,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"1521","sharePointId":"1521","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/1521_.000","title":null,"projectID":185,"taskGroupingName":"Flooring","taskGroupingID":"09.6","taskCountTowarTotalArea":0,"taskLaborName":"????","taskLaborPricePerHour":90,"taskLaborDaysToComplete":0,"taskLaborNumberOfGuys":4,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":0,"taskEstimateName":"General  Contracting","taskSortingNumber":1521,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"1522","sharePointId":"1522","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/1522_.000","title":null,"projectID":185,"taskGroupingName":"Plumbing","taskGroupingID":"22","taskCountTowarTotalArea":0,"taskLaborName":"???","taskLaborPricePerHour":90,"taskLaborDaysToComplete":0,"taskLaborNumberOfGuys":4,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":0,"taskEstimateName":"General  Contracting","taskSortingNumber":1522,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"1545","sharePointId":"1545","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/1545_.000","title":null,"projectID":185,"taskGroupingName":"Roof Framing","taskGroupingID":"06.11.07","taskCountTowarTotalArea":0,"taskLaborName":"Entry roof","taskLaborPricePerHour":90,"taskLaborDaysToComplete":2,"taskLaborNumberOfGuys":2,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":0,"taskEstimateName":"Framing Estimate","taskSortingNumber":1545,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"1546","sharePointId":"1546","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/1546_.000","title":null,"projectID":185,"taskGroupingName":"Framing Materials","taskGroupingID":"06.11.11","taskCountTowarTotalArea":0,"taskLaborName":"exchange to 2x6 to 2x8","taskLaborPricePerHour":90,"taskLaborDaysToComplete":0,"taskLaborNumberOfGuys":4,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":2000,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":0,"taskEstimateName":"Framing Estimate","taskSortingNumber":1546,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"1547","sharePointId":"1547","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/1547_.000","title":null,"projectID":185,"taskGroupingName":"First Floor Framing","taskGroupingID":"06.11.04","taskCountTowarTotalArea":0,"taskLaborName":"Secure mudseals with Titan screws","taskLaborPricePerHour":90,"taskLaborDaysToComplete":1,"taskLaborNumberOfGuys":1,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":0,"taskEstimateName":"Framing Estimate","taskSortingNumber":1547,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"1548","sharePointId":"1548","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/1548_.000","title":null,"projectID":185,"taskGroupingName":"Demo Work","taskGroupingID":"02.1","taskCountTowarTotalArea":0,"taskLaborName":"Remove existing fireplace","taskLaborPricePerHour":90,"taskLaborDaysToComplete":1,"taskLaborNumberOfGuys":2,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":0,"taskEstimateName":"Framing Estimate","taskSortingNumber":1548,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"1549","sharePointId":"1549","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/1549_.000","title":null,"projectID":185,"taskGroupingName":"Demo Work","taskGroupingID":"02.1","taskCountTowarTotalArea":0,"taskLaborName":"Dumpster (30 Yard unit)","taskLaborPricePerHour":90,"taskLaborDaysToComplete":0,"taskLaborNumberOfGuys":4,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":1000,"taskEstimateName":"Framing Estimate","taskSortingNumber":1549,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"2796","sharePointId":"2796","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/2796_.000","title":null,"projectID":185,"taskGroupingName":"Deck installation","taskGroupingID":"06.11.09","taskCountTowarTotalArea":0,"taskLaborName":"Frame deck base including concrete and framing\r\n--- Railing: wild hog wire","taskLaborPricePerHour":90,"taskLaborDaysToComplete":2,"taskLaborNumberOfGuys":4,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":0,"taskEstimateName":"Back Patio Deck Installation","taskSortingNumber":2796,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"2797","sharePointId":"2797","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/2797_.000","title":null,"projectID":185,"taskGroupingName":"Siding Installation","taskGroupingID":"06.11.08","taskCountTowarTotalArea":0,"taskLaborName":"Repair siding","taskLaborPricePerHour":90,"taskLaborDaysToComplete":0,"taskLaborNumberOfGuys":4,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":0,"taskEstimateName":"General Contracting Second Option (7-3-2026)","taskSortingNumber":2797,"taskEstimateNotes":null,"taskAssignedPerson":"Jose Valdovinos\r\n(805) 674-1383\r\njvroofinginc@hotmail.com","taskAssignedEmail":"jvroofinginc@hotmail.com","taskUpdateLog":"[ Jul-03-2026 ]: --- Sent plans for a siding quote\r\n[ Jul-16-2026 ]: --- Met with Jose at 10:00am\r\n[ Jul-16-2026 ]: --- Jose is going to give us a price later today","taskQuotedPrice":null,"attachments":false},{"id":"2798","sharePointId":"2798","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/2798_.000","title":null,"projectID":185,"taskGroupingName":"Deck installation","taskGroupingID":"06.11.09","taskCountTowarTotalArea":0,"taskLaborName":"Install decking material\r\n--- Decking material is to be screw from the top with matching color screws or with matching color caps.","taskLaborPricePerHour":90,"taskLaborDaysToComplete":3,"taskLaborNumberOfGuys":4,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":0,"taskEstimateName":"Back Patio Deck Installation","taskSortingNumber":2798,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"2799","sharePointId":"2799","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/2799_.000","title":null,"projectID":185,"taskGroupingName":"Deck installation","taskGroupingID":"06.11.09","taskCountTowarTotalArea":0,"taskLaborName":"Frame stairs and handrails","taskLaborPricePerHour":90,"taskLaborDaysToComplete":1,"taskLaborNumberOfGuys":4,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":0,"taskEstimateName":"Back Patio Deck Installation","taskSortingNumber":2799,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"2800","sharePointId":"2800","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/2800_.000","title":null,"projectID":185,"taskGroupingName":"Decking Materials","taskGroupingID":"06.11.09.1","taskCountTowarTotalArea":0,"taskLaborName":"Framing and Deking materials\r\n---1x6 signature series Trex (ideal for heat protection).","taskLaborPricePerHour":90,"taskLaborDaysToComplete":0,"taskLaborNumberOfGuys":4,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":11681.5,"taskMaterialMarkup":1.3,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":0,"taskEstimateName":"Back Patio Deck Installation","taskSortingNumber":2800,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":30349,"attachments":false},{"id":"2816","sharePointId":"2816","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/2816_.000","title":null,"projectID":185,"taskGroupingName":"First Floor Framing","taskGroupingID":"06.11.04","taskCountTowarTotalArea":0,"taskLaborName":"Frame walls, and window openings","taskLaborPricePerHour":90,"taskLaborDaysToComplete":2,"taskLaborNumberOfGuys":4,"taskLaborSurfaceArea":129,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":0,"taskEstimateName":"General Contracting Second Option (7-3-2026)","taskSortingNumber":2816,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"2817","sharePointId":"2817","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/2817_.000","title":null,"projectID":185,"taskGroupingName":"First Floor Framing","taskGroupingID":"06.11.04","taskCountTowarTotalArea":0,"taskLaborName":"Frame Stailrs","taskLaborPricePerHour":90,"taskLaborDaysToComplete":2,"taskLaborNumberOfGuys":2,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":0,"taskEstimateName":"General Contracting Second Option (7-3-2026)","taskSortingNumber":2817,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"2818","sharePointId":"2818","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/2818_.000","title":null,"projectID":185,"taskGroupingName":"First Floor Framing","taskGroupingID":"06.11.04","taskCountTowarTotalArea":0,"taskLaborName":"Frame floor joist, beams and sheathing for next floor above","taskLaborPricePerHour":90,"taskLaborDaysToComplete":2,"taskLaborNumberOfGuys":4,"taskLaborSurfaceArea":829,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":0,"taskEstimateName":"General Contracting Second Option (7-3-2026)","taskSortingNumber":2818,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"2819","sharePointId":"2819","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/2819_.000","title":null,"projectID":185,"taskGroupingName":"Demolition Work","taskGroupingID":"02.1","taskCountTowarTotalArea":0,"taskLaborName":"Demo Required siding and insulation to allow for windows and doors installation\r\nDumpster (30 Yard unit)","taskLaborPricePerHour":90,"taskLaborDaysToComplete":1,"taskLaborNumberOfGuys":4,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":"Demo rool up door","taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":2500,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":1600,"taskEstimateName":"General Contracting Second Option (7-3-2026)","taskSortingNumber":2819,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"2820","sharePointId":"2820","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/2820_.000","title":null,"projectID":185,"taskGroupingName":"Second Floor Framing","taskGroupingID":"06.11.05","taskCountTowarTotalArea":0,"taskLaborName":"Snap, layout, detail, frame, shear and plumb walls","taskLaborPricePerHour":90,"taskLaborDaysToComplete":2,"taskLaborNumberOfGuys":4,"taskLaborSurfaceArea":829,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":0,"taskEstimateName":"General Contracting Second Option (7-3-2026)","taskSortingNumber":2820,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"2821","sharePointId":"2821","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/2821_.000","title":null,"projectID":185,"taskGroupingName":"Second Floor Framing","taskGroupingID":"06.11.05","taskCountTowarTotalArea":0,"taskLaborName":"Frame ceiling joist","taskLaborPricePerHour":90,"taskLaborDaysToComplete":1,"taskLaborNumberOfGuys":4,"taskLaborSurfaceArea":700,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":0,"taskEstimateName":"General Contracting Second Option (7-3-2026)","taskSortingNumber":2821,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"2822","sharePointId":"2822","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/2822_.000","title":null,"projectID":185,"taskGroupingName":"Second Floor Framing","taskGroupingID":"06.11.05","taskCountTowarTotalArea":0,"taskLaborName":"Sheathing installation on shop's partition wall","taskLaborPricePerHour":90,"taskLaborDaysToComplete":1,"taskLaborNumberOfGuys":2,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":0,"taskEstimateName":"General Contracting Second Option (7-3-2026)","taskSortingNumber":2822,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"2823","sharePointId":"2823","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/2823_.000","title":null,"projectID":185,"taskGroupingName":"Drywall","taskGroupingID":"09.1","taskCountTowarTotalArea":0,"taskLaborName":null,"taskLaborPricePerHour":90,"taskLaborDaysToComplete":0,"taskLaborNumberOfGuys":4,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":0,"taskEstimateName":"General Contracting (additional work) (7-3-2026)","taskSortingNumber":2823,"taskEstimateNotes":null,"taskAssignedPerson":"Luis Ojeda\r\n805-714-3974\r\nlojeda80@gmail.com","taskAssignedEmail":"lojeda80@gmail.com","taskUpdateLog":"[ Jul-07-2026 ]: --- Sent Request","taskQuotedPrice":null,"attachments":false},{"id":"2825","sharePointId":"2825","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/2825_.000","title":null,"projectID":185,"taskGroupingName":"Framing Miscellaneous","taskGroupingID":"06.11.10","taskCountTowarTotalArea":0,"taskLaborName":"Pickup and Cleaning","taskLaborPricePerHour":90,"taskLaborDaysToComplete":1,"taskLaborNumberOfGuys":4,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":0,"taskEstimateName":"General Contracting Second Option (7-3-2026)","taskSortingNumber":2825,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"2826","sharePointId":"2826","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/2826_.000","title":null,"projectID":185,"taskGroupingName":"Framing Materials","taskGroupingID":"06.11.11","taskCountTowarTotalArea":0,"taskLaborName":null,"taskLaborPricePerHour":90,"taskLaborDaysToComplete":0,"taskLaborNumberOfGuys":4,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":"Framing Material","taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":12147.5,"taskMaterialMarkup":1.3,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":0,"taskEstimateName":"General Contracting Second Option (7-3-2026)","taskSortingNumber":2826,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":12147.5,"attachments":false},{"id":"2827","sharePointId":"2827","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/2827_.000","title":null,"projectID":185,"taskGroupingName":"First Floor Framing","taskGroupingID":"06.11.04","taskCountTowarTotalArea":0,"taskLaborName":"Roof framing at entry door","taskLaborPricePerHour":90,"taskLaborDaysToComplete":1,"taskLaborNumberOfGuys":3,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":0,"taskEstimateName":"General Contracting Second Option (7-3-2026)","taskSortingNumber":2827,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"2866","sharePointId":"2866","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/2866_.000","title":null,"projectID":185,"taskGroupingName":"Insulation","taskGroupingID":"07","taskCountTowarTotalArea":0,"taskLaborName":"Insulation installation","taskLaborPricePerHour":90,"taskLaborDaysToComplete":2,"taskLaborNumberOfGuys":2,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":"Instulation Materials","taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":4682.9,"taskMaterialMarkup":1.3,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":0,"taskEstimateName":"General Contracting (additional work) (7-3-2026)","taskSortingNumber":2866,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"2867","sharePointId":"2867","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/2867_.000","title":null,"projectID":185,"taskGroupingName":"Painting","taskGroupingID":"09.9","taskCountTowarTotalArea":0,"taskLaborName":"Interior paint","taskLaborPricePerHour":90,"taskLaborDaysToComplete":4,"taskLaborNumberOfGuys":2,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":"Paings supplies","taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":5000,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":0,"taskEstimateName":"General Contracting (additional work) (7-3-2026)","taskSortingNumber":2867,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"2869","sharePointId":"2869","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/2869_.000","title":null,"projectID":185,"taskGroupingName":"Windows and Doors installation","taskGroupingID":"08.5","taskCountTowarTotalArea":0,"taskLaborName":"Windows installaiton","taskLaborPricePerHour":90,"taskLaborDaysToComplete":0,"taskLaborNumberOfGuys":4,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":7,"taskLaborPrice":500,"taskEstimateName":"General Contracting (additional work) (7-3-2026)","taskSortingNumber":2869,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"2870","sharePointId":"2870","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/2870_.000","title":null,"projectID":185,"taskGroupingName":"Windows and Doors installation","taskGroupingID":"08.5","taskCountTowarTotalArea":0,"taskLaborName":"Door installation","taskLaborPricePerHour":90,"taskLaborDaysToComplete":0,"taskLaborNumberOfGuys":1,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":1200,"taskEstimateName":"General Contracting (additional work) (7-3-2026)","taskSortingNumber":2870,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"2871","sharePointId":"2871","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/2871_.000","title":null,"projectID":185,"taskGroupingName":"Framing Materials","taskGroupingID":"06.11.11","taskCountTowarTotalArea":0,"taskLaborName":"Additional wall Materials on stairs Price with Markup included","taskLaborPricePerHour":90,"taskLaborDaysToComplete":0,"taskLaborNumberOfGuys":4,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":2750,"taskEstimateName":"General Contracting Second Option (7-3-2026)","taskSortingNumber":2871,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false},{"id":"2872","sharePointId":"2872","webUrl":"https://dcrserver.sharepoint.com/sites/DCRDatabase/Lists/GeneralProjectTasks/2872_.000","title":null,"projectID":185,"taskGroupingName":"Second Floor Framing","taskGroupingID":"06.11.05","taskCountTowarTotalArea":0,"taskLaborName":"Frame wall next to garage\r\nInstall soffit on stairs\r\nMome metal bar to allow for larger windows","taskLaborPricePerHour":90,"taskLaborDaysToComplete":2,"taskLaborNumberOfGuys":4,"taskLaborSurfaceArea":0,"taskLaborMarkup":1,"taskMaterialName":null,"taskMaterialSurfaceArea":0,"taskMaterialQty":1,"taskMaterialUnitPrice":0,"taskMaterialMarkup":1,"contentType":null,"workflowInstanceID":null,"fileType0":null,"uRLPath":null,"path":null,"itemType":null,"encodedAbsoluteURL":null,"oldID":null,"taskLaborQty":1,"taskLaborPrice":0,"taskEstimateName":"General Contracting Second Option (7-3-2026)","taskSortingNumber":2872,"taskEstimateNotes":null,"taskAssignedPerson":null,"taskAssignedEmail":null,"taskUpdateLog":null,"taskQuotedPrice":null,"attachments":false}];
+window.DCR = {
+  esc:function(v){var s=String(v==null?"":v);return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(new RegExp(String.fromCharCode(34),"g"),"&quot;").replace(new RegExp(String.fromCharCode(39),"g"),"&#39;");},
+  company:"DCR Framing", companyInfo:{logo:"logo.jpg"},
+  requireAuth:function(){return Promise.resolve({displayName:"Test User",role:"Admin",permissions:{project:"write",generalProjectTasks:"write"},flags:{estimatePrices:true}});},
+  api:function(path){
+    if(path.indexOf("part=estimate")!==-1) return Promise.resolve({rows:window.__ROWS,canEdit:true,pricesHidden:false});
+    if(path.indexOf("action=project")!==-1) return Promise.resolve({project:{id:185,internalIDNumber:"A163",projectName:"Studio Shop",projectAddress:"2885 Summer Ranch Rd",projectCity:"Paso Robles",projectClientName:"Jason",estimateStatus:"In Progress"},canWrite:true,canLog:true,statuses:["In Progress"]});
+    return Promise.resolve({});
+  },
+  blobUrl:function(){return Promise.reject(new Error("no thumb"));},
+  getToken:function(){return "x";}, logout:function(){}, API_BASE:""
+};
+</script>
+    <script src="project.js?v=2"></script>
+  </body>
+</html>
