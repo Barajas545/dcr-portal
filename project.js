@@ -256,6 +256,7 @@
   function switchTab(name) {
     document.querySelectorAll(".pj-tab").forEach(function(t){ t.classList.toggle("active", t.getAttribute("data-tab")===name); });
     document.querySelectorAll(".pj-pane").forEach(function(p){ p.classList.toggle("active", p.id==="pane-"+name); });
+    if (DCR.takeoff) DCR.takeoff.setActive(name === "takeoffs");
     // keep the tab in the address bar so a reload comes back where you were
     try {
       var u = new URL(location.href);
@@ -611,13 +612,14 @@
           if (el("ietQty").value!=="") fields.itemQty = el("ietQty").value;
           if (el("ietPrice").value!=="") fields.itemPrice = Number(el("ietPrice").value);
           await DCR.api("/api/portal?action=project", { method:"POST", body:{ op:"toAdd", projectId: PID, fields: fields } });
+          DCR.takeoff.invalidate();   // the Takeoffs tab is now holding a stale row set
           ieSubTakeoff();
         } catch (e) { alert(e.message||"Add failed"); }
       };
       box.querySelectorAll("[data-iet-del]").forEach(function(b){
         b.onclick = async function(){
           if (!confirm("Delete this takeoff line?")) return;
-          try { await DCR.api("/api/portal?action=project", { method:"POST", body:{ op:"toDelete", itemId: b.getAttribute("data-iet-del") } }); ieSubTakeoff(); }
+          try { await DCR.api("/api/portal?action=project", { method:"POST", body:{ op:"toDelete", itemId: b.getAttribute("data-iet-del") } }); DCR.takeoff.invalidate(); ieSubTakeoff(); }
           catch (e) { alert(e.message||"Delete failed"); }
         };
       });
@@ -696,14 +698,6 @@
     } catch (e) { alert(e.message || "Delete failed"); }
   }
 
-  /* ── takeoffs (editable) ── */
-  var TO_DEFS = [
-    ["takeoffName","Takeoff (group)","text","toGroups"],["itemSortingNumber","Sorting #","num"],
-    ["itemName","Item name","text"],["itemCategory","Category","text","toCats"],
-    ["itemSubCategory","Sub-category","text","toSubs"],["itemLocation","Location","text","toLocs"],
-    ["itemPurpose","Purpose","text"],["itemQty","Qty","text"],["itemPrice","Price each $","num"],
-    ["itemHiperLink","Link","text"],
-  ];
   var EXP_DEFS = [
     ["gropingName","Grouping name","text","expGroups"],["gropingNumber","Grouping #","num"],
     ["expenseDate","Date","date"],["description","Description","text"],
@@ -720,62 +714,21 @@
     ["paymentPaidNotes","Paid notes","text"],
   ];
   var SUB_CFG = {
-    to:  { defs:TO_DEFS,  title:"Takeoff item",  rowsKey:"toRows",  reload:function(){loadTakeoffs();} },
     exp: { defs:EXP_DEFS, title:"Expense record", rowsKey:"expRows", reload:function(){loadExpenses();} },
     pay: { defs:PAY_DEFS, title:"Payment",        rowsKey:"payRows", reload:function(){loadPayments();} },
   };
 
-  async function loadTakeoffs() {
-    var pane = el("pane-takeoffs");
-    pane.innerHTML = '<div class="pj-empty">Loading takeoffs…</div>';
-    try {
-      var d = await DCR.api("/api/portal?action=project&id="+PID+"&part=takeoffs");
-      var rows = d.rows||[]; var canEdit = !!d.canEdit;
-      state.toRows = rows; state.toCanEdit = canEdit;
-      var bar = '<div class="pj-bar">' +
-        (canEdit?'<button class="pj-btn pj-btn-primary pj-btn-sm" id="toAddBtn">＋ New item</button>':"") +
-        '<input class="pj-search" id="toSearch" placeholder="Search items…"><span class="pj-sub">'+rows.length+' items</span></div>';
-      pane.innerHTML = bar + '<div id="toTable"></div>' + (rows.length?"":'<div class="pj-empty">No takeoff items for this project.</div>');
-      var cols = canEdit ? 7 : 6;
-      var render = function(){
-        if (!rows.length) { el("toTable").innerHTML=""; return; }
-        var q = (el("toSearch").value||"").toLowerCase();
-        var f = q ? rows.filter(function(r){ return [r.itemName,r.itemCategory,r.itemSubCategory,r.takeoffName,r.itemLocation].join(" ").toLowerCase().indexOf(q)!==-1; }) : rows;
-        var groups = {}; f.forEach(function(r){ var g=r.takeoffName||"(no takeoff)"; (groups[g]=groups[g]||[]).push(r); });
-        var grand=0, body="";
-        Object.keys(groups).forEach(function(g){
-          var gt=0;
-          body += '<tr class="pj-grp"><td colspan="'+cols+'">'+esc(g)+'</td></tr>';
-          groups[g].forEach(function(r){
-            var tot = num(r.itemQty)*num(r.itemPrice); gt+=tot;
-            body += '<tr><td>'+esc(r.itemName||"—")+'</td><td>'+esc([r.itemCategory,r.itemSubCategory].filter(Boolean).join(" / "))+'</td><td>'+esc(r.itemLocation||"")+'</td>' +
-              '<td class="num">'+(num(r.itemQty)||"")+'</td><td class="num">'+(num(r.itemPrice)?fmtMoney(r.itemPrice):"")+'</td><td class="num">'+(tot?fmtMoney(tot):"")+'</td>' +
-              (canEdit?'<td><div class="pj-rowbtns"><button class="pj-btn pj-btn-sm" data-sub-edit="to:'+r.id+'">✎</button><button class="pj-btn pj-btn-sm" data-sub-del="to:'+r.id+'">🗑</button></div></td>':"") + '</tr>';
-          });
-          grand+=gt;
-          body += '<tr class="pj-grpTot"><td colspan="'+(cols-1)+'">Subtotal — '+esc(g)+'</td><td class="num">'+fmtMoney(gt)+'</td>'+(canEdit?'<td></td>':"")+'</tr>';
-        });
-        body += '<tr class="pj-grand"><td colspan="'+(cols-1)+'">GRAND TOTAL</td><td class="num">'+fmtMoney(grand)+'</td>'+(canEdit?'<td></td>':"")+'</tr>';
-        el("toTable").innerHTML = '<div class="pj-tblwrap"><table class="pj-tbl"><thead><tr><th>Item</th><th>Category</th><th>Location</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Total</th>'+(canEdit?'<th></th>':"")+'</tr></thead><tbody>'+body+'</tbody></table></div>';
-        wireSubButtons(el("toTable"));
-      };
-      el("toSearch").addEventListener("input", render);
-      var ab = el("toAddBtn"); if (ab) ab.onclick = function(){ openSubModal("to", null); };
-      render();
-    } catch (e) { pane.innerHTML = '<div class="pj-empty">'+esc(e.message)+'</div>'; }
+  // The Takeoffs tab is its own module (takeoff.js) — grouping four deep,
+  // fast entry, move/copy and undo/redo are a lot of machinery to carry here.
+  function loadTakeoffs() {
+    DCR.takeoff.mount({ pane: el("pane-takeoffs"), pid: PID, profile: state.profile });
   }
 
-  /* ── sub-list modal (takeoffs + expenses) ── */
+  /* ── sub-list modal (expenses + payments) ── */
   function subDatalists(kind) {
     var rows = state[SUB_CFG[kind].rowsKey] || [];
     var lists = {};
-    if (kind==="to") {
-      lists.toGroups = {}; lists.toCats = {}; lists.toSubs = {}; lists.toLocs = {};
-      rows.forEach(function(r){
-        if(r.takeoffName)lists.toGroups[r.takeoffName]=1; if(r.itemCategory)lists.toCats[r.itemCategory]=1;
-        if(r.itemSubCategory)lists.toSubs[r.itemSubCategory]=1; if(r.itemLocation)lists.toLocs[r.itemLocation]=1;
-      });
-    } else if (kind==="exp") {
+    if (kind === "exp") {
       lists.expGroups = {};
       rows.forEach(function(r){ if(r.gropingName)lists.expGroups[r.gropingName]=1; });
     }
@@ -1679,6 +1632,9 @@
     el("subCancel").onclick = function(){ el("subModal").classList.remove("open"); };
     el("subSave").onclick = saveSubModal;
     el("subDelete").onclick = deleteSubModal;
+    el("toMcCancel").onclick = function(){ DCR.takeoff._closeMc(); };
+    el("toDtCancel").onclick = function(){ DCR.takeoff._closeDetail(); };
+    el("toDtSave").onclick = function(){ DCR.takeoff._saveDetail(); };
     [el("taskModal"), el("subModal")].forEach(function(m){ m.addEventListener("click", function(e){ if(e.target===m) m.classList.remove("open"); }); });
 
     // item editor wiring (no backdrop-close: large form, avoid accidental loss)
