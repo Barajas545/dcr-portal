@@ -174,6 +174,39 @@
       .to-sugp{font-size:11.5px; color:var(--text-muted); font-variant-numeric:tabular-nums;}
       .to-mcmode{width:100%; margin-bottom:5px;}
       .to-mcval{width:100%;}
+      /* takeoff cards (screen A) */
+      .tk-cards{display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:10px; margin-top:4px;}
+      .tk-card{display:flex; flex-direction:column; gap:4px; text-align:left; padding:13px 14px;
+        border:1px solid var(--border); border-radius:12px; background:var(--surface); color:var(--text);
+        cursor:pointer; -webkit-tap-highlight-color:transparent;}
+      .tk-card:hover{border-color:var(--acc);}
+      .tk-card:active{transform:scale(.99);}
+      .tk-nm{font-size:14.5px; font-weight:800; line-height:1.3;}
+      .tk-ds{font-size:12px; color:var(--text-muted); line-height:1.4;}
+      .tk-meta{font-size:11.5px; color:var(--text-muted);}
+      .tk-cnt{font-size:12px; font-weight:700; color:var(--acc); margin-top:2px;}
+      .tk-badge{display:inline-block; font-size:10px; font-weight:700; text-transform:uppercase;
+        letter-spacing:.05em; padding:1px 7px; border-radius:9px; background:rgba(214,161,58,.18);
+        color:var(--gold); vertical-align:2px;}
+      .tk-est{opacity:.85;}
+      /* screen B header */
+      .tk-head{display:flex; gap:10px; align-items:center; margin-bottom:8px; flex-wrap:wrap;}
+      .tk-headmid{flex:1; min-width:200px;}
+      .tk-title{font-size:16px; font-weight:800; color:var(--text);}
+      /* structure chips + per-group mini buttons */
+      .tk-chips{display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin:2px 0 10px;}
+      .tk-minitag{padding:2px 9px; font-size:10.5px; margin-left:4px; vertical-align:1px;}
+      .to-pendg td{opacity:.75; font-style:italic;}
+      /* purpose picker */
+      .tk-pplist{display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:4px 12px;
+        max-height:300px; overflow-y:auto;}
+      .tk-pp{display:flex; gap:8px; align-items:center; font-size:13.5px; color:var(--text);
+        padding:7px 4px; cursor:pointer; border-radius:7px;}
+      .tk-pp:hover{background:var(--tint);}
+      .tk-pp input{width:17px; height:17px; accent-color:var(--acc); flex-shrink:0;}
+      .tk-ppshort{font-weight:700; color:var(--acc);}
+      /* matcher dropdown inside a table cell opens downward from the cell */
+      .to-sug-cell{bottom:auto; top:100%; margin-bottom:0; margin-top:4px; left:0; right:auto; min-width:300px;}
       /* each estimate is its own card, with clear spacing between them */
       .pj-esttable{margin-bottom:26px; border:1px solid var(--border); border-radius:10px; overflow:hidden;}
       .pj-colhead th{background:var(--surface); border-bottom:1px solid var(--border);}
@@ -432,6 +465,48 @@
           <span class="pj-msg" id="ieMsg" style="flex:1"></span>
           <button class="pj-btn" id="ieExit">Exit</button>
           <button class="pj-btn pj-btn-primary" id="ieSave">✓ Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- takeoff: create / edit a takeoff record -->
+    <div class="pj-overlay" id="toTkModal">
+      <div class="pj-modal">
+        <h3 id="toTkTitle">New takeoff</h3>
+        <div class="pj-grid">
+          <div class="pj-f full"><label>Takeoff name</label><input id="tf_name" placeholder="e.g. Main House Framing"></div>
+          <div class="pj-f full"><label>Description</label><input id="tf_desc" placeholder="What this takeoff covers"></div>
+          <div class="pj-f"><label>Prepared by</label><input id="tf_prep"></div>
+          <div class="pj-f full"><label>Notes</label><textarea id="tf_notes" rows="2"></textarea></div>
+        </div>
+        <div class="pj-msg err" id="toTkMsg"></div>
+        <div class="pj-modal-actions">
+          <button class="pj-btn" id="toTkCancel">Cancel</button>
+          <button class="pj-btn pj-btn-primary" id="toTkGo">＋ Create takeoff</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- takeoff: pick a category for a level -->
+    <div class="pj-overlay" id="toCatModal">
+      <div class="pj-modal">
+        <h3 id="toCatTitle">Add a category</h3>
+        <div id="toCatBody"></div>
+        <div class="pj-modal-actions">
+          <button class="pj-btn" id="toCatCancel">Cancel</button>
+          <button class="pj-btn pj-btn-primary" id="toCatGo">Add</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- takeoff: purpose picker (the "usual Walls items" list) -->
+    <div class="pj-overlay" id="toPpModal">
+      <div class="pj-modal">
+        <h3 id="toPpTitle">Add purposes</h3>
+        <div id="toPpBody"></div>
+        <div class="pj-modal-actions">
+          <button class="pj-btn" id="toPpCancel">Cancel</button>
+          <button class="pj-btn pj-btn-primary" id="toPpGo">Add selected</button>
         </div>
       </div>
     </div>

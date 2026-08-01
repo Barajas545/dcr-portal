@@ -1635,6 +1635,10 @@
     el("toMcCancel").onclick = function(){ DCR.takeoff._closeMc(); };
     el("toDtCancel").onclick = function(){ DCR.takeoff._closeDetail(); };
     el("toDtSave").onclick = function(){ DCR.takeoff._saveDetail(); };
+    el("toTkCancel").onclick = function(){ DCR.takeoff._closeTk(); };
+    el("toTkGo").onclick = function(){ DCR.takeoff._saveTk(); };
+    el("toPpCancel").onclick = function(){ DCR.takeoff._closePp(); };
+    el("toCatCancel").onclick = function(){ DCR.takeoff._closeCat(); };
     [el("taskModal"), el("subModal")].forEach(function(m){ m.addEventListener("click", function(e){ if(e.target===m) m.classList.remove("open"); }); });
 
     // item editor wiring (no backdrop-close: large form, avoid accidental loss)
