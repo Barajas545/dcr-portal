@@ -111,7 +111,7 @@
 
       /* ── takeoffs ── */
       /* styles.css clips every cell at 320px; lumber names need the room */
-      .pj-totbl td:not(.num):not(.to-cbc):not(.to-actc), .pj-totbl th:not(.num){
+      .pj-totbl td:not(.num):not(.to-grip):not(.to-actc), .pj-totbl th:not(.num){
         white-space:normal; max-width:none; overflow:visible; text-overflow:clip; overflow-wrap:break-word;}
       /* the item name is the column that matters — the money columns don't need
          the 130px the shared rule gives every .num cell */
@@ -123,12 +123,51 @@
         padding:6px 0; margin-bottom:8px;}
       .to-bar .pj-search{width:auto; flex:0 1 220px;}
       .to-sp{flex:1 1 auto;}
-      .to-selbar{display:inline-flex; gap:6px; align-items:center; flex-wrap:wrap;
-        padding:4px 9px; border-radius:9px; background:var(--tint); color:var(--acc);}
+      .to-selbar{display:flex; gap:6px; align-items:center; flex-wrap:wrap;
+        padding:6px 10px; border-radius:9px; background:var(--tint); color:var(--acc); margin-bottom:8px;}
       .to-selbar b{font-size:12.5px;}
-      .to-cbc{width:30px; text-align:center; padding:4px 2px !important;}
-      .to-cbc input{width:17px; height:17px; accent-color:var(--acc); margin:0;}
+      /* on touch the toolbar rides the bottom edge — thumb territory after
+         long scrolls */
+      .to-selbar-fix{position:fixed; left:8px; right:8px; bottom:8px; z-index:60;
+        background:var(--surface); border:1px solid var(--acc); box-shadow:0 6px 22px rgba(0,0,0,.35);
+        padding-bottom:calc(6px + env(safe-area-inset-bottom));}
+      /* the grip: quiet furniture, not a control — tap selects, drag moves */
+      .to-grip{width:26px; min-width:26px; text-align:center; padding:4px 1px !important;
+        color:var(--text-muted); opacity:.55; cursor:grab; user-select:none;
+        touch-action:none; font-size:12px;}
+      th.to-grip{cursor:pointer;}
+      .to-row.to-sel .to-grip{color:var(--acc); opacity:1;}
+      .to-row:hover .to-grip{opacity:1;}
       .to-actc{width:44px; text-align:right; white-space:nowrap;}
+      .to-menu-btn{min-width:38px; min-height:32px;}
+      /* iOS: rows scroll vertically but never text-select or callout on hold */
+      .pj-totbl .to-row td{touch-action:pan-y; -webkit-touch-callout:none; user-select:none;}
+      .pj-totbl td[data-edit], .pj-btn, .pj-tag{touch-action:manipulation;}
+      /* components: indented under their parent */
+      .to-row.to-child td.to-ind{padding-left:34px;}
+      .to-childmark{color:var(--text-muted);}
+      .to-missing{color:var(--gold);}
+      /* drag visuals */
+      .pj-totbl.to-dragmode .to-row td{padding-top:10px; padding-bottom:10px;}
+      .to-ghost{position:fixed; z-index:80; pointer-events:none; background:var(--surface);
+        border:1px solid var(--acc); border-radius:9px; padding:7px 12px; font-size:12.5px;
+        color:var(--text); box-shadow:0 8px 26px rgba(0,0,0,.4); opacity:.94; max-width:280px;}
+      .to-ghost b{color:var(--acc); margin-right:6px;}
+      .to-ghost-label{color:var(--text-muted); font-size:11.5px; display:block;}
+      .to-drop-line{position:fixed; z-index:70; height:3px; background:var(--acc);
+        border-radius:2px; pointer-events:none;}
+      .to-drop-line::before{content:""; position:absolute; left:-4px; top:-3px; width:9px; height:9px;
+        border-radius:50%; background:var(--acc);}
+      .to-drop-nest td{box-shadow:inset 0 0 0 2px var(--acc); background:var(--tint) !important;}
+      /* row menu popover */
+      .to-menu-backdrop{position:fixed; inset:0; z-index:75; background:transparent;}
+      .to-menu{position:fixed; z-index:76; min-width:210px; background:var(--surface);
+        border:1px solid var(--border); border-radius:11px; box-shadow:0 10px 32px rgba(0,0,0,.45);
+        overflow:hidden; padding:4px;}
+      .to-menu button{display:block; width:100%; text-align:left; padding:11px 14px; font-size:13.5px;
+        border:none; background:none; color:var(--text); cursor:pointer; border-radius:7px;}
+      .to-menu button:hover{background:var(--tint);}
+      .to-menu-danger{color:var(--err) !important;}
       /* the four grouping levels, each stepped in a little further */
       .pj-totbl tr.pj-grp td{background:var(--tint); color:var(--acc);}
       .to-g0 td{font-size:13.5px; font-weight:800;}
@@ -146,19 +185,18 @@
       .to-in{width:100%; box-sizing:border-box; padding:5px 7px; font-size:13px;
         border:1px solid var(--acc); border-radius:6px; background:var(--surface); color:var(--text);}
       .to-inq{text-align:right;} .to-inu{min-width:66px;}
-      /* The entry line stays parked at the bottom of the screen: on a 400-line
-         takeoff, scrolling to the end for every item would be the whole job. */
+      /* The entry line renders WHERE the item will land (end of a group, below
+         a row, inside an assembly) and re-arms under the row it just created. */
       .to-addrow td{background:var(--surface-2); border-top:2px solid var(--acc);
-        position:sticky; bottom:30px; z-index:5;}
-      .to-addwhere td{background:var(--surface-2); font-size:11.5px; color:var(--text-muted);
-        padding-top:0; position:sticky; bottom:0; z-index:5;}
-      .to-addrow .to-in{min-width:54px;}
-      .to-addrow td.num{width:96px;}
-      /* the suggestion list has to escape the sticky cell it lives in */
-      .to-addrow td:nth-child(2){position:sticky; bottom:30px;}
-      .to-gin{padding:4px 7px; font-size:12px; width:auto; min-width:96px; border:1px solid var(--border);
-        border-radius:6px; background:var(--surface); color:var(--text);}
-      .to-arrow{color:var(--text-muted); margin:0 2px;}
+        border-bottom:2px solid var(--acc);}
+      .to-entry{display:flex; gap:6px; align-items:center; flex-wrap:wrap; padding:2px 0;}
+      .to-entryctx{font-size:11.5px; color:var(--acc); font-weight:700; flex:0 0 100%;}
+      .to-ewrap{position:relative; display:block;}
+      .to-ew-name{flex:2 1 180px;}
+      .to-ew-purp{flex:1 1 120px;}
+      .to-entry .to-inq{flex:0 0 64px; width:64px;}
+      .to-entry .to-inu{flex:0 0 70px; width:70px;}
+      .to-entry .pj-btn{flex:0 0 auto;}
       /* suggestions */
       /* opens UPWARD — the entry row sits at the bottom of the screen */
       .to-sug{display:none; position:absolute; z-index:20; left:8px; right:8px; bottom:100%; margin-bottom:4px;
@@ -207,6 +245,17 @@
       .tk-ppshort{font-weight:700; color:var(--acc);}
       /* matcher dropdown inside a table cell opens downward from the cell */
       .to-sug-cell{bottom:auto; top:100%; margin-bottom:0; margin-top:4px; left:0; right:auto; min-width:300px;}
+      /* the entry row's dropdowns open downward too (the row is no longer
+         parked at the bottom of the screen) */
+      .to-entry .to-sug{bottom:auto; top:100%; margin-bottom:0; margin-top:4px;}
+      /* touch targets on tablets */
+      @media (pointer:coarse){
+        .pj-totbl .to-row td{padding-top:11px; padding-bottom:11px;}
+        .to-grip{width:38px; min-width:38px; font-size:14px;}
+        .tk-minitag{min-height:32px; padding:6px 12px;}
+        .to-in{min-height:40px;}
+        .to-menu button{padding:13px 16px;}
+      }
       /* each estimate is its own card, with clear spacing between them */
       .pj-esttable{margin-bottom:26px; border:1px solid var(--border); border-radius:10px; overflow:hidden;}
       .pj-colhead th{background:var(--surface); border-bottom:1px solid var(--border);}
