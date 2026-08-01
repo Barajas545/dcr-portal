@@ -138,13 +138,19 @@
       .to-selbar-fix{position:fixed; left:8px; right:8px; bottom:8px; z-index:60;
         background:var(--surface); border:1px solid var(--acc); box-shadow:0 6px 22px rgba(0,0,0,.35);
         padding-bottom:calc(6px + env(safe-area-inset-bottom));}
-      /* the grip: quiet furniture, not a control — tap selects, drag moves */
-      .to-grip{width:26px; min-width:26px; text-align:center; padding:4px 1px !important;
-        color:var(--text-muted); opacity:.55; cursor:grab; user-select:none;
-        touch-action:none; font-size:12px;}
-      th.to-grip{cursor:pointer;}
+      /* the grip sits beside the purpose text, not in a column of its own:
+         quiet furniture until you reach for it — tap selects, drag moves */
+      .to-grip{display:inline-block; width:14px; text-align:center; vertical-align:baseline;
+        color:var(--text-muted); opacity:.45; cursor:grab; user-select:none;
+        touch-action:none; font-size:12px; line-height:1;}
+      .to-grip:hover{opacity:1; color:var(--acc);}
+      .to-grip:active{cursor:grabbing;}
       .to-row.to-sel .to-grip{color:var(--acc); opacity:1;}
-      .to-row:hover .to-grip{opacity:1;}
+      .to-row:hover .to-grip{opacity:.9;}
+      .pj-grp .to-grip{color:inherit; opacity:.5;}
+      .pj-grp .to-grip:hover{opacity:1;}
+      #toAllGrip{cursor:pointer;}
+      @media (pointer:coarse){ .to-grip{width:26px; font-size:15px;} }
       .to-actc{width:44px; text-align:right; white-space:nowrap;}
       .to-menu-btn{min-width:38px; min-height:32px;}
       /* iOS: rows scroll vertically but never text-select or callout on hold */
