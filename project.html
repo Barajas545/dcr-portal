@@ -143,9 +143,27 @@
       /* iOS: rows scroll vertically but never text-select or callout on hold */
       .pj-totbl .to-row td{touch-action:pan-y; -webkit-touch-callout:none; user-select:none;}
       .pj-totbl td[data-edit], .pj-btn, .pj-tag{touch-action:manipulation;}
-      /* components: indented under their parent */
-      .to-row.to-child td.to-ind{padding-left:34px;}
-      .to-childmark{color:var(--text-muted);}
+      /* tree rails: items hang off their group header like a takeoff outline,
+         components off their parent. Longhand background-* so the selected-row
+         tint (a shorthand on td) keeps winning where it should. */
+      .to-row .to-purpose{position:relative; padding-left:32px !important;
+        background-image:linear-gradient(var(--border),var(--border));
+        background-repeat:no-repeat; background-position:14px 0; background-size:2px 100%;}
+      .to-row .to-purpose::after{content:""; position:absolute; left:14px; top:50%; width:11px;
+        height:2px; margin-top:-1px; background:var(--border);}
+      .to-row.to-elb .to-purpose{background-size:2px 50%;}
+      /* components: a deeper rail off their parent; the OUTER group rail only
+         continues alongside (.to-rail0) when the parent isn't the last item
+         of its group — otherwise it already ended at the parent's elbow */
+      .to-row.to-child .to-purpose{padding-left:52px !important;
+        background-image:linear-gradient(var(--border),var(--border));
+        background-position:34px 0; background-size:2px 100%;}
+      .to-row.to-child .to-purpose::after{left:34px;}
+      .to-row.to-child.to-celb .to-purpose{background-size:2px 50%;}
+      .to-row.to-child.to-rail0 .to-purpose{
+        background-image:linear-gradient(var(--border),var(--border)),linear-gradient(var(--border),var(--border));
+        background-position:34px 0, 14px 0; background-size:2px 100%, 2px 100%;}
+      .to-row.to-child.to-rail0.to-celb .to-purpose{background-size:2px 50%, 2px 100%;}
       .to-missing{color:var(--gold);}
       /* drag visuals */
       .pj-totbl.to-dragmode .to-row td{padding-top:10px; padding-bottom:10px;}
