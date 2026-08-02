@@ -159,32 +159,26 @@
       /* iOS: rows scroll vertically but never text-select or callout on hold */
       .pj-totbl .to-row td{touch-action:pan-y; -webkit-touch-callout:none; user-select:none;}
       .pj-totbl td[data-edit], .pj-btn, .pj-tag{touch-action:manipulation;}
-      /* tree rails at the depth of the row's own group, so an item always hangs
-         directly under ITS header. Depth classes map to a --rx offset; all rail
-         geometry reads the variable, so the narrow-screen override is CSS-only.
-         Longhand background-* so the selected-row tint keeps winning. */
-      tr.to-row, tr.to-addrow{--rx:14px; --rgap:22px;}
-      tr.to-d0{--rx:18px;} tr.to-d1{--rx:44px;} tr.to-d2{--rx:70px;}
-      tr.to-c0{--rx:40px;} tr.to-c1{--rx:66px;} tr.to-c2{--rx:92px;}
-      .to-row .to-purpose{position:relative; padding-left:calc(var(--rx) + 16px) !important;
+      /* indent = the leaf group's base (--bx, by depth class) plus nesting
+         depth (--n, stamped inline by JS) steps of --rgap. --rx is the
+         computed offset every other rule reads (padding, nest box, entry). */
+      tr.to-row, tr.to-addrow{--bx:14px; --rgap:22px; --rx:calc(var(--bx) + var(--n,0)*var(--rgap));}
+      tr.to-d0{--bx:18px;} tr.to-d1{--bx:44px;} tr.to-d2{--bx:70px;}
+      .to-row .to-purpose{position:relative; padding-left:calc(var(--rx) + 16px) !important;}
+      /* rails are real elements: one per ancestor level that continues below
+         this row, plus the row's own connector — a tee while siblings follow,
+         an elbow when it's the last (half-height line) */
+      .to-rl{position:absolute; left:calc(var(--bx) + var(--k,0)*var(--rgap)); top:0; bottom:0;
+        width:2px; pointer-events:none;
         background-image:linear-gradient(var(--border),var(--border));
-        background-repeat:no-repeat; background-position:var(--rx) 0; background-size:2px 100%;}
-      .to-row .to-purpose::after{content:""; position:absolute; left:var(--rx); top:50%; width:11px;
-        height:2px; margin-top:-1px; background:var(--border);}
-      .to-row.to-elb .to-purpose{background-size:2px 50%;}
-      .to-row.to-child.to-celb .to-purpose{background-size:2px 50%;}
-      /* components: their own rail at --rx; the group rail continues alongside
-         (.to-rail0, one step shallower) only while the parent isn't last */
-      .to-row.to-child.to-rail0 .to-purpose{
-        background-image:linear-gradient(var(--border),var(--border)),linear-gradient(var(--border),var(--border));
-        background-position:var(--rx) 0, calc(var(--rx) - var(--rgap)) 0;
-        background-size:2px 100%, 2px 100%;}
-      .to-row.to-child.to-rail0.to-celb .to-purpose{background-size:2px 50%, 2px 100%;}
+        background-repeat:no-repeat; background-size:2px 100%;}
+      .to-rl.to-rlast{background-size:2px 50%;}
+      .to-rlown::after{content:""; position:absolute; left:0; top:50%; width:11px; height:2px;
+        margin-top:-1px; background:var(--border);}
       /* portrait tablets: tighter steps so the purpose text keeps room */
       @media (max-width:900px){
         tr.to-row, tr.to-addrow{--rgap:18px;}
-        tr.to-d0{--rx:12px;} tr.to-d1{--rx:30px;} tr.to-d2{--rx:48px;}
-        tr.to-c0{--rx:30px;} tr.to-c1{--rx:48px;} tr.to-c2{--rx:66px;}
+        tr.to-d0{--bx:12px;} tr.to-d1{--bx:30px;} tr.to-d2{--bx:48px;}
         .to-g1 td{padding-left:24px !important;}
         .to-g2 td{padding-left:42px !important;}
       }
@@ -208,9 +202,10 @@
       .to-drop-line::after{right:-5px;}
       /* "drop INSIDE this item" — box only the purpose cell, so it reads as a
          container the new row goes into rather than a row being replaced.
-         The nest target is always a top-level row, so the box can sit at a
-         fixed offset just past the rail elbow. */
+         --rx already includes the target's nesting depth. */
       .to-drop-nest td.to-purpose{background:var(--tint) !important;}
+      /* the dragged subtree dims — "can't drop on itself" must be visible */
+      .to-row.to-dragsrc td{opacity:.45;}
       .to-drop-nest td.to-purpose::before{content:""; position:absolute;
         left:calc(var(--rx, 14px) + 12px); right:6px; top:2px; bottom:2px; pointer-events:none;
         border:2px solid var(--acc); border-radius:7px;
@@ -248,22 +243,16 @@
          a row, inside an assembly) and re-arms under the row it just created. */
       .to-addrow td{background:var(--surface-2); border-top:2px solid var(--acc);
         border-bottom:2px solid var(--acc); position:relative;}
-      /* the entry plugs into the tree: an accent segment of the rail (elbow
-         when nothing follows, pass-through when siblings continue below) and
-         an arrow pointing into the Purpose box — the arrow IS the "it goes
-         here" marker, no text label */
-      .to-addrow td::before{content:""; position:absolute; left:var(--rx,14px); top:0; bottom:50%;
-        width:2px; background:var(--acc);}
-      .to-addrow.to-efull td::before{bottom:0;}
+      /* the entry row gets the same element rails as data rows; its own
+         connector is the ACCENT segment, and an arrow points into the Purpose
+         box — the line itself is the "it goes here" marker, no text label */
+      .to-rlacc{background-image:linear-gradient(var(--acc),var(--acc));}
+      .to-addrow .to-rlown::after{display:none;}
       .to-addrow td::after{content:""; position:absolute; left:var(--rx,14px); top:50%; width:9px;
         height:2px; margin-top:-1px; background:var(--acc);}
       .to-addrow .to-entry::before{content:""; position:absolute; left:calc(var(--rx,14px) + 8px);
         top:50%; margin-top:-5px; width:0; height:0; border-top:5px solid transparent;
         border-bottom:5px solid transparent; border-left:8px solid var(--acc);}
-      /* a component entry keeps the item-level rail running alongside */
-      .to-addrow.to-erail0 td{background-image:linear-gradient(var(--border),var(--border));
-        background-repeat:no-repeat; background-size:2px 100%;
-        background-position:calc(var(--rx,14px) - var(--rgap,22px)) 0;}
       .to-entry{display:flex; gap:6px; align-items:center; flex-wrap:wrap; padding:2px 0;
         padding-left:calc(var(--rx,14px) + 16px);}
       .to-ewrap{position:relative; display:block;}
