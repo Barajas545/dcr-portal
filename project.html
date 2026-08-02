@@ -206,6 +206,21 @@
       .to-drop-nest td.to-purpose{background:var(--tint) !important;}
       /* the dragged subtree dims — "can't drop on itself" must be visible */
       .to-row.to-dragsrc td{opacity:.45;}
+      /* "How it was measured" formula editor: a highlight layer sits exactly
+         under a transparent-text textarea — font, padding and border MUST
+         match on both or the colors drift off the letters */
+      .fx-wrap{position:relative; display:block;}
+      .fx-wrap .fx-hl, .fx-wrap textarea.fx-src{
+        font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Courier New", monospace;
+        font-size:12.5px; line-height:1.6; letter-spacing:0; white-space:pre; tab-size:4;
+        padding:8px 10px; box-sizing:border-box;}
+      .fx-hl{position:absolute; inset:0; pointer-events:none; overflow:hidden;
+        color:var(--text); border:1px solid transparent; border-radius:9px;}
+      .fx-wrap textarea.fx-src{position:relative; width:100%; min-height:120px; resize:vertical;
+        background:transparent; color:transparent; caret-color:var(--text); overflow:auto;}
+      .fx-res{color:var(--err, #d9534f); font-weight:700;}
+      .fx-com{color:#2f9e63;}
+      .fx-bad{text-decoration:underline wavy var(--err, #d9534f); text-underline-offset:3px;}
       .to-drop-nest td.to-purpose::before{content:""; position:absolute;
         left:calc(var(--rx, 14px) + 12px); right:6px; top:2px; bottom:2px; pointer-events:none;
         border:2px solid var(--acc); border-radius:7px;
