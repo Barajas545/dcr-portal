@@ -163,9 +163,9 @@
          directly under ITS header. Depth classes map to a --rx offset; all rail
          geometry reads the variable, so the narrow-screen override is CSS-only.
          Longhand background-* so the selected-row tint keeps winning. */
-      .to-row{--rx:14px; --rgap:22px;}
-      .to-row.to-d0{--rx:18px;} .to-row.to-d1{--rx:44px;} .to-row.to-d2{--rx:70px;}
-      .to-row.to-c0{--rx:40px;} .to-row.to-c1{--rx:66px;} .to-row.to-c2{--rx:92px;}
+      tr.to-row, tr.to-addrow{--rx:14px; --rgap:22px;}
+      tr.to-d0{--rx:18px;} tr.to-d1{--rx:44px;} tr.to-d2{--rx:70px;}
+      tr.to-c0{--rx:40px;} tr.to-c1{--rx:66px;} tr.to-c2{--rx:92px;}
       .to-row .to-purpose{position:relative; padding-left:calc(var(--rx) + 16px) !important;
         background-image:linear-gradient(var(--border),var(--border));
         background-repeat:no-repeat; background-position:var(--rx) 0; background-size:2px 100%;}
@@ -182,9 +182,9 @@
       .to-row.to-child.to-rail0.to-celb .to-purpose{background-size:2px 50%, 2px 100%;}
       /* portrait tablets: tighter steps so the purpose text keeps room */
       @media (max-width:900px){
-        .to-row{--rgap:18px;}
-        .to-row.to-d0{--rx:12px;} .to-row.to-d1{--rx:30px;} .to-row.to-d2{--rx:48px;}
-        .to-row.to-c0{--rx:30px;} .to-row.to-c1{--rx:48px;} .to-row.to-c2{--rx:66px;}
+        tr.to-row, tr.to-addrow{--rgap:18px;}
+        tr.to-d0{--rx:12px;} tr.to-d1{--rx:30px;} tr.to-d2{--rx:48px;}
+        tr.to-c0{--rx:30px;} tr.to-c1{--rx:48px;} tr.to-c2{--rx:66px;}
         .to-g1 td{padding-left:24px !important;}
         .to-g2 td{padding-left:42px !important;}
       }
@@ -247,8 +247,15 @@
       /* The entry line renders WHERE the item will land (end of a group, below
          a row, inside an assembly) and re-arms under the row it just created. */
       .to-addrow td{background:var(--surface-2); border-top:2px solid var(--acc);
-        border-bottom:2px solid var(--acc);}
-      .to-entry{display:flex; gap:6px; align-items:center; flex-wrap:wrap; padding:2px 0;}
+        border-bottom:2px solid var(--acc); position:relative;}
+      /* accent elbow: the entry line hangs off the tree exactly where the new
+         row will land */
+      .to-addrow td::before{content:""; position:absolute; left:var(--rx,14px); top:0; bottom:50%;
+        width:2px; background:var(--acc);}
+      .to-addrow td::after{content:""; position:absolute; left:var(--rx,14px); top:50%; width:12px;
+        height:2px; margin-top:-1px; background:var(--acc);}
+      .to-entry{display:flex; gap:6px; align-items:center; flex-wrap:wrap; padding:2px 0;
+        padding-left:calc(var(--rx,14px) + 16px);}
       .to-entryctx{font-size:11.5px; color:var(--acc); font-weight:700; flex:0 0 100%;}
       .to-ewrap{position:relative; display:block;}
       .to-ew-name{flex:2 1 180px;}
