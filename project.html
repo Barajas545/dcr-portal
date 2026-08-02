@@ -248,15 +248,24 @@
          a row, inside an assembly) and re-arms under the row it just created. */
       .to-addrow td{background:var(--surface-2); border-top:2px solid var(--acc);
         border-bottom:2px solid var(--acc); position:relative;}
-      /* accent elbow: the entry line hangs off the tree exactly where the new
-         row will land */
+      /* the entry plugs into the tree: an accent segment of the rail (elbow
+         when nothing follows, pass-through when siblings continue below) and
+         an arrow pointing into the Purpose box — the arrow IS the "it goes
+         here" marker, no text label */
       .to-addrow td::before{content:""; position:absolute; left:var(--rx,14px); top:0; bottom:50%;
         width:2px; background:var(--acc);}
-      .to-addrow td::after{content:""; position:absolute; left:var(--rx,14px); top:50%; width:12px;
+      .to-addrow.to-efull td::before{bottom:0;}
+      .to-addrow td::after{content:""; position:absolute; left:var(--rx,14px); top:50%; width:9px;
         height:2px; margin-top:-1px; background:var(--acc);}
+      .to-addrow .to-entry::before{content:""; position:absolute; left:calc(var(--rx,14px) + 8px);
+        top:50%; margin-top:-5px; width:0; height:0; border-top:5px solid transparent;
+        border-bottom:5px solid transparent; border-left:8px solid var(--acc);}
+      /* a component entry keeps the item-level rail running alongside */
+      .to-addrow.to-erail0 td{background-image:linear-gradient(var(--border),var(--border));
+        background-repeat:no-repeat; background-size:2px 100%;
+        background-position:calc(var(--rx,14px) - var(--rgap,22px)) 0;}
       .to-entry{display:flex; gap:6px; align-items:center; flex-wrap:wrap; padding:2px 0;
         padding-left:calc(var(--rx,14px) + 16px);}
-      .to-entryctx{font-size:11.5px; color:var(--acc); font-weight:700; flex:0 0 100%;}
       .to-ewrap{position:relative; display:block;}
       .to-ew-name{flex:2 1 180px;}
       .to-ew-purp{flex:1 1 120px;}
