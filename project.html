@@ -12,7 +12,10 @@
       :root{
         --acc:#2f80d8; --acc-2:#1f6fc8; --tint:rgba(47,128,216,0.12); --tint-2:rgba(47,128,216,0.22);
         --gold:#d6a13a; --ok:#2fa679; --err:#d9614f;
+        /* level-header orange: darker in light mode for contrast on white */
+        --lvl-acc:#c2410c;
       }
+      @media (prefers-color-scheme: dark){ :root{ --lvl-acc:#ef8f1f; } }
       .pj{
         --acc:#2f80d8; --acc-2:#1f6fc8; --tint:rgba(47,128,216,0.12); --tint-2:rgba(47,128,216,0.22);
         --gold:#d6a13a; --ok:#2fa679; --err:#d9614f;
@@ -156,27 +159,35 @@
       /* iOS: rows scroll vertically but never text-select or callout on hold */
       .pj-totbl .to-row td{touch-action:pan-y; -webkit-touch-callout:none; user-select:none;}
       .pj-totbl td[data-edit], .pj-btn, .pj-tag{touch-action:manipulation;}
-      /* tree rails: items hang off their group header like a takeoff outline,
-         components off their parent. Longhand background-* so the selected-row
-         tint (a shorthand on td) keeps winning where it should. */
-      .to-row .to-purpose{position:relative; padding-left:32px !important;
+      /* tree rails at the depth of the row's own group, so an item always hangs
+         directly under ITS header. Depth classes map to a --rx offset; all rail
+         geometry reads the variable, so the narrow-screen override is CSS-only.
+         Longhand background-* so the selected-row tint keeps winning. */
+      .to-row{--rx:14px; --rgap:22px;}
+      .to-row.to-d0{--rx:18px;} .to-row.to-d1{--rx:44px;} .to-row.to-d2{--rx:70px;}
+      .to-row.to-c0{--rx:40px;} .to-row.to-c1{--rx:66px;} .to-row.to-c2{--rx:92px;}
+      .to-row .to-purpose{position:relative; padding-left:calc(var(--rx) + 16px) !important;
         background-image:linear-gradient(var(--border),var(--border));
-        background-repeat:no-repeat; background-position:14px 0; background-size:2px 100%;}
-      .to-row .to-purpose::after{content:""; position:absolute; left:14px; top:50%; width:11px;
+        background-repeat:no-repeat; background-position:var(--rx) 0; background-size:2px 100%;}
+      .to-row .to-purpose::after{content:""; position:absolute; left:var(--rx); top:50%; width:11px;
         height:2px; margin-top:-1px; background:var(--border);}
       .to-row.to-elb .to-purpose{background-size:2px 50%;}
-      /* components: a deeper rail off their parent; the OUTER group rail only
-         continues alongside (.to-rail0) when the parent isn't the last item
-         of its group — otherwise it already ended at the parent's elbow */
-      .to-row.to-child .to-purpose{padding-left:52px !important;
-        background-image:linear-gradient(var(--border),var(--border));
-        background-position:34px 0; background-size:2px 100%;}
-      .to-row.to-child .to-purpose::after{left:34px;}
       .to-row.to-child.to-celb .to-purpose{background-size:2px 50%;}
+      /* components: their own rail at --rx; the group rail continues alongside
+         (.to-rail0, one step shallower) only while the parent isn't last */
       .to-row.to-child.to-rail0 .to-purpose{
         background-image:linear-gradient(var(--border),var(--border)),linear-gradient(var(--border),var(--border));
-        background-position:34px 0, 14px 0; background-size:2px 100%, 2px 100%;}
+        background-position:var(--rx) 0, calc(var(--rx) - var(--rgap)) 0;
+        background-size:2px 100%, 2px 100%;}
       .to-row.to-child.to-rail0.to-celb .to-purpose{background-size:2px 50%, 2px 100%;}
+      /* portrait tablets: tighter steps so the purpose text keeps room */
+      @media (max-width:900px){
+        .to-row{--rgap:18px;}
+        .to-row.to-d0{--rx:12px;} .to-row.to-d1{--rx:30px;} .to-row.to-d2{--rx:48px;}
+        .to-row.to-c0{--rx:30px;} .to-row.to-c1{--rx:48px;} .to-row.to-c2{--rx:66px;}
+        .to-g1 td{padding-left:24px !important;}
+        .to-g2 td{padding-left:42px !important;}
+      }
       .to-missing{color:var(--gold);}
       /* drag visuals */
       .pj-totbl.to-dragmode .to-row td{padding-top:10px; padding-bottom:10px;}
@@ -201,7 +212,7 @@
          fixed offset just past the rail elbow. */
       .to-drop-nest td.to-purpose{background:var(--tint) !important;}
       .to-drop-nest td.to-purpose::before{content:""; position:absolute;
-        left:26px; right:6px; top:2px; bottom:2px; pointer-events:none;
+        left:calc(var(--rx, 14px) + 12px); right:6px; top:2px; bottom:2px; pointer-events:none;
         border:2px solid var(--acc); border-radius:7px;
         box-shadow:0 0 0 1px rgba(47,128,216,.25), 0 2px 10px rgba(47,128,216,.35);}
       /* row menu popover */
@@ -215,11 +226,14 @@
       .to-menu-danger{color:var(--err) !important;}
       /* the four grouping levels, each stepped in a little further */
       .pj-totbl tr.pj-grp td{background:var(--tint); color:var(--acc);}
-      .to-g0 td{font-size:13.5px; font-weight:800;}
-      .to-g1 td{padding-left:20px !important; font-weight:700; background:var(--surface-2) !important; color:var(--text) !important;}
-      .to-g2 td{padding-left:34px !important; font-weight:600; background:none !important; color:var(--text-muted) !important;}
-      .to-g3 td{padding-left:48px !important; font-weight:600; background:none !important; color:var(--text-muted) !important;
-        font-size:11.5px; text-transform:uppercase; letter-spacing:.04em;}
+      /* the three tiers read at a glance: big orange level, indented category,
+         further-indented sub-category */
+      .to-g0 td{font-size:15.5px; font-weight:800; padding-left:8px;
+        border-top:6px solid var(--bg, rgba(0,0,0,.25));}
+      .to-g0 .to-glabel{color:var(--lvl-acc);}
+      .to-g0 .to-caret{color:var(--lvl-acc);}
+      .to-g1 td{padding-left:34px !important; font-weight:700; background:var(--surface-2) !important; color:var(--text) !important;}
+      .to-g2 td{padding-left:60px !important; font-weight:600; background:none !important; color:var(--text-muted) !important; font-size:12px;}
       .to-caret{cursor:pointer; display:inline-block; width:15px; user-select:none;}
       .to-row td{padding-left:14px;}
       .to-row.to-sel td{background:var(--tint-2);}
@@ -288,6 +302,7 @@
       .tk-pp:hover{background:var(--tint);}
       .tk-pp input{width:17px; height:17px; accent-color:var(--acc); flex-shrink:0;}
       .tk-ppshort{font-weight:700; color:var(--acc);}
+      .tk-pp-used{opacity:.55;}
       /* matcher dropdown inside a table cell opens downward from the cell */
       .to-sug-cell{bottom:auto; top:100%; margin-bottom:0; margin-top:4px; left:0; right:auto; min-width:300px;}
       /* the entry row's dropdowns open downward too (the row is no longer
