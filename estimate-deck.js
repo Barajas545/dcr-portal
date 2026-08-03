@@ -278,16 +278,24 @@
               .filter(function (c) { return c.itemKind === "color" && c.materialId === pr.materialId && c.itemStatus !== "retired"; })
               .map(function (c) {
                 return { colorId: c.itemId, name: c.itemName, status: c.itemStatus,
-                  manufacturerUrl: c.manufacturerUrl, pictureUrl: c.pictureUrl, pictureItemId: c.pictureItemId };
+                  manufacturerUrl: c.manufacturerUrl, pictureUrl: c.pictureUrl, pictureItemId: c.pictureItemId,
+                  picturesJson: c.picturesJson };
               });
+            var profiles = det.profiles || [];
+            if (!profiles.length && pr.profilesJson) {
+              try { profiles = JSON.parse(pr.profilesJson) || []; } catch (e) { profiles = []; }
+            }
             return {
               materialId: pr.materialId, brandName: pr.brandName, officialName: pr.itemName,
-              status: pr.itemStatus, marketTier: pr.marketTier,
+              status: pr.itemStatus, marketTier: pr.marketTier, priceTier: pr.priceTier,
               shortDescription: pr.description, warrantySummary: pr.warrantySummary,
               selectable: pr.selectable !== false && pr.itemStatus === "active",
               pictureUrl: pr.pictureUrl, pictureItemId: pr.pictureItemId,
+              // the detail view needs the whole sales story, not just a thumbnail
+              picturesJson: pr.picturesJson, manufacturerUrl: pr.manufacturerUrl,
+              salesHighlights: pr.salesHighlights, bestFor: pr.bestFor,
               colors: colors,
-              profiles: det.profiles || [],
+              profiles: profiles,
             };
           }),
         };
@@ -318,10 +326,240 @@
       } else if (url) img.src = url;
     });
   }
+  /* ══ product detail viewer ══
+     Photos live on the COLOR rows as often as the product row, so the hero
+     shows the chosen color's photos first — that is what the client is
+     actually being shown — then the product's own shots. */
+  function galOf(o) { return (window.DCRGallery && DCRGallery.parse(o || {})) || []; }
+  function matPhotos(pr, colorId) {
+    var out = [];
+    var col = (pr.colors || []).filter(function (c) { return c.colorId === colorId; })[0];
+    if (col) galOf(col).forEach(function (e) { out.push({ e: e, cap: col.name }); });
+    galOf(pr).forEach(function (e) { out.push({ e: e, cap: pr.officialName }); });
+    // any other color's photos still belong to this line — keep them last
+    (pr.colors || []).forEach(function (c) {
+      if (c.colorId === colorId) return;
+      galOf(c).forEach(function (e) { out.push({ e: e, cap: c.name }); });
+    });
+    return out;
+  }
+  // esc() stops HTML injection but NOT a scheme: a "javascript:…" value typed
+  // into the library's ManufacturerUrl column would run on click. Links are
+  // https-only, and we show the host so the client sees whose site it is.
+  function safeUrl(u) { return /^https:\/\//i.test(String(u || "").trim()) ? String(u).trim() : ""; }
+  function hostOf(u) {
+    try { return new URL(u).hostname.replace(/^www\./, ""); } catch (e) { return "manufacturer"; }
+  }
+  function lineName(pr) {
+    var short = String(pr.officialName || "").replace(pr.brandName || "", "").trim();
+    return short || pr.officialName || "";
+  }
   function picAttrs(o) {
     if (o && o.pictureItemId) return ' data-pic-item="' + esc(o.pictureItemId) + '"' + (o.pictureUrl ? ' data-pic-url="' + esc(o.pictureUrl) + '"' : "");
     if (o && o.pictureUrl) return ' data-pic-url="' + esc(o.pictureUrl) + '"';
     return "";
+  }
+
+  /* The viewer keeps its OWN color while browsing: opening a line the client
+     hasn't chosen shouldn't quietly change the selection. "Use this line"
+     commits whatever color is on screen. */
+  var mv = { materialId: null, colorId: null, idx: 0, photos: [], onKey: null };
+  function openMatModal(materialId) {
+    var pr = findProduct(materialId);
+    if (!pr) return;
+    var isPrimary = state.sel.primary && state.sel.primary.materialId === materialId;
+    mv.materialId = materialId;
+    mv.colorId = (isPrimary && state.sel.primary.colorId) ||
+      ((pr.colors || [])[0] || {}).colorId || null;
+    mv.idx = 0;
+    el("matModal").hidden = false;
+    document.body.style.overflow = "hidden";
+    el("mvClose").onclick = closeMatModal;
+    el("matModal").onclick = function (e) { if (e.target === el("matModal")) closeMatModal(); };
+    mv.present = false;
+    mv.onKey = function (e) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        // in photo view the first Escape steps back out, so a rep with the
+        // laptop turned to the client never loses the whole view mid-sentence
+        if (mv.present) { mv.present = false; renderMatModal(); } else closeMatModal();
+      } else if (e.key === "ArrowRight") { e.preventDefault(); stepPhoto(1); }
+      else if (e.key === "ArrowLeft") { e.preventDefault(); stepPhoto(-1); }
+    };
+    document.addEventListener("keydown", mv.onKey);
+    renderMatModal();
+  }
+  function closeMatModal() {
+    el("matModal").hidden = true;
+    document.body.style.overflow = "";
+    if (mv.onKey) document.removeEventListener("keydown", mv.onKey);
+    mv.onKey = null;
+    mv.materialId = null;
+  }
+  function stepPhoto(d) {
+    if (!mv.photos.length) return;
+    mv.idx = (mv.idx + d + mv.photos.length) % mv.photos.length;
+    renderMatModal();
+  }
+  function renderMatModal() {
+    var pr = findProduct(mv.materialId);
+    if (!pr) { closeMatModal(); return; }
+    mv.photos = matPhotos(pr, mv.colorId);
+    if (mv.idx >= mv.photos.length) mv.idx = 0;
+    var isPrimary = state.sel.primary && state.sel.primary.materialId === pr.materialId;
+    var isAlt = state.sel.alternative && state.sel.alternative.materialId === pr.materialId;
+    var selectable = pr.selectable !== undefined ? pr.selectable !== false : pr.status === "active";
+    var cur = mv.photos[mv.idx];
+
+    var hero = mv.photos.length
+      ? '<img id="mvHero" alt="' + esc(cur.cap) + '">' +
+        (mv.photos.length > 1
+          ? '<button class="mv-nav prev" id="mvPrev" aria-label="Previous photo">‹</button>' +
+            '<button class="mv-nav next" id="mvNext" aria-label="Next photo">›</button>' +
+            '<span class="mv-count">' + (mv.idx + 1) + " / " + mv.photos.length + "</span>"
+          : "") +
+        '<span class="mv-cap">' + esc(cur.cap) + "</span>"
+      : '<div class="mv-empty"><span class="ic">🖼️</span>No photos saved for this line yet.' +
+        '<div style="margin-top:8px"><a href="materials-library.html" target="_blank" rel="noopener">' +
+        "Add photos in the Materials Library →</a></div></div>";
+
+    var strip = mv.photos.length > 1
+      ? '<div class="mv-strip">' + mv.photos.map(function (p, i) {
+          return '<div class="mv-th' + (i === mv.idx ? " on" : "") + '" data-ph="' + i + '" title="' +
+            esc(p.cap) + '"><img alt=""></div>';
+        }).join("") + "</div>"
+      : "";
+
+    var lines = function (s) {
+      return String(s || "").split("\n").map(function (x) { return x.trim(); }).filter(Boolean);
+    };
+    var highlights = lines(pr.salesHighlights), best = lines(pr.bestFor);
+
+    var colors = '<div class="mv-colors">' + (pr.colors || []).map(function (c, ci) {
+      var n = galOf(c).length;
+      return '<div class="mv-col' + (c.colorId === mv.colorId ? " on" : "") + '" data-mvcolor="' + esc(c.colorId) + '">' +
+        '<div class="sw"><img alt="" data-mvsw="' + ci + '"></div>' +
+        '<div class="nm">' + esc(c.name) + "</div>" +
+        (n ? '<div class="n">' + n + " photo" + (n === 1 ? "" : "s") + "</div>" : "") + "</div>";
+    }).join("") + "</div>";
+
+    var profs = (pr.profiles || []).length
+      ? '<div class="ed-chips">' + pr.profiles.map(function (f) {
+          var on = isPrimary && state.sel.primary.profileId === f.profileId;
+          return '<span class="ed-chip' + (on ? " on" : "") + '" data-mvprofile="' + esc(f.profileId) + '">' +
+            esc((f.profileType || "").replace(/_/g, " ") + " · " + (f.nominalDimensions || "")) + "</span>";
+        }).join("") + "</div>"
+      : "";
+
+    var manUrl = safeUrl(pr.manufacturerUrl) ||
+      safeUrl(((pr.colors || []).filter(function (c) { return c.colorId === mv.colorId; })[0] || {}).manufacturerUrl);
+
+    document.querySelector(".mv").classList.toggle("present", !!mv.present);
+    el("mvBody").innerHTML =
+      '<div class="mv-grid">' +
+        '<div class="mv-pics"><div class="mv-hero">' + hero + "</div>" + strip + "</div>" +
+        '<div class="mv-info">' +
+          '<div class="mv-eyebrow">' + esc(pr.brandName || "") + "</div>" +
+          '<h2 class="mv-title" id="mvTitle">' + esc(lineName(pr)) + "</h2>" +
+          '<div class="mv-pills">' +
+            (pr.marketTier ? '<span class="ed-tier">' + esc(pr.marketTier) + "</span>" : "") +
+            (pr.warrantySummary ? '<span class="ed-badge hi">' + esc(pr.warrantySummary) + "</span>" : "") +
+            (selectable ? "" : '<span class="ed-badge sample">pending approval</span>') +
+          "</div>" +
+          (pr.shortDescription ? '<div class="mv-desc">' + esc(pr.shortDescription) + "</div>" : "") +
+          (highlights.length
+            ? '<div class="mv-h">Why clients pick it</div><ul class="mv-list">' +
+              highlights.map(function (h) { return "<li>" + esc(h) + "</li>"; }).join("") + "</ul>"
+            : "") +
+          (best.length
+            ? '<div class="mv-h">Best for</div><div class="ed-chips">' +
+              best.map(function (b) { return '<span class="ed-chip" style="cursor:default">' + esc(b) + "</span>"; }).join("") + "</div>"
+            : "") +
+          '<div class="mv-h mv-h-color">Color' + ((pr.colors || []).length ? " · " + pr.colors.length : "") + "</div>" + colors +
+          (profs ? '<div class="mv-h">Profile</div>' + profs : "") +
+        "</div>" +
+      "</div>" +
+      '<div class="mv-foot">' +
+        (manUrl
+          ? '<a class="btn btn-ghost btn-sm" href="' + esc(manUrl) + '" target="_blank" rel="noopener noreferrer">🔗 ' +
+            esc(hostOf(manUrl)) + " — official page ↗</a>"
+          : '<span class="ed-sub" style="margin:0;font-size:12px">No manufacturer link saved — add one in the Materials Library.</span>') +
+        '<div class="right">' +
+          (mv.photos.length ? '<button class="btn btn-ghost btn-sm" id="mvPresent">' +
+            (mv.present ? "✕ Exit photo view" : "⛶ Photo view") + "</button>" : "") +
+          (selectable
+            ? '<button class="btn btn-ghost btn-sm" id="mvAlt">' + (isAlt ? "✓ Alternative" : "+ Set as alternative") + "</button>" +
+              '<button class="btn btn-sm" id="mvUse"' + (isPrimary ? " disabled" : "") + ">" +
+                (isPrimary ? "✓ Selected" : "Use this line →") + "</button>"
+            : '<span class="ed-sub" style="margin:0;font-size:12px">Not selectable until its price record is approved.</span>') +
+        "</div>" +
+      "</div>";
+
+    // photos load through the authenticated blob path, so they arrive late.
+    // NOTE: "block", not "" — the stylesheet hides these until they load, so
+    // clearing the inline style would just re-apply display:none.
+    function show(img, entry) {
+      if (!img || !entry) return;
+      img.onload = function () { img.style.display = "block"; };
+      DCRGallery.srcInto(img, entry);
+    }
+    if (mv.photos.length) {
+      show(el("mvHero"), cur.e);
+      el("mvBody").querySelectorAll(".mv-th").forEach(function (th) {
+        show(th.querySelector("img"), mv.photos[+th.dataset.ph].e);
+        th.onclick = function () { mv.idx = +th.dataset.ph; renderMatModal(); };
+      });
+      var pv = el("mvPrev"), nx = el("mvNext");
+      if (pv) pv.onclick = function () { stepPhoto(-1); };
+      if (nx) nx.onclick = function () { stepPhoto(1); };
+    }
+    // a color's swatch is its own first photo (that is where they live)
+    el("mvBody").querySelectorAll("img[data-mvsw]").forEach(function (img) {
+      var c = (pr.colors || [])[+img.getAttribute("data-mvsw")];
+      if (!c) return;
+      var entry = galOf(c)[0] ||
+        (c.pictureItemId ? { id: c.pictureItemId } : c.pictureUrl ? { url: c.pictureUrl } : null);
+      show(img, entry);
+    });
+
+    el("mvBody").querySelectorAll("[data-mvcolor]").forEach(function (c) {
+      c.onclick = function () {
+        mv.colorId = c.getAttribute("data-mvcolor");
+        mv.idx = 0;
+        if (state.sel.primary && state.sel.primary.materialId === pr.materialId) {
+          state.sel.primary.colorId = mv.colorId;
+          renderStep3();
+        }
+        renderMatModal();
+      };
+    });
+    el("mvBody").querySelectorAll("[data-mvprofile]").forEach(function (c) {
+      c.onclick = function () {
+        if (!(state.sel.primary && state.sel.primary.materialId === pr.materialId)) return;
+        state.sel.primary.profileId = c.getAttribute("data-mvprofile");
+        renderStep3();
+        renderMatModal();
+      };
+    });
+    var pres = el("mvPresent");
+    if (pres) pres.onclick = function () { mv.present = !mv.present; renderMatModal(); };
+    var useBtn = el("mvUse");
+    if (useBtn) useBtn.onclick = function () {
+      state.sel.primary = { materialId: pr.materialId, colorId: mv.colorId,
+        profileId: (pr.profiles && pr.profiles[0]) ? pr.profiles[0].profileId : null };
+      if (state.sel.alternative && state.sel.alternative.materialId === pr.materialId) state.sel.alternative = null;
+      renderStep3();
+      closeMatModal();
+    };
+    var altBtn = el("mvAlt");
+    if (altBtn) altBtn.onclick = function () {
+      if (state.sel.alternative && state.sel.alternative.materialId === pr.materialId) state.sel.alternative = null;
+      else if (!(state.sel.primary && state.sel.primary.materialId === pr.materialId)) {
+        state.sel.alternative = { materialId: pr.materialId, colorId: mv.colorId };
+      }
+      renderStep3();
+      renderMatModal();
+    };
   }
 
   /* ══ step navigation ══
@@ -894,7 +1132,9 @@
 
   /* ══ STEP 3 — materials ══ */
   async function renderStep3() {
-    el("edApp").innerHTML = '<div class="ed-card">Loading material catalog…</div>';
+    // only announce loading the FIRST time — otherwise every color tap blanks
+    // the step behind an open viewer while the client is looking at it
+    if (!state.catalog) el("edApp").innerHTML = '<div class="ed-card">Loading material catalog…</div>';
     try { await loadCatalog(); } catch (e) {
       el("edApp").innerHTML = '<div class="ed-card"><p style="color:var(--err)">Could not load the material catalog.</p></div>';
       return;
@@ -904,10 +1144,12 @@
       var isPrimary = state.sel.primary && state.sel.primary.materialId === pr.materialId;
       var isAlt = state.sel.alternative && state.sel.alternative.materialId === pr.materialId;
       var cls = "ed-mat" + (isPrimary ? " sel" : "") + (isAlt ? " alt" : "") + (selectable ? "" : " dis");
-      var thumb = (pr.pictureItemId || pr.pictureUrl)
-        ? '<span style="width:46px;height:46px;border-radius:9px;overflow:hidden;flex-shrink:0;background:var(--surface-2);display:inline-flex">' +
-          '<img style="display:none;width:100%;height:100%;object-fit:cover"' + picAttrs(pr) + ' alt=""></span>'
-        : "";
+      // the cover falls back to the selected (or first) color's photo, since
+      // that is where photos actually live for most lines
+      var shot = matPhotos(pr, isPrimary ? state.sel.primary.colorId : null)[0];
+      var nPhotos = matPhotos(pr, null).length;
+      var thumb = '<span class="ed-cover">' +
+        (shot ? '<img data-mvpic="' + esc(pr.materialId) + '" alt="">' : "🪵") + "</span>";
       var colorChips = "", profChips = "";
       if (isPrimary) {
         colorChips = '<div class="ed-chips">' + (pr.colors || []).map(function (c) {
@@ -924,9 +1166,12 @@
         }).join("") + "</div>";
       }
       return '<div class="' + cls + '" data-mat="' + esc(pr.materialId) + '" data-selectable="' + selectable + '">' +
-        '<div class="hd"><div style="display:flex;gap:10px;align-items:center;min-width:0">' + thumb + '<div><b>' + esc(pr.brandName) + " " + esc(pr.officialName.replace(pr.brandName, "").trim() || pr.officialName) + "</b>" +
-        '<div style="font-size:12px;color:var(--text-muted);margin-top:2px">' + esc(pr.shortDescription || "") + "</div></div></div>" +
-        '<div style="display:flex;gap:6px;align-items:center"><span class="ed-tier">' + esc(pr.marketTier || "") + "</span>" +
+        '<div class="hd"><div style="display:flex;gap:11px;align-items:center;min-width:0">' + thumb + '<div><b>' + esc(pr.brandName) + " " + esc(lineName(pr)) + "</b>" +
+        '<div style="font-size:12px;color:var(--text-muted);margin-top:2px">' + esc(pr.shortDescription || "") + "</div>" +
+        '<div class="ed-photos">' + (nPhotos ? "📷 " + nPhotos + " photo" + (nPhotos === 1 ? "" : "s") : "No photos yet") +
+          (pr.warrantySummary ? " · " + esc(pr.warrantySummary) : "") + "</div></div></div>" +
+        '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="ed-tier">' + esc(pr.marketTier || "") + "</span>" +
+        '<button class="btn btn-sm btn-ghost detBtn" data-mat="' + esc(pr.materialId) + '">Details</button>' +
         (selectable
           ? '<button class="btn btn-sm btn-ghost altBtn" data-mat="' + esc(pr.materialId) + '">' + (isAlt ? "✓ Alternative" : "+ Alt") + "</button>"
           : '<span class="ed-badge sample">pending approval</span>') +
@@ -946,10 +1191,24 @@
       '<button class="btn" id="s3next">Review →</button></div></div>';
 
     hydratePics(el("edApp"));
+    // card covers come from the same photo pool the viewer uses
+    el("edApp").querySelectorAll("img[data-mvpic]").forEach(function (img) {
+      var pr2 = findProduct(img.getAttribute("data-mvpic"));
+      if (!pr2) return;
+      var isPri = state.sel.primary && state.sel.primary.materialId === pr2.materialId;
+      var first = matPhotos(pr2, isPri ? state.sel.primary.colorId : null)[0];
+      if (!first) return;
+      img.style.display = "none";
+      img.onload = function () { img.style.display = "block"; };
+      DCRGallery.srcInto(img, first.e);
+    });
+    document.querySelectorAll(".detBtn").forEach(function (b) {
+      b.onclick = function (ev) { ev.stopPropagation(); openMatModal(b.dataset.mat); };
+    });
 
     document.querySelectorAll(".ed-mat").forEach(function (card) {
       card.querySelector(".hd").onclick = function (ev) {
-        if (ev.target.closest(".altBtn")) return;
+        if (ev.target.closest(".altBtn") || ev.target.closest(".detBtn")) return;
         if (card.dataset.selectable !== "true") return;
         var id = card.dataset.mat;
         if (state.sel.primary && state.sel.primary.materialId === id) return;
@@ -981,6 +1240,8 @@
     document.querySelectorAll("[data-profile]").forEach(function (chip) {
       chip.onclick = function () { state.sel.primary.profileId = chip.dataset.profile; renderStep3(); };
     });
+    // the viewer is open over this step — keep its contents in step with it
+    if (!el("matModal").hidden && mv.materialId) renderMatModal();
     el("s3back").onclick = function () { go(2); };
     el("s3next").onclick = function () {
       if (!state.sel.primary) { el("s3msg").textContent = "Please select a primary material (or go back if you only need the comparison)."; return; }

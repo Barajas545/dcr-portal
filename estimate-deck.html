@@ -78,6 +78,87 @@
       .ed-chips{display:flex; gap:6px; flex-wrap:wrap; margin-top:10px;}
       .ed-chip{font-size:11.5px; padding:4px 11px; border-radius:12px; border:1.5px solid var(--border); cursor:pointer;}
       .ed-chip.on{border-color:var(--acc); background:var(--tint); font-weight:700;}
+      .ed-cover{width:64px; height:64px; border-radius:10px; overflow:hidden; flex-shrink:0;
+        background:var(--surface-2); display:inline-flex; align-items:center; justify-content:center;
+        color:var(--text-muted); font-size:19px;}
+      .ed-cover img{width:100%; height:100%; object-fit:cover;}
+      .ed-photos{font-size:11px; color:var(--text-muted); margin-top:3px;}
+
+      /* ── product detail viewer ──────────────────────────────────────────
+         Photos are the selling tool: a big hero the salesperson can turn
+         toward the client, with the specs beside it. Colors carry their own
+         photos, so switching color swaps what the client is looking at. */
+      .mv-overlay{position:fixed; inset:0; z-index:90; background:rgba(0,0,0,.62);
+        display:flex; align-items:center; justify-content:center; padding:18px;}
+      .mv-overlay[hidden]{display:none;}
+      .mv{position:relative; background:var(--surface); border:1px solid var(--border);
+        border-radius:16px; width:min(1000px,100%); max-height:92vh; overflow:auto;
+        box-shadow:0 24px 70px rgba(0,0,0,.45);}
+      .mv-x{position:absolute; top:10px; right:12px; z-index:3; width:34px; height:34px; border-radius:50%;
+        border:1px solid var(--border); background:var(--surface); color:var(--text); font-size:15px;
+        cursor:pointer; line-height:1;}
+      .mv-grid{display:grid; grid-template-columns:1.15fr .85fr; gap:0;}
+      .mv-pics{padding:18px; border-right:1px solid var(--border); min-width:0;}
+      .mv-info{padding:18px 20px; min-width:0;}
+      /* the photo mat stays dark in BOTH themes: a light backdrop shifts how a
+         warm decking color reads, and color is the thing being judged */
+      .mv-hero{position:relative; aspect-ratio:4/3; border-radius:12px; overflow:hidden;
+        background:#101315; display:flex; align-items:center; justify-content:center;}
+      .mv-hero img{width:100%; height:100%; object-fit:cover; display:none;}
+      .mv-empty{text-align:center; padding:22px; color:var(--text-muted); font-size:13px;}
+      .mv-empty .ic{font-size:30px; display:block; margin-bottom:8px; opacity:.65;}
+      .mv-nav{position:absolute; top:50%; transform:translateY(-50%); width:38px; height:38px;
+        border-radius:50%; border:none; background:rgba(0,0,0,.5); color:#fff; font-size:17px;
+        cursor:pointer; line-height:1;}
+      .mv-nav.prev{left:10px;} .mv-nav.next{right:10px;}
+      .mv-cap{position:absolute; left:10px; bottom:10px; background:rgba(0,0,0,.6); color:#fff;
+        font-size:11.5px; font-weight:700; padding:4px 10px; border-radius:11px;}
+      .mv-count{position:absolute; right:10px; bottom:10px; background:rgba(0,0,0,.6); color:#fff;
+        font-size:11px; padding:4px 9px; border-radius:11px;}
+      .mv-strip{display:flex; gap:8px; margin-top:10px; overflow-x:auto; padding-bottom:2px;}
+      .mv-th{width:62px; height:62px; border-radius:9px; overflow:hidden; flex:0 0 auto; cursor:pointer;
+        border:2px solid transparent; background:var(--surface-2);}
+      .mv-th.on{border-color:var(--acc);}
+      .mv-th img{width:100%; height:100%; object-fit:cover; display:none;}
+      .mv-eyebrow{font-size:11.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+        color:var(--text-muted);}
+      .mv-title{font-size:20px; font-weight:800; margin:2px 0 8px; line-height:1.25;}
+      .mv-pills{display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;}
+      .mv-desc{font-size:13.5px; line-height:1.5; color:var(--text);}
+      .mv-h{font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em;
+        color:var(--text-muted); margin:14px 0 6px;}
+      .mv-list{margin:0; padding:0; list-style:none; font-size:13px; line-height:1.55;}
+      .mv-list li{padding-left:18px; position:relative;}
+      .mv-list li::before{content:"✓"; position:absolute; left:0; color:var(--ok); font-weight:700;}
+      .mv-colors{display:grid; grid-template-columns:repeat(auto-fill,minmax(96px,1fr)); gap:8px;}
+      .mv-col{border:2px solid var(--border); border-radius:10px; padding:6px; cursor:pointer;
+        background:var(--surface); text-align:center;}
+      .mv-col.on{border-color:var(--acc); background:var(--tint);}
+      .mv-col .sw{width:100%; aspect-ratio:16/10; border-radius:6px; background:var(--surface-2);
+        overflow:hidden; display:flex; align-items:center; justify-content:center; margin-bottom:5px;}
+      .mv-col .sw img{width:100%; height:100%; object-fit:cover; display:none;}
+      .mv-col .nm{font-size:11.5px; font-weight:600; line-height:1.25;}
+      .mv-col .n{font-size:10px; color:var(--text-muted);}
+      .mv-foot{display:flex; gap:10px; align-items:center; justify-content:space-between;
+        flex-wrap:wrap; padding:14px 20px; border-top:1px solid var(--border); background:var(--surface-2);
+        position:sticky; bottom:0;}
+      .mv-foot .right{display:flex; gap:8px; flex-wrap:wrap;}
+      /* photo view: turn the laptop toward the client — the photo and the
+         colors, nothing else. Esc steps back out before it closes. */
+      .mv.present{width:min(1280px,100%);}
+      .mv.present .mv-info > *:not(.mv-colors):not(.mv-h-color){display:none;}
+      .mv.present .mv-grid{grid-template-columns:1fr;}
+      .mv.present .mv-pics{border-right:none;}
+      .mv.present .mv-hero{aspect-ratio:auto; height:min(68vh,640px);}
+      .mv.present .mv-info{padding-top:0;}
+      .mv.present .mv-h{margin-top:0;}
+      @media (max-width:860px){
+        .mv-grid{grid-template-columns:1fr;}
+        .mv-pics{border-right:none; border-bottom:1px solid var(--border);}
+        /* stacked: cap the hero so the color choices stay reachable */
+        .mv-hero{aspect-ratio:auto; height:42vh;}
+        .mv.present .mv-hero{height:52vh;}
+      }
 
       /* estimate output */
       .ed-total{font-size:26px; font-weight:800; color:var(--acc);}
@@ -153,6 +234,15 @@
       </div>
 
       <div id="edApp"><div class="ed-card">Loading…</div></div>
+    </div>
+
+    <!-- Product detail — lives outside #edApp so a step-3 re-render can't
+         close it mid-conversation with the client. -->
+    <div class="mv-overlay" id="matModal" hidden>
+      <div class="mv" role="dialog" aria-modal="true" aria-labelledby="mvTitle">
+        <button class="mv-x" id="mvClose" title="Close (Esc)" aria-label="Close">✕</button>
+        <div class="mv-body" id="mvBody"></div>
+      </div>
     </div>
 
     <script src="config.js"></script>
