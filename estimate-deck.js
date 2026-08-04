@@ -327,21 +327,47 @@
     });
   }
   /* ══ product detail viewer ══
-     Photos live on the COLOR rows as often as the product row, so the hero
-     shows the chosen color's photos first — that is what the client is
-     actually being shown — then the product's own shots. */
+     ONE color at a time. Mixing every color's photos into one strip put 20
+     photos of 10 different colors in front of the client on a line like
+     Enhance — the color they are looking at is the only one that sells. */
   function galOf(o) { return (window.DCRGallery && DCRGallery.parse(o || {})) || []; }
+  function colorOf(pr, colorId) {
+    return (pr.colors || []).filter(function (c) { return c.colorId === colorId; })[0] || null;
+  }
+  // The library names its pair "<Color>.jpg" and "<Color> sample.jpg" — the
+  // board render and a close-up of the real material. Worth saying out loud.
+  function shotLabel(entry, fallback) {
+    var n = String((entry && entry.name) || "").replace(/^\d+-/, "").replace(/\.[a-z0-9]+$/i, "");
+    if (/\bsample\b/i.test(n)) return "Sample";
+    if (/\bboard\b/i.test(n)) return "Board";
+    return fallback || "";
+  }
+  // Photos of THIS color; a line's own shots only when the color has none.
+  // Never hard-code "two" — the library is live and a third can appear.
   function matPhotos(pr, colorId) {
-    var out = [];
-    var col = (pr.colors || []).filter(function (c) { return c.colorId === colorId; })[0];
-    if (col) galOf(col).forEach(function (e) { out.push({ e: e, cap: col.name }); });
-    galOf(pr).forEach(function (e) { out.push({ e: e, cap: pr.officialName }); });
-    // any other color's photos still belong to this line — keep them last
-    (pr.colors || []).forEach(function (c) {
-      if (c.colorId === colorId) return;
-      galOf(c).forEach(function (e) { out.push({ e: e, cap: c.name }); });
-    });
-    return out;
+    var col = colorOf(pr, colorId);
+    var own = col ? galOf(col) : [];
+    if (own.length) {
+      return own.map(function (e, i) {
+        return { e: e, cap: col.name, shot: shotLabel(e, own.length > 1 ? (i === 0 ? "Board" : "Sample") : "") };
+      });
+    }
+    return galOf(pr).map(function (e) { return { e: e, cap: pr.officialName, shot: shotLabel(e, "") }; });
+  }
+  // every photo the line can show — for the row's cover and its "N photos"
+  function linePhotoCount(pr) {
+    var n = galOf(pr).length;
+    (pr.colors || []).forEach(function (c) { n += galOf(c).length; });
+    return n;
+  }
+  function coverPhoto(pr, colorId) {
+    var own = matPhotos(pr, colorId);
+    if (own.length) return own[0];
+    for (var i = 0; i < (pr.colors || []).length; i++) {
+      var g = galOf(pr.colors[i]);
+      if (g.length) return { e: g[0], cap: pr.colors[i].name, shot: "" };
+    }
+    return null;
   }
   // esc() stops HTML injection but NOT a scheme: a "javascript:…" value typed
   // into the library's ManufacturerUrl column would run on click. Links are
@@ -383,8 +409,8 @@
         // in photo view the first Escape steps back out, so a rep with the
         // laptop turned to the client never loses the whole view mid-sentence
         if (mv.present) { mv.present = false; renderMatModal(); } else closeMatModal();
-      } else if (e.key === "ArrowRight") { e.preventDefault(); stepPhoto(1); }
-      else if (e.key === "ArrowLeft") { e.preventDefault(); stepPhoto(-1); }
+      } else if (e.key === "ArrowRight") { e.preventDefault(); stepColor(1); }
+      else if (e.key === "ArrowLeft") { e.preventDefault(); stepColor(-1); }
     };
     document.addEventListener("keydown", mv.onKey);
     renderMatModal();
@@ -396,9 +422,27 @@
     mv.onKey = null;
     mv.materialId = null;
   }
-  function stepPhoto(d) {
-    if (!mv.photos.length) return;
-    mv.idx = (mv.idx + d + mv.photos.length) % mv.photos.length;
+  // arrows walk the COLORS now — with one color's shots all on screen there is
+  // nothing left to page through inside a color
+  function stepColor(d) {
+    var pr = findProduct(mv.materialId);
+    var cols = (pr && pr.colors) || [];
+    if (cols.length < 2) return;
+    var at = -1;
+    cols.forEach(function (c, i) { if (c.colorId === mv.colorId) at = i; });
+    var next = cols[((at < 0 ? 0 : at) + d + cols.length) % cols.length];
+    pickColor(next.colorId);
+  }
+  // one place decides what a color choice means: it always changes what you
+  // are LOOKING at, and only changes the estimate when this line is the pick
+  function pickColor(colorId) {
+    var pr = findProduct(mv.materialId);
+    mv.colorId = colorId;
+    mv.idx = 0;
+    if (pr && state.sel.primary && state.sel.primary.materialId === pr.materialId) {
+      state.sel.primary.colorId = colorId;
+      renderStep3();
+    }
     renderMatModal();
   }
   function renderMatModal() {
@@ -409,26 +453,24 @@
     var isPrimary = state.sel.primary && state.sel.primary.materialId === pr.materialId;
     var isAlt = state.sel.alternative && state.sel.alternative.materialId === pr.materialId;
     var selectable = pr.selectable !== undefined ? pr.selectable !== false : pr.status === "active";
-    var cur = mv.photos[mv.idx];
+    var colName = (colorOf(pr, mv.colorId) || {}).name || "";
 
-    var hero = mv.photos.length
-      ? '<img id="mvHero" alt="' + esc(cur.cap) + '">' +
-        (mv.photos.length > 1
-          ? '<button class="mv-nav prev" id="mvPrev" aria-label="Previous photo">‹</button>' +
-            '<button class="mv-nav next" id="mvNext" aria-label="Next photo">›</button>' +
-            '<span class="mv-count">' + (mv.idx + 1) + " / " + mv.photos.length + "</span>"
-          : "") +
-        '<span class="mv-cap">' + esc(cur.cap) + "</span>"
-      : '<div class="mv-empty"><span class="ic">🖼️</span>No photos saved for this line yet.' +
-        '<div style="margin-top:8px"><a href="materials-library.html" target="_blank" rel="noopener">' +
-        "Add photos in the Materials Library →</a></div></div>";
-
-    var strip = mv.photos.length > 1
-      ? '<div class="mv-strip">' + mv.photos.map(function (p, i) {
-          return '<div class="mv-th' + (i === mv.idx ? " on" : "") + '" data-ph="' + i + '" title="' +
-            esc(p.cap) + '"><img alt=""></div>';
-        }).join("") + "</div>"
-      : "";
+    // every shot of THIS color at once, side by side — with two photos there is
+    // nothing to page through, and the client sees the finish and the real
+    // material together. White and uncropped: these are boards on white, and
+    // the old fill-and-crop was cutting the ends off them.
+    var stage = mv.photos.length
+      ? '<div class="mv-shots n' + Math.min(mv.photos.length, 3) + '">' + mv.photos.map(function (p, i) {
+          return '<figure class="mv-shot"><span class="mv-frame"><img data-shot="' + i + '" alt="' +
+            esc(p.cap + (p.shot ? " — " + p.shot : "")) + '"></span>' +
+            (p.shot ? "<figcaption>" + esc(p.shot) + "</figcaption>" : "") + "</figure>";
+        }).join("") + "</div>" +
+        (colName ? '<div class="mv-colname">' + esc(colName) + "</div>" : "")
+      // client-neutral first line; the how-to-fix link stays small and second
+      : '<div class="mv-empty"><span class="ic">🖼️</span>No photo for ' +
+        (colName ? esc(colName) : "this line") + " yet." +
+        '<div style="margin-top:8px;font-size:11.5px;opacity:.75">' +
+        '<a href="materials-library.html" target="_blank" rel="noopener">Add one →</a></div></div>';
 
     var lines = function (s) {
       return String(s || "").split("\n").map(function (x) { return x.trim(); }).filter(Boolean);
@@ -457,14 +499,14 @@
     document.querySelector(".mv").classList.toggle("present", !!mv.present);
     el("mvBody").innerHTML =
       '<div class="mv-grid">' +
-        '<div class="mv-pics"><div class="mv-hero">' + hero + "</div>" + strip + "</div>" +
+        '<div class="mv-pics">' + stage + "</div>" +
         '<div class="mv-info">' +
           '<div class="mv-eyebrow">' + esc(pr.brandName || "") + "</div>" +
           '<h2 class="mv-title" id="mvTitle">' + esc(lineName(pr)) + "</h2>" +
           '<div class="mv-pills">' +
             (pr.marketTier ? '<span class="ed-tier">' + esc(pr.marketTier) + "</span>" : "") +
             (pr.warrantySummary ? '<span class="ed-badge hi">' + esc(pr.warrantySummary) + "</span>" : "") +
-            (selectable ? "" : '<span class="ed-badge sample">pending approval</span>') +
+            (selectable ? "" : '<span class="ed-badge sample">quote on request</span>') +
           "</div>" +
           (pr.shortDescription ? '<div class="mv-desc">' + esc(pr.shortDescription) + "</div>" : "") +
           (highlights.length
@@ -480,10 +522,11 @@
         "</div>" +
       "</div>" +
       '<div class="mv-foot">' +
+        // the client can read everything on this screen — no notes-to-self
         (manUrl
           ? '<a class="btn btn-ghost btn-sm" href="' + esc(manUrl) + '" target="_blank" rel="noopener noreferrer">🔗 ' +
             esc(hostOf(manUrl)) + " — official page ↗</a>"
-          : '<span class="ed-sub" style="margin:0;font-size:12px">No manufacturer link saved — add one in the Materials Library.</span>') +
+          : "<span></span>") +
         '<div class="right">' +
           (mv.photos.length ? '<button class="btn btn-ghost btn-sm" id="mvPresent">' +
             (mv.present ? "✕ Exit photo view" : "⛶ Photo view") + "</button>" : "") +
@@ -491,7 +534,7 @@
             ? '<button class="btn btn-ghost btn-sm" id="mvAlt">' + (isAlt ? "✓ Alternative" : "+ Set as alternative") + "</button>" +
               '<button class="btn btn-sm" id="mvUse"' + (isPrimary ? " disabled" : "") + ">" +
                 (isPrimary ? "✓ Selected" : "Use this line →") + "</button>"
-            : '<span class="ed-sub" style="margin:0;font-size:12px">Not selectable until its price record is approved.</span>') +
+            : '<span class="ed-sub" style="margin:0;font-size:12px">We quote this line on request.</span>') +
         "</div>" +
       "</div>";
 
@@ -503,16 +546,10 @@
       img.onload = function () { img.style.display = "block"; };
       DCRGallery.srcInto(img, entry);
     }
-    if (mv.photos.length) {
-      show(el("mvHero"), cur.e);
-      el("mvBody").querySelectorAll(".mv-th").forEach(function (th) {
-        show(th.querySelector("img"), mv.photos[+th.dataset.ph].e);
-        th.onclick = function () { mv.idx = +th.dataset.ph; renderMatModal(); };
-      });
-      var pv = el("mvPrev"), nx = el("mvNext");
-      if (pv) pv.onclick = function () { stepPhoto(-1); };
-      if (nx) nx.onclick = function () { stepPhoto(1); };
-    }
+    el("mvBody").querySelectorAll("img[data-shot]").forEach(function (img) {
+      var p = mv.photos[+img.getAttribute("data-shot")];
+      if (p) show(img, p.e);
+    });
     // a color's swatch is its own first photo (that is where they live)
     el("mvBody").querySelectorAll("img[data-mvsw]").forEach(function (img) {
       var c = (pr.colors || [])[+img.getAttribute("data-mvsw")];
@@ -523,15 +560,7 @@
     });
 
     el("mvBody").querySelectorAll("[data-mvcolor]").forEach(function (c) {
-      c.onclick = function () {
-        mv.colorId = c.getAttribute("data-mvcolor");
-        mv.idx = 0;
-        if (state.sel.primary && state.sel.primary.materialId === pr.materialId) {
-          state.sel.primary.colorId = mv.colorId;
-          renderStep3();
-        }
-        renderMatModal();
-      };
+      c.onclick = function () { pickColor(c.getAttribute("data-mvcolor")); };
     });
     el("mvBody").querySelectorAll("[data-mvprofile]").forEach(function (c) {
       c.onclick = function () {
@@ -1146,9 +1175,9 @@
       var cls = "ed-mat" + (isPrimary ? " sel" : "") + (isAlt ? " alt" : "") + (selectable ? "" : " dis");
       // the cover falls back to the selected (or first) color's photo, since
       // that is where photos actually live for most lines
-      var shot = matPhotos(pr, isPrimary ? state.sel.primary.colorId : null)[0];
-      var nPhotos = matPhotos(pr, null).length;
-      var thumb = '<span class="ed-cover">' +
+      var shot = coverPhoto(pr, isPrimary ? state.sel.primary.colorId : null);
+      var nPhotos = linePhotoCount(pr);
+      var thumb = '<span class="ed-cover' + (shot ? " has-pic" : "") + '">' +
         (shot ? '<img data-mvpic="' + esc(pr.materialId) + '" alt="">' : "🪵") + "</span>";
       var colorChips = "", profChips = "";
       if (isPrimary) {
@@ -1196,7 +1225,7 @@
       var pr2 = findProduct(img.getAttribute("data-mvpic"));
       if (!pr2) return;
       var isPri = state.sel.primary && state.sel.primary.materialId === pr2.materialId;
-      var first = matPhotos(pr2, isPri ? state.sel.primary.colorId : null)[0];
+      var first = coverPhoto(pr2, isPri ? state.sel.primary.colorId : null);
       if (!first) return;
       img.style.display = "none";
       img.onload = function () { img.style.display = "block"; };
@@ -1245,6 +1274,16 @@
     el("s3back").onclick = function () { go(2); };
     el("s3next").onclick = function () {
       if (!state.sel.primary) { el("s3msg").textContent = "Please select a primary material (or go back if you only need the comparison)."; return; }
+      // a draft saved while a line was active can be reopened after that line
+      // goes back to review — never let it print against something unsellable
+      var chosen = findProduct(state.sel.primary.materialId);
+      if (!chosen) { el("s3msg").textContent = "That material is no longer in the catalog — please pick another line."; return; }
+      var ok = chosen.selectable !== undefined ? chosen.selectable !== false : chosen.status === "active";
+      if (!ok) {
+        el("s3msg").textContent = chosen.brandName + " " + lineName(chosen) +
+          " is not available to quote right now — please pick another line.";
+        return;
+      }
       go(4);
     };
     paintSteps(); // a just-picked material unlocks steps 4-5 right away
