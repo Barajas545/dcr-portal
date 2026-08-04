@@ -24,6 +24,7 @@
     pillar:  { color: "#1f9d55" },
     railing: { color: "#1f6fc8" },                     // blue
     joist:   { color: "#d9b83c" },                     // light yellow, dotted
+    fascia:  { color: "#b5651d" },                     // orange-brown band
   };
   var FILLED = { rect: 1, poly: 1, circle: 1 };
   var TOL = 16;
@@ -97,6 +98,9 @@
       '<button class="cs-tool" data-tool="circle" title="Circle — drag from the center">◯</button>' +
       '<span style="width:6px"></span>' +
       '<button class="cs-tool" data-tool="railing" title="Railing run — tap along the edge, ✓ Finish (lineal feet)">⌗</button>' +
+      '<button class="cs-tool" data-tool="fascia" title="Fascia run — tap along the exposed edges, ✓ Finish. Or select a deck outline and tap its edges.">▬</button>' +
+      '<button class="cs-tool" data-tool="trim" title="Trim / extend — tap the line to fix, then the line it should meet">✂</button>' +
+      '<button class="cs-tool" data-tool="array" title="Array — repeat the selected item at an on-centre spacing (joists, footings, balusters)">⧉</button>' +
       '<button class="cs-tool" data-tool="beam" title="Beam — drag the span (green)">═</button>' +
       '<button class="cs-tool" data-tool="joist" title="Floor joist — dotted line (drag the span)">⋯</button>' +
       '<button class="cs-tool" data-tool="stairs" title="Stairs — drag the run (tap the tool again for the width)">🪜</button>' +
@@ -133,8 +137,10 @@
       '<button class="cs-btn primary" id="csPolyDone">✓ Finish</button>' +
       '<button class="cs-btn" id="csPolyClose">⭯ Close shape</button>' +
       '<button class="cs-btn" id="csPolyCancel">✕</button></div>' +
-      '<div class="cs-panel" id="csPanel"><div class="ph"><b>Σ Takeoff</b>' +
-      '<span><button class="cs-btn" id="csTakeoffCopy" style="padding:3px 8px">📋 Copy</button> ' +
+      '<div class="cs-panel" id="csPanel"><div class="ph">' +
+      '<span><button class="cs-btn cs-tab on" data-tab="takeoff" style="padding:3px 9px">Σ Takeoff</button> ' +
+      '<button class="cs-btn cs-tab" data-tab="mats" style="padding:3px 9px">🧾 Materials</button></span>' +
+      '<span><button class="cs-btn" id="csTakeoffCopy" style="padding:3px 8px">📋</button> ' +
       '<button class="cs-btn" id="csPanelClose" style="padding:3px 8px">✕</button></span></div>' +
       '<div class="pb" id="csPanelBody"></div></div></div>' +
       '<div class="cs-hint" id="csHint"></div>' +
@@ -506,6 +512,16 @@
       }
       var lastR = P[P.length - 1];
       label(ctx, lastR[0], lastR[1] - 14, "Railing " + fmtFtIn(itemLength(it)), it.color);
+    } else if (it.type === "fascia" && P.length >= 2) {
+      // a fascia run is a band on the outside face — draw it heavy so it reads
+      // as trim, not another wall, and print its own lineal feet
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      P.forEach(function (p, i) { i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]); });
+      ctx.stroke();
+      var fa = P[0], fb = P[P.length - 1];
+      label(ctx, (fa[0] + fb[0]) / 2, (fa[1] + fb[1]) / 2 - 14,
+        "Fascia " + fmtFtIn(itemLength(it)), it.color);
     } else if (it.type === "joist" && P.length === 2) {
       ctx.lineWidth = 2;
       ctx.setLineDash([3, 5]);
@@ -595,6 +611,32 @@
     ctx.restore();
   }
 
+  // A light wash over exactly the shapes counted as deck surface, so the rep
+  // can see WHICH shapes made the number before sending it to the estimate.
+  function drawDeckHighlight(ctx) {
+    ctx.save();
+    ctx.fillStyle = "rgba(47,166,121,0.20)";
+    ctx.strokeStyle = "rgba(31,111,74,0.85)";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([7, 5]);
+    st.items.forEach(function (it) {
+      if (!isDeckShape(it)) return;
+      var P = (it.pts || []).map(toScreen);
+      ctx.beginPath();
+      if (it.type === "rect" && P.length === 2) {
+        ctx.rect(Math.min(P[0][0], P[1][0]), Math.min(P[0][1], P[1][1]),
+          Math.abs(P[1][0] - P[0][0]), Math.abs(P[1][1] - P[0][1]));
+      } else if (it.type === "circle" && P.length === 2) {
+        ctx.arc(P[0][0], P[0][1], Math.hypot(P[1][0] - P[0][0], P[1][1] - P[0][1]), 0, 7);
+      } else {
+        P.forEach(function (p, i) { i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]); });
+        ctx.closePath();
+      }
+      ctx.fill();
+      ctx.stroke();
+    });
+    ctx.restore();
+  }
   function render() {
     var cv = q("#csCanvas"), ctx = cv.getContext("2d");
     var dpr = window.devicePixelRatio || 1;
@@ -602,6 +644,7 @@
     var wpx = cv.width / dpr, hpx = cv.height / dpr;
     ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, wpx, hpx);
     drawGrid(ctx, wpx, hpx);
+    if (st.hiDeck) drawDeckHighlight(ctx);
     st.items.forEach(function (it, i) { drawItem(ctx, it, i === st.sel); });
     if (st.draw) drawItem(ctx, st.draw, false);
     // vertex handles on the selection
@@ -642,7 +685,7 @@
       tagBtn.style.display = "";
       tagBtn.textContent = "🏷 " + (it.takeoff || defaultLabel(it));
     } else tagBtn.style.display = "none";
-    if (q("#csPanel").classList.contains("open")) renderTakeoff();
+    if (q("#csPanel").classList.contains("open")) renderPanel();
   }
 
   /* ── type an exact dimension for the selection ── */
@@ -789,6 +832,7 @@
     if (it.type === "rect" || it.type === "circle" || (it.type === "poly" && it.closed)) return "Deck area";
     if (it.type === "line" || it.type === "poly" || it.type === "arc") return "Lineal";
     if (it.type === "railing") return "Railing";
+    if (it.type === "fascia") return "Fascia";
     if (it.type === "beam") return "Beams";
     if (it.type === "joist") return "Joists";
     if (it.type === "stairs") return "Stairs";
@@ -806,6 +850,177 @@
     if (it.type === "poly" && it.closed && it.pts.length >= 3) return polyArea(it.pts);
     return 0;
   }
+  /* ── 🧾 preliminary framing material list ───────────────────────────────
+     Sizes a framer actually orders, grouped the way a lumber yard quotes.
+     The list starts from what is ON the drawing (joists arrayed, beams drawn,
+     posts dropped, deck SF, railing and fascia LF) and stays fully editable —
+     it is a PRELIMINARY list, so every line can be typed over. */
+  var MAT_PRESETS = [
+    { g: "Joists / rim", s: ["2x6x8", "2x6x10", "2x6x12", "2x6x16", "2x8x10", "2x8x12", "2x8x16", "2x8x20", "2x10x12", "2x10x16", "2x10x20", "2x12x16", "2x12x20"] },
+    { g: "Beams", s: ["4x6x8", "4x6x10", "4x6x12", "4x8x10", "4x8x12", "4x8x16", "6x6x10", "6x6x12", "(2) 2x10x16 built-up", "(3) 2x12x16 built-up"] },
+    { g: "Posts", s: ["4x4x8", "4x4x10", "6x6x8", "6x6x10", "6x6x12"] },
+    { g: "Ledger / blocking", s: ["2x8x16 ledger", "2x10x16 ledger", "2x6 blocking", "2x8 blocking", "2x10 blocking"] },
+    { g: "Decking / fascia", s: ["5/4x6x12 decking", "5/4x6x16 decking", "2x6x16 decking", "1x8x16 fascia", "1x12x16 fascia"] },
+    { g: "Railing", s: ["4x4x4 rail post", "2x4x8 rail", "2x6x8 cap rail", "Baluster 36\"", "Post base / anchor"] },
+    { g: "Hardware / concrete", s: ["Joist hanger", "Hurricane tie", "Ledger screw", "Post base", "Carriage bolt 1/2x6",
+      "3\" deck screw (5lb)", "16d nail (5lb)", "Concrete 60lb bag", "Footing tube 12\""] },
+  ];
+  var MAT_KEY = "dcrCadMatPresets";     // the user's own additions, across drawings
+  function customPresets() {
+    try { return JSON.parse(localStorage.getItem(MAT_KEY) || "[]") || []; } catch (e) { return []; }
+  }
+  function addCustomPreset(name) {
+    var list = customPresets();
+    if (list.indexOf(name) !== -1) return;
+    list.unshift(name);
+    try { localStorage.setItem(MAT_KEY, JSON.stringify(list.slice(0, 60))); } catch (e) {}
+  }
+  // A first cut straight off the drawing. Every line is editable — this is the
+  // estimator's starting point, not a bill of materials.
+  function suggestedMaterials() {
+    var n = deckNumbers(), out = [], byType = {};
+    st.items.forEach(function (it) {
+      byType[it.type] = (byType[it.type] || 0) + 1;
+    });
+    function push(name, qty, unit, note) {
+      if (qty > 0) out.push({ name: name, qty: Math.ceil(qty * 10) / 10, unit: unit || "ea", note: note || "", from: "drawing" });
+    }
+    if (byType.joist) push("Joist (size to span)", byType.joist, "ea", byType.joist + " drawn");
+    if (byType.beam) push("Beam (size to span)", byType.beam, "ea", byType.beam + " drawn");
+    if (byType.post) push("4x4x8 post", byType.post, "ea", byType.post + " posts drawn");
+    if (byType.post) push("Post base / anchor", byType.post, "ea", "one per post");
+    if (byType.post) push("Concrete 60lb bag", byType.post * 3, "ea", "≈3 bags per footing");
+    if (byType.pillar) push("6x6 pillar", byType.pillar, "ea", "");
+    if (byType.joist) push("Joist hanger", byType.joist * 2, "ea", "both ends");
+    if (n.deckSF > 0) {
+      // 5/4x6 covers 5.5" net → 2.18 LF of board per SF, +10% waste
+      push("Decking board (5/4x6)", n.deckSF * 2.18 * 1.1, "LF", n.deckSF + " SF +10% waste");
+      push("3\" deck screw (5lb)", Math.ceil(n.deckSF / 100), "box", "≈1 box per 100 SF");
+    }
+    if (n.fasciaLF > 0) push("Fascia board (1x8)", n.fasciaLF * 1.05, "LF", n.fasciaLF + " LF +5%");
+    if (n.railLF > 0) {
+      push("Rail post (4x4)", Math.floor(n.railLF / 6) + 1, "ea", "≈6' o.c.");
+      push("Rail (2x4)", n.railLF * 2, "LF", "top and bottom");
+      push("Baluster", Math.ceil(n.railLF * 12 / 4.5), "ea", "4\" gap max");
+    }
+    if (n.stairs > 0) push("Stair stringer (2x12)", n.stairs * 3, "ea", n.stairs + " flight(s), 3 stringers each");
+    return out;
+  }
+  function matList() {
+    if (!st.mats) st.mats = suggestedMaterials();
+    return st.mats;
+  }
+  function renderMaterials() {
+    var rows = matList();
+    var groups = MAT_PRESETS.map(function (g) {
+      return '<div class="cs-grp">' + g.g + "</div><div style='display:flex;flex-wrap:wrap;gap:5px'>" +
+        g.s.map(function (s) { return '<button class="cs-chip" data-mat="' + DCR.esc(s) + '">' + DCR.esc(s) + "</button>"; }).join("") +
+        "</div>";
+    }).join("");
+    var mine = customPresets();
+    if (mine.length) {
+      groups = '<div class="cs-grp">Mine</div><div style="display:flex;flex-wrap:wrap;gap:5px">' +
+        mine.map(function (s) { return '<button class="cs-chip" data-mat="' + DCR.esc(s) + '">' + DCR.esc(s) + "</button>"; }).join("") +
+        "</div>" + groups;
+    }
+    var listHtml = rows.length
+      ? rows.map(function (r, i) {
+          return '<div class="cs-row" style="align-items:center">' +
+            '<span style="flex:1;min-width:0"><input class="cs-mname" data-i="' + i + '" value="' + DCR.esc(r.name) +
+              '" style="width:100%;border:none;background:transparent;font:inherit;color:inherit;padding:0">' +
+              (r.note ? '<span style="display:block;font-size:10.5px;color:#8a97a6">' + DCR.esc(r.note) + "</span>" : "") +
+            "</span>" +
+            '<span style="display:flex;gap:4px;align-items:center">' +
+              '<input class="cs-mqty" data-i="' + i + '" type="number" min="0" step="0.1" value="' + r.qty +
+                '" style="width:62px;text-align:right">' +
+              '<span style="width:26px;font-size:11px;color:#5a6b7d">' + DCR.esc(r.unit) + "</span>" +
+              '<button class="cs-chip cs-mdel" data-i="' + i + '" style="padding:2px 7px">✕</button>' +
+            "</span></div>";
+        }).join("")
+      : '<p style="color:#5a6b7d">Nothing yet — tap a size below, or draw the framing and tap ↻ to read it off the plan.</p>';
+
+    q("#csPanelBody").innerHTML =
+      '<div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">' +
+        '<button class="cs-btn" id="csMatRefresh" style="padding:4px 9px">↻ From drawing</button>' +
+        '<button class="cs-btn" id="csMatAdd" style="padding:4px 9px">＋ Other…</button>' +
+        '<button class="cs-btn" id="csMatCopy" style="padding:4px 9px">📋 Copy list</button>' +
+      "</div>" + listHtml +
+      '<div class="cs-grp" style="margin-top:14px">Add a size — tap to add one</div>' + groups;
+
+    q("#csPanelBody").querySelectorAll("[data-mat]").forEach(function (b) {
+      b.onclick = function () { addMat(b.getAttribute("data-mat")); };
+    });
+    q("#csPanelBody").querySelectorAll(".cs-mqty").forEach(function (inp) {
+      inp.onchange = function () { matList()[+inp.dataset.i].qty = Number(inp.value) || 0; };
+    });
+    q("#csPanelBody").querySelectorAll(".cs-mname").forEach(function (inp) {
+      inp.onchange = function () { matList()[+inp.dataset.i].name = inp.value; };
+    });
+    q("#csPanelBody").querySelectorAll(".cs-mdel").forEach(function (b) {
+      b.onclick = function () { matList().splice(+b.dataset.i, 1); st.dirty = true; renderMaterials(); };
+    });
+    q("#csMatRefresh").onclick = function () {
+      var keep = matList().filter(function (r) { return r.from !== "drawing"; });
+      st.mats = suggestedMaterials().concat(keep);
+      st.dirty = true;
+      renderMaterials();
+      q("#csHint").textContent = "↻ Re-read the framing off the drawing — your own lines were kept.";
+    };
+    q("#csMatAdd").onclick = function () {
+      openPrompt("＋ Material", function () {
+        var v = q("#csPromptInput").value.trim();
+        if (!v) return;
+        addCustomPreset(v);
+        addMat(v);
+      }, "", ["2x6x12", "4x6x8", "4x4x8", "2x8x16", "6x6x10"]);
+    };
+    q("#csMatCopy").onclick = function () {
+      var txt = matList().map(function (r) { return r.qty + "\t" + r.unit + "\t" + r.name; }).join("\n");
+      if (navigator.clipboard) navigator.clipboard.writeText(txt).catch(function () {});
+      q("#csHint").textContent = "✓ Material list copied — paste into the order or a spreadsheet.";
+    };
+  }
+  function addMat(name) {
+    var list = matList();
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].name === name) { list[i].qty += 1; st.dirty = true; renderMaterials(); return; }
+    }
+    list.push({ name: name, qty: 1, unit: "ea", note: "", from: "manual" });
+    st.dirty = true;
+    renderMaterials();
+  }
+
+  /* ── the three numbers the estimate actually runs on ──────────────────
+     Deck area, railing LF and fascia LF, read straight off the drawing so a
+     rep never re-measures on the tablet. An item's takeoff label wins over its
+     type, so a rectangle tagged "Landing" still counts as deck surface unless
+     it is tagged something that clearly isn't (Roof, House…). */
+  function isDeckShape(it) {
+    if (areaOf(it) <= 0) return false;
+    var lbl = String(it.takeoff || defaultLabel(it)).toLowerCase();
+    return /deck|decking|landing|surface|platform|patio/.test(lbl);
+  }
+  function deckNumbers() {
+    var deckSF = 0, railLF = 0, fasciaLF = 0, stairs = 0, deckShapes = [];
+    st.items.forEach(function (it, i) {
+      var lbl = String(it.takeoff || defaultLabel(it)).toLowerCase();
+      if (isDeckShape(it)) { deckSF += areaOf(it); deckShapes.push(i); }
+      if (it.type === "railing" || /railing|guard/.test(lbl)) {
+        if (it.type !== "gate" && areaOf(it) <= 0) railLF += itemLength(it);
+      }
+      if (it.type === "fascia" || (/fascia|rim board|skirt/.test(lbl) && areaOf(it) <= 0)) {
+        fasciaLF += itemLength(it);
+      }
+      if (it.type === "stairs") stairs++;
+    });
+    // a gate is an opening in the run — it doesn't get railing
+    st.items.forEach(function (it) {
+      if (it.type === "gate") railLF -= itemLength(it);
+    });
+    var r1 = function (n) { return Math.round(Math.max(0, n) * 10) / 10; };
+    return { deckSF: r1(deckSF), railLF: r1(railLF), fasciaLF: r1(fasciaLF),
+      stairs: stairs, deckShapes: deckShapes };
+  }
   function takeoffData() {
     var areas = {}, lineals = {}, counts = {};
     function add(bag, key, val) {
@@ -818,8 +1033,10 @@
       var a = areaOf(it);
       if (a > 0) {
         add(areas, lbl, a);
-        add(lineals, lbl + " perimeter", itemLength(it)); // railing / fascia runs
-      } else if (["line", "poly", "dim", "arc", "railing", "beam", "joist"].indexOf(it.type) !== -1) {
+        // ALL sides, including the one against the house — it is not the
+        // fascia or railing number, and saying so stops it being ordered
+        add(lineals, lbl + " perimeter (all sides)", itemLength(it));
+      } else if (["line", "poly", "dim", "arc", "railing", "fascia", "beam", "joist"].indexOf(it.type) !== -1) {
         add(lineals, lbl, itemLength(it));
       } else if (it.type === "stairs") {
         add(counts, lbl, 1);
@@ -836,9 +1053,32 @@
     }
     return { areas: rows(areas), lineals: rows(lineals), counts: rows(counts) };
   }
+  function renderPanel() {
+    if (st.panelTab === "mats") renderMaterials(); else renderTakeoff();
+  }
   function renderTakeoff() {
     var t = takeoffData();
-    var html = "";
+    var n = deckNumbers();
+    // The estimate runs on three numbers. Put them at the top, show which
+    // shapes made the area, and let the rep push them into step 1 in one tap.
+    var html =
+      '<div class="cs-grp">For the estimate</div>' +
+      '<div class="cs-row"><span>Deck area' +
+        (n.deckShapes.length > 1 ? " (" + n.deckShapes.length + " shapes)" : "") +
+        '</span><b>' + n.deckSF + " SF</b></div>" +
+      '<div class="cs-row"><span>Railing</span><b>' + n.railLF + " LF</b></div>" +
+      '<div class="cs-row"><span>Fascia</span><b>' + n.fasciaLF + " LF</b></div>" +
+      (n.stairs ? '<div class="cs-row"><span>Stairs</span><b>' + n.stairs + "</b></div>" : "") +
+      '<div style="display:flex;gap:6px;margin:8px 0 2px;flex-wrap:wrap">' +
+        '<button class="cs-btn' + (st.hiDeck ? " primary" : "") + '" id="csHiDeck" style="padding:4px 9px">' +
+          (st.hiDeck ? "◼ Area shown" : "◻ Show deck area") + "</button>" +
+        (st.onNumbers
+          ? '<button class="cs-btn primary" id="csUseNums" style="padding:4px 9px">→ Send to estimate</button>'
+          : "") +
+      "</div>" +
+      (n.deckSF <= 0
+        ? '<div style="color:#8a6d3b;font-size:11.5px;margin-bottom:6px">No deck surface yet — draw the deck with the ▭ or ⬠ tool.</div>'
+        : "");
     function block(title, rows, unit) {
       if (!rows.length) return "";
       var tot = rows.reduce(function (s, r) { return s + r.qty; }, 0);
@@ -853,8 +1093,19 @@
     html += block("Areas", t.areas, "SF");
     html += block("Lineal", t.lineals, "LF");
     html += block("Counts", t.counts, "ea");
-    if (!html) html = '<p style="color:#5a6b7d">Draw shapes and drop markers — areas, lineal feet and counts total up here. Select an item and tap 🏷 to name it (Decking, Railing, Posts…).</p>';
+    if (!st.items.length) {
+      html += '<p style="color:#5a6b7d">Draw shapes and drop markers — areas, lineal feet and counts total up here. Select an item and tap 🏷 to name it (Decking, Railing, Posts…).</p>';
+    }
     q("#csPanelBody").innerHTML = html;
+    var hi = q("#csHiDeck");
+    if (hi) hi.onclick = function () { st.hiDeck = !st.hiDeck; render(); renderTakeoff(); };
+    var use = q("#csUseNums");
+    if (use) use.onclick = function () {
+      var d = deckNumbers();
+      st.onNumbers({ deckSF: d.deckSF, railLF: d.railLF, fasciaLF: d.fasciaLF, stairs: d.stairs });
+      q("#csHint").textContent = "✓ Sent to the estimate — " + d.deckSF + " SF deck, " +
+        d.railLF + " LF railing" + (d.fasciaLF ? ", " + d.fasciaLF + " LF fascia" : "") + ".";
+    };
   }
   function takeoffText() {
     var t = takeoffData(), lines = [];
@@ -901,6 +1152,189 @@
     setTimeout(function () { q("#csDimAft").focus(); q("#csDimAft").select(); }, 60);
   }
   function closePrompt() { q("#csPrompt").classList.remove("open"); promptCb = null; }
+
+  /* ── ✂ trim / extend ────────────────────────────────────────────────────
+     Pick the line to fix, then the line it should meet. We move whichever END
+     of the first line is nearer the crossing point onto that point — one rule
+     that trims a long line back and stretches a short one out. */
+  var TRIMMABLE = ["line", "poly", "railing", "fascia", "beam", "joist", "dim"];
+  // which segment of which item did the tap land on
+  function pickSegment(w) {
+    var best = null, bd = 14 / st.ppf;
+    st.items.forEach(function (it, i) {
+      if (TRIMMABLE.indexOf(it.type) === -1) return;
+      segmentsOf(it).forEach(function (s, si) {
+        var d = ptSeg(w, s[0], s[1]);
+        if (d < bd) { bd = d; best = { idx: i, seg: si, a: s[0], b: s[1] }; }
+      });
+    });
+    return best;
+  }
+  // infinite-line intersection; null when they're parallel
+  function lineCross(p1, p2, p3, p4) {
+    var x1 = p1[0], y1 = p1[1], x2 = p2[0], y2 = p2[1];
+    var x3 = p3[0], y3 = p3[1], x4 = p4[0], y4 = p4[1];
+    var den = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+    if (Math.abs(den) < 1e-9) return null;
+    var a = x1 * y2 - y1 * x2, b = x3 * y4 - y3 * x4;
+    return [(a * (x3 - x4) - (x1 - x2) * b) / den, (a * (y3 - y4) - (y1 - y2) * b) / den];
+  }
+  function trimPick(w) {
+    var hit = pickSegment(w);
+    if (!hit) {
+      q("#csHint").textContent = st.trimFirst
+        ? "Tap the line it should meet (a line, railing, beam or joist)."
+        : "Tap a line to fix — lines, railings, beams and joists can be trimmed.";
+      return;
+    }
+    if (!st.trimFirst) {
+      var it0 = st.items[hit.idx];
+      if (it0.type === "rect" || it0.type === "circle") {
+        q("#csHint").textContent = "A rectangle can't be trimmed — redraw it as an outline (⬠) first.";
+        return;
+      }
+      st.trimFirst = hit;
+      st.sel = hit.idx;
+      q("#csHint").textContent = "✂ 2 of 2 — now tap the line it should meet.";
+      render();
+      return;
+    }
+    if (hit.idx === st.trimFirst.idx && hit.seg === st.trimFirst.seg) {
+      q("#csHint").textContent = "Pick a DIFFERENT line for it to meet.";
+      return;
+    }
+    var f = st.trimFirst, x = lineCross(f.a, f.b, hit.a, hit.b);
+    if (!x) {
+      st.trimFirst = null;
+      q("#csHint").textContent = "Those two lines are parallel — they never meet. Start again.";
+      render();
+      return;
+    }
+    var it = st.items[f.idx];
+    // f.a / f.b are copies; find which stored point they came from
+    var ia = nearestPtIndex(it, f.a), ib = nearestPtIndex(it, f.b);
+    var moveIdx = dist(f.a, x) <= dist(f.b, x) ? ia : ib;
+    if (moveIdx < 0) {
+      st.trimFirst = null;
+      q("#csHint").textContent = "That edge can't be moved on its own.";
+      render();
+      return;
+    }
+    snapshot();
+    var was = it.pts[moveIdx].slice();
+    it.pts[moveIdx] = [x[0], x[1]];
+    st.trimFirst = null;
+    var grew = dist(was, x) ;
+    q("#csHint").textContent = "✓ " + (dist(f.a, f.b) < dist(it.pts[ia] || f.a, it.pts[ib] || f.b) ? "Extended" : "Trimmed") +
+      " to the crossing — moved " + fmtFtIn(grew) + ". Now " + fmtFtIn(itemLength(it)) + " total.";
+    render();
+  }
+  function nearestPtIndex(it, p) {
+    var best = -1, bd = 1e-6;
+    (it.pts || []).forEach(function (q2, i) {
+      var d = dist(q2, p);
+      if (best < 0 || d < bd) { bd = d; best = i; }
+    });
+    return best;
+  }
+
+  /* ── ⧉ linear array ─────────────────────────────────────────────────────
+     The joist feature: repeat the selected item at a real on-centre spacing.
+     Copies carry the source's takeoff label, so the count and lineal feet fall
+     straight into the takeoff with no extra bookkeeping. */
+  var OC_CHIPS = [12, 16, 19.2, 24];
+  function openArrayPrompt(w) {
+    if (st.sel < 0 && w) {
+      var hi = hitTest(w);
+      if (hi >= 0) { st.sel = hi; render(); }
+    }
+    var src = st.sel >= 0 ? st.items[st.sel] : null;
+    if (!src) { q("#csHint").textContent = "Tap the item you want to repeat first, then tap ⧉."; return; }
+    if (!src.pts || !src.pts.length) { q("#csHint").textContent = "That item can't be arrayed."; return; }
+    var body = q("#csPromptText"), dims = q("#csPromptDims");
+    body.style.display = "none";
+    dims.style.display = "";
+    q("#csDimRowB").style.display = "none";
+    q("#csDimLabelA").textContent = "Spacing on centre — feet";
+    var sp = st.arraySpacing || 16 / 12;
+    q("#csDimAft").value = Math.floor(sp);
+    q("#csDimAin").value = Math.round((sp - Math.floor(sp)) * 12 * 10) / 10;
+    // an extra row for the count + the o.c. chips framers actually use
+    var extra = document.createElement("div");
+    extra.id = "csArrExtra";
+    extra.style.marginTop = "8px";
+    extra.innerHTML =
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">' +
+      OC_CHIPS.map(function (n) {
+        return '<button type="button" class="cs-chip" data-oc="' + n + '">' + n + '" o.c.</button>';
+      }).join("") + "</div>" +
+      '<div style="display:flex;gap:8px;align-items:end">' +
+      '<div style="flex:1"><label style="font-size:11px;color:#93a1b1">How many copies</label>' +
+      '<input id="csArrN" type="number" min="1" max="200" step="1" inputmode="numeric" value="' + (st.arrayN || 8) + '"></div>' +
+      '<div style="flex:1"><label style="font-size:11px;color:#93a1b1">Direction</label>' +
+      '<select id="csArrDir"><option value="perp">Across (perpendicular)</option>' +
+      '<option value="along">Along its own line</option></select></div></div>' +
+      '<div id="csArrNote" style="font-size:11px;color:#93a1b1;margin-top:6px"></div>';
+    dims.appendChild(extra);
+    function note() {
+      var n = Math.max(1, Math.min(200, Number(q("#csArrN").value) || 1));
+      var s = (Number(q("#csDimAft").value) || 0) + (Number(q("#csDimAin").value) || 0) / 12;
+      q("#csArrNote").textContent = s > 0
+        ? n + " copies at " + fmtFtIn(s) + " o.c. spans " + fmtFtIn(n * s) + "."
+        : "Set a spacing greater than zero.";
+    }
+    extra.querySelectorAll("[data-oc]").forEach(function (b) {
+      b.onclick = function () {
+        var inch = Number(b.dataset.oc);
+        q("#csDimAft").value = Math.floor(inch / 12);
+        q("#csDimAin").value = Math.round((inch % 12) * 10) / 10;
+        note();
+      };
+    });
+    ["csArrN", "csDimAft", "csDimAin"].forEach(function (id) {
+      q("#" + id).addEventListener("input", note);
+    });
+    note();
+    openPromptRaw("⧉ Array — repeat " + defaultLabel(src).toLowerCase(), function () {
+      var n = Math.max(1, Math.min(200, Number(q("#csArrN").value) || 1));
+      var s = (Number(q("#csDimAft").value) || 0) + (Number(q("#csDimAin").value) || 0) / 12;
+      var dir = q("#csArrDir").value;
+      cleanupArray();
+      if (!(s > 0)) { q("#csHint").textContent = "Array needs a spacing greater than zero."; return; }
+      runArray(src, n, s, dir);
+    });
+    // the shared OK handler closes the prompt; make sure our extra row goes too
+    var cancel = q("#csPromptCancel");
+    cancel.addEventListener("click", cleanupArray, { once: true });
+  }
+  function cleanupArray() {
+    var e = q("#csArrExtra");
+    if (e && e.parentNode) e.parentNode.removeChild(e);
+    q("#csPromptText").style.display = "";
+    q("#csPromptDims").style.display = "none";
+  }
+  function runArray(src, n, spacing, dir) {
+    // direction: across the item (joists off a beam) or along its own run
+    var p0 = src.pts[0], p1 = src.pts[src.pts.length - 1];
+    var dx = p1[0] - p0[0], dy = p1[1] - p0[1];
+    var L = Math.hypot(dx, dy);
+    var ux, uy;
+    if (L < 1e-6) { ux = 1; uy = 0; }                       // a point: array sideways
+    else if (dir === "along") { ux = dx / L; uy = dy / L; }
+    else { ux = -dy / L; uy = dx / L; }                     // perpendicular
+    st.arraySpacing = spacing; st.arrayN = n;
+    snapshot();                                             // ONE snapshot for the batch
+    for (var i = 1; i <= n; i++) {
+      var c = JSON.parse(JSON.stringify(src));
+      c.pts = c.pts.map(function (p) { return [p[0] + ux * spacing * i, p[1] + uy * spacing * i]; });
+      delete c.seq;
+      st.items.push(c);
+    }
+    st.sel = -1;
+    render();
+    q("#csHint").textContent = "✓ " + n + " copies at " + fmtFtIn(spacing) + " o.c. — " +
+      (n + 1) + " total, " + fmtFtIn(n * spacing) + " across.";
+  }
 
   /* ── pointers (draw / select / pan / pinch) ── */
   function onDown(e) {
@@ -966,8 +1400,15 @@
       render();
       return;
     }
-    // multi-tap tools: outline, triangle (3), arc (3), railing run
-    if (t === "poly" || t === "tri" || t === "arc" || t === "railing") {
+    // ✂ trim/extend — two picks, one rule: move the nearer end of the first
+    // segment onto where the two lines cross. Short lines extend, long ones
+    // cut back, which is how a framer thinks about it ("make it meet that").
+    if (t === "trim") { trimPick(raw); return; }
+    // ⧉ array — repeat the selection at an on-centre spacing
+    if (t === "array") { openArrayPrompt(raw); return; }
+
+    // multi-tap tools: outline, triangle (3), arc (3), railing run, fascia run
+    if (t === "poly" || t === "tri" || t === "arc" || t === "railing" || t === "fascia") {
       var cap = (t === "tri" || t === "arc") ? 3 : 0;
       var kind = t === "tri" ? "poly" : t;
       if (!st.draw) { st.draw = { type: kind, pts: [w], color: itemColor(kind), fill: itemFill(kind), _cap: cap }; q("#csCtx").classList.add("open"); }
@@ -1099,7 +1540,7 @@
     st.drag = null;
   }
 
-  function isMultiTap(type) { return ["poly", "arc", "railing"].indexOf(type) !== -1; }
+  function isMultiTap(type) { return ["poly", "arc", "railing", "fascia"].indexOf(type) !== -1; }
 
   function finishPoly(close) {
     if (!st.draw || !isMultiTap(st.draw.type)) return;
@@ -1208,7 +1649,10 @@
         body: { name: name, dataBase64: dataUrl, pathParts: st.getPathParts ? st.getPathParts() : [] },
       });
       var patch = { id: up.image.id, url: "", name: up.image.name,
-        cad: { version: 2, items: st.items, takeoff: takeoffData() } };
+        // v3 adds the material list and the estimate numbers; older drawings
+        // have neither and open fine (both default from the geometry)
+        cad: { version: 3, items: st.items, takeoff: takeoffData(),
+          mats: st.mats || null, numbers: deckNumbers() } };
       if (st.onSave) st.onSave(patch);
       close();
     } catch (e) {
@@ -1228,6 +1672,9 @@
     circle: "Circle — drag from the center out. Shows diameter and area.",
     arc: "Arc — tap the start, then the end, then a point the curve passes through. Length counts as lineal feet.",
     railing: "Railing — tap along the edge it follows, then ✓ Finish. Total lineal feet is labeled and totalled in the takeoff.",
+    fascia: "Fascia — tap along the EXPOSED edges only (skip the house side), then ✓ Finish. Tip: select a deck outline first and its edges become tappable.",
+    trim: "Trim / extend — tap the line to fix, then the line it should meet. Works both ways: short lines extend, long ones cut back.",
+    array: "Array — select an item first, then tap ⧉ to repeat it at 12/16/19.2/24\" on centre (joists, footings, balusters).",
     beam: "Beam — drag the span (green). Counts as lineal feet.",
     joist: "Floor joist — drag the span; draws as a dotted yellow line. Counts as lineal feet.",
     stairs: "Stairs — drag the run out from the deck edge; treads draw automatically. Tap the 🪜 tool again to change the width.",
@@ -1250,8 +1697,11 @@
   function setTool(t) {
     var reselect = st.tool === t;
     if (st.draw && isMultiTap(st.draw.type)) finishPoly(false);
+    st.trimFirst = null;   // a half-finished trim must not survive a tool change
     st.tool = t;
-    if (t !== "select" && st.sel >= 0) { st.sel = -1; }
+    // ⧉ array works ON the selection, so it must not clear it the way the
+    // drawing tools do — that made "select it, then tap ⧉" impossible
+    if (t !== "select" && t !== "array" && st.sel >= 0) { st.sel = -1; }
     ui.querySelectorAll(".cs-tool[data-tool]").forEach(function (b) { b.classList.toggle("on", b.dataset.tool === t); });
     q("#csHint").textContent = HINTS[t] || "";
     render();
@@ -1265,6 +1715,9 @@
         q("#csHint").textContent = sz.name + " set to " + fmtFtIn(v) + " — " + sz.after;
       });
     }
+    // picking ⧉ with something already selected goes straight to the dialog;
+    // with nothing selected the hint asks for a tap, and that tap opens it
+    if (t === "array" && st.sel >= 0) openArrayPrompt(null);
     if (t === "count" && (reselect || !st.countLabel)) {
       openPrompt("🔢 What are you counting?", function () {
         st.countLabel = q("#csPromptInput").value.trim() || "Count";
@@ -1304,8 +1757,15 @@
     q("#csTakeoff").onclick = function () {
       var p = q("#csPanel");
       p.classList.toggle("open");
-      if (p.classList.contains("open")) renderTakeoff();
+      if (p.classList.contains("open")) renderPanel();
     };
+    ui.querySelectorAll(".cs-tab").forEach(function (b) {
+      b.onclick = function () {
+        st.panelTab = b.dataset.tab;
+        ui.querySelectorAll(".cs-tab").forEach(function (x) { x.classList.toggle("on", x === b); });
+        renderPanel();
+      };
+    });
     q("#csPanelClose").onclick = function () { q("#csPanel").classList.remove("open"); };
     q("#csTakeoffCopy").onclick = function () {
       var txt = takeoffText();
@@ -1368,7 +1828,10 @@
       if (!st || !ui.classList.contains("open")) return;
       if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
       if ((e.key === "Delete" || e.key === "Backspace") && st.sel >= 0) { e.preventDefault(); q("#csDelSel").onclick(); }
-      if (e.key === "Escape" && st.draw) { st.draw = null; q("#csCtx").classList.remove("open"); render(); }
+      if (e.key === "Escape") {
+        if (st.draw) { st.draw = null; q("#csCtx").classList.remove("open"); render(); }
+        if (st.trimFirst) { st.trimFirst = null; q("#csHint").textContent = HINTS.trim || ""; render(); }
+      }
       if (e.ctrlKey && e.key.toLowerCase() === "z") { e.preventDefault(); doUndo(); }
       if (e.ctrlKey && e.key.toLowerCase() === "y") { e.preventDefault(); doRedo(); }
     });
@@ -1387,6 +1850,7 @@
     var cad = (opts.entry && opts.entry.cad) || {};
     st = {
       entry: opts.entry || null, onSave: opts.onSave, getPathParts: opts.getPathParts,
+      onNumbers: opts.onNumbers || null, hiDeck: false,
       items: (cad.items || []).map(function (x) { return JSON.parse(JSON.stringify(x)); }),
       undo: [], redo: [], draw: null, drag: null, dirty: false,
       sel: -1, tool: "line", color: null, // null = auto (per-tool colours)
@@ -1395,6 +1859,8 @@
       orthoIdx: 0, orthoDeg: ORTHO_STEPS[0],
       doorW: 3, winW: 4, gateW: 3, stairW: 4, pillarSize: 0.5,
       countLabel: "", _asked: {},
+      trimFirst: null, arraySpacing: 16 / 12, arrayN: 8,
+      mats: (cad.mats || null), panelTab: "takeoff",
       pointers: {}, pinch: null,
     };
     q("#csTitle").textContent = opts.title || "New drawing";

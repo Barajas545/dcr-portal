@@ -745,6 +745,7 @@
               entry: entry,
               title: (state.project.clientName || "Site") + " — drawing",
               getPathParts: mediaPathParts,
+              onNumbers: applyDrawingNumbers,
               onSave: function (patch) {
                 Object.assign(entry, patch);
                 rerender();
@@ -770,6 +771,7 @@
         entry: null,
         title: (state.project.clientName || "Site") + " — new drawing",
         getPathParts: mediaPathParts,
+        onNumbers: applyDrawingNumbers,
         onSave: function (patch) {
           state._gal.add(patch); // fires onChange → auto-save
         },
@@ -779,6 +781,63 @@
     el("recStart").onclick = startRec;
     el("recStop").onclick = stopRec;
     el("recCancel").onclick = cancelRec;
+  }
+
+  /* Numbers measured on the field sketch land in step 1. An empty field just
+     fills; a field the rep already typed is never overwritten silently — it
+     gets a one-tap "use 512" next to it, because the drawing is usually right
+     but the typed number occasionally came from the homeowner. */
+  function applyDrawingNumbers(n) {
+    var map = [
+      { id: "f_deck", key: "deckingArea", val: n.deckSF, unit: "SF", what: "deck area" },
+      { id: "f_rail", key: "railing", val: n.railLF, unit: "LF", what: "railing" },
+      { id: "f_stairs", key: "stairs", val: n.stairs, unit: "", what: "stairs" },
+    ];
+    var filled = [], offers = [];
+    map.forEach(function (m) {
+      var inp = el(m.id);
+      if (!inp || !(m.val > 0)) return;
+      var cur = Number(inp.value) || 0;
+      if (!cur) {
+        inp.value = m.val;
+        state.project[m.key] = m.val;
+        filled.push(m.val + (m.unit ? " " + m.unit : "") + " " + m.what);
+        inp.dispatchEvent(new Event("input", { bubbles: true }));
+      } else if (Math.abs(cur - m.val) > 0.5) {
+        offers.push(m);
+      }
+    });
+    // a new deck frames what it decks — mirror the area unless it was typed
+    var fr = el("f_frame");
+    if (fr && !fr.disabled && !(Number(fr.value) > 0) && n.deckSF > 0 &&
+        state.project.projectType === "new-deck") {
+      fr.value = n.deckSF;
+      state.project.framingArea = n.deckSF;
+    }
+    state.project.drawingNumbers = { deckSF: n.deckSF, railLF: n.railLF, fasciaLF: n.fasciaLF, stairs: n.stairs };
+    saveDraftLocal();
+    var note = el("edDrawNums");
+    if (note) {
+      note.innerHTML =
+        (filled.length ? "✓ From the drawing: " + filled.join(" · ") + ". " : "") +
+        (n.fasciaLF ? "Fascia " + n.fasciaLF + " LF noted. " : "") +
+        offers.map(function (m) {
+          return 'Drawing says <b>' + m.val + (m.unit ? " " + m.unit : "") + "</b> " + m.what +
+            ' — <button type="button" class="btn btn-ghost btn-sm useNum" data-id="' + m.id +
+            '" data-key="' + m.key + '" data-v="' + m.val + '" style="padding:1px 7px">use it</button> ';
+        }).join("");
+      note.style.display = note.innerHTML ? "" : "none";
+      note.querySelectorAll(".useNum").forEach(function (b) {
+        b.onclick = function () {
+          var inp = el(b.dataset.id);
+          inp.value = b.dataset.v;
+          state.project[b.dataset.key] = Number(b.dataset.v);
+          inp.dispatchEvent(new Event("input", { bubbles: true }));
+          b.parentNode.removeChild(b);
+          saveDraftLocal();
+        };
+      });
+    }
   }
 
   function renderAudioList() {
@@ -1017,6 +1076,7 @@
       '<div class="full"><label>Project photos & drawings <span style="color:var(--text-muted);font-weight:400">— tap ✏️ to mark up a photo or edit a drawing</span>' +
       '<span id="autoSaveMsg" style="float:right;font-size:11px;font-weight:600"></span></label>' +
       '<div style="margin:2px 0 8px"><button type="button" class="btn btn-ghost btn-sm" id="edNewDrawing">📐 New drawing — sketch the deck plan with real dimensions</button></div>' +
+      '<div class="ed-sub" id="edDrawNums" style="display:none;margin:-4px 0 8px;font-size:12px"></div>' +
       '<div id="edGallery"></div></div>' +
       '<div class="full"><label>Voice notes <span style="color:var(--text-muted);font-weight:400">— saved automatically when you stop recording (audio + transcript); delete any you don\'t need</span></label>' +
       '<div id="edNotesList"></div>' +
