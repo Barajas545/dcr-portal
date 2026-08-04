@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Project Status Report</title>
+    <style>
+      /* paper-white report, always light — this page exists to be printed */
+      :root{ --surface:#fff; --surface-2:#f2f4f7; --border:#d7dde4; --text:#1b2733;
+        --text-muted:#5a6b7d; --acc:#2f80d8; --tint:rgba(47,128,216,.10);
+        --gold:#b07d18; --ok:#1f7a55; --err:#c44b3b; }
+      *{box-sizing:border-box;}
+      body{margin:0; font-family:system-ui,"Segoe UI",Arial,sans-serif; background:#e8ebef; color:var(--text);}
+      .bar{display:flex; gap:8px; align-items:center; padding:10px 16px; background:#171d25;}
+      .bar button, .bar a{padding:7px 12px; font-size:12.5px; font-weight:600; border-radius:7px; cursor:pointer;
+        border:1px solid #2a333d; background:#10151b; color:#e6ebf1; text-decoration:none;}
+      .bar .primary{background:#2f80d8; border-color:#2f80d8; color:#fff;}
+      .sheet{background:#fff; max-width:10.5in; margin:14px auto; padding:.55in; box-shadow:0 3px 18px rgba(0,0,0,.18);}
+      .lh{display:flex; align-items:center; gap:14px; border-bottom:3px solid #1b2733; padding-bottom:10px; margin-bottom:14px;}
+      .lh img{height:52px;}
+      .lh .co{font-size:11px; color:var(--text-muted); line-height:1.45;}
+      .lh .sp{flex:1;}
+      .lh .ttl{text-align:right;}
+      .lh .ttl b{font-size:19px; letter-spacing:.03em;}
+      h2{font-size:15px; margin:16px 0 8px;}
+      .meta{font-size:12.5px; color:var(--text-muted); margin-bottom:10px;}
+      .chartwrap{border:1px solid var(--border); border-radius:8px; overflow:hidden;}
+      .chartwrap svg{width:100%; height:auto; display:block;}
+      table{width:100%; border-collapse:collapse; font-size:11.5px;}
+      th{background:var(--surface-2); text-align:left; padding:6px 8px; border-bottom:2px solid var(--border);}
+      td{padding:5px 8px; border-bottom:1px solid var(--border); vertical-align:top; break-inside:avoid;}
+      td.num, th.num{text-align:right; font-variant-numeric:tabular-nums;}
+      tr.tot td{font-weight:800; border-top:2px solid var(--text);}
+      @page{size:landscape; margin:.4in;}
+      @media print{
+        body{background:#fff;}
+        .bar{display:none;}
+        .sheet{box-shadow:none; margin:0; max-width:none; padding:0;}
+        h2{break-after:avoid;}
+      }
+    </style>
+  </head>
+  <body>
+    <div class="bar">
+      <a href="#" id="rpBack">← Back to the chart</a>
+      <label style="color:#e6ebf1;font-size:12px;display:flex;gap:6px;align-items:center">
+        <input type="checkbox" id="rpHideMoney"> Hide prices (worksite copy)</label>
+      <span style="flex:1"></span>
+      <button class="primary" id="rpPrint">🖨 Print</button>
+    </div>
+    <div class="sheet" id="rpSheet">Loading…</div>
+    <script src="config.js"></script>
+    <script src="common.js"></script>
+    <script src="pm-chart.js"></script>
+    <script src="report-pm.js"></script>
+  </body>
+</html>

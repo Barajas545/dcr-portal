@@ -1627,6 +1627,8 @@
 
     document.querySelectorAll(".pj-tab").forEach(function(t){ t.onclick = function(){ switchTab(t.getAttribute("data-tab")); }; });
     el("pjSave").onclick = saveOverview;
+    var pmBtn = el("pjPmBtn");
+    if (pmBtn) pmBtn.href = "pm.html?id=" + encodeURIComponent(PID);
     el("tkCancel").onclick = function(){ el("taskModal").classList.remove("open"); };
     el("tkSave").onclick = saveTask;
     el("subCancel").onclick = function(){ el("subModal").classList.remove("open"); };
