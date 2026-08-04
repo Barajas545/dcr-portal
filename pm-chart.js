@@ -250,6 +250,7 @@
         rowIds: it.rowIds, assignees: assignees, initials: initials,
         estTotal: it.estTotal, quotedPrice: it.quotedPrice, priced: it.priced,
         scopeNames: it.scopeNames || [], quotes: qs, requests: requests.length,
+        takeoff: it.takeoff || null,
         awarded: awarded, invoiced: inv, paid: paid,
         nodes: nodes, pctA: pctA, pctB: Math.round(pctB), flag: flag, attention: attention,
       };

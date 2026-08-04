@@ -355,6 +355,22 @@
           return '<div class="pm-card"><div class="k">' + esc(c[0]) + '</div><div class="v" style="font-size:13.5px">' + C.money(c[1] || 0) + "</div></div>";
         }).join("") + "</div>";
 
+    var tkRow = "";
+    if (l.takeoff && l.takeoff.lines) {
+      tkRow = '<div class="pm-h">Material takeoff</div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px">' +
+        '<span>📐 ' + l.takeoff.lines + " line" + (l.takeoff.lines === 1 ? "" : "s") +
+        (l.takeoff.names && l.takeoff.names.length ? ' <span class="pm-sub">· ' + esc(l.takeoff.names.join(", ")) + "</span>" : "") + "</span>" +
+        "<b>" + (hidden || !l.takeoff.total ? "" : C.money(l.takeoff.total)) + "</b></div>" +
+        '<a class="pm-sub" href="project.html?id=' + esc(PID) + '&tab=takeoffs">Open the Takeoffs tab →</a>';
+    }
+
+    var filesSec = '<div class="pm-h">Item documents <span id="pmFCount"></span></div>' +
+      '<div id="pmFiles" class="pm-sub">Loading…</div>' +
+      '<div style="margin-top:6px"><input type="file" id="pmFileIn" multiple style="display:none">' +
+      '<button class="btn btn-ghost btn-sm" id="pmFileAdd">＋ Add document</button> ' +
+      '<span class="pm-msg" id="pmFileMsg"></span></div>';
+
     var qRows = l.quotes.map(function (q) {
       var amt = hidden ? "" : (q.quoteAmount != null && q.quoteAmount !== "" ? C.money(Number(q.quoteAmount)) : "—");
       var awarded = q.quoteStatus === "Awarded";
@@ -445,9 +461,9 @@
               '<span>' + esc(e.description || e.gropingName || "expense") + "</span><b>" +
               (hidden ? "" : C.money(e.materials + e.contractors + e.invoice)) + "</b></div>";
           }).join("") +
-          '<a class="pm-sub" href="project.html?id=' + esc(PID) + '">Open the Expenses tab →</a>'
+          '<a class="pm-sub" href="project.html?id=' + esc(PID) + '&tab=expenses">Open the Expenses tab →</a>'
         : "") +
-      flagRow + noteBox +
+      tkRow + filesSec + flagRow + noteBox +
       "</div>";
 
     el("pmDrawerX").onclick = closeDrawer;
@@ -457,6 +473,35 @@
       this.textContent = "✓";
     };
     wireDrawer(l);
+    loadTaskFiles(l);
+  }
+
+  /* ── per-item documents (Project Documents/TaskDocuments/<row id>) ── */
+  function fmtSize(n) {
+    n = Number(n) || 0;
+    if (n >= 1048576) return (n / 1048576).toFixed(1) + " MB";
+    if (n >= 1024) return Math.round(n / 1024) + " KB";
+    return n + " B";
+  }
+  async function loadTaskFiles(l) {
+    var box = el("pmFiles"), cnt = el("pmFCount");
+    if (!box) return;
+    try {
+      var r = await DCR.api("/api/portal?action=drive&taskDocs=" + encodeURIComponent(PID) +
+        "&task=" + encodeURIComponent(l.rowIds.slice(0, 12).join(",")));
+      if (state.drawerKey !== l.key || !el("pmFiles")) return;
+      var fs = r.files || [];
+      if (cnt) cnt.textContent = fs.length ? "· " + fs.length : "";
+      if (!fs.length) { el("pmFiles").textContent = "No documents for this item yet."; return; }
+      el("pmFiles").innerHTML = fs.map(function (f) {
+        return '<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px solid var(--border);font-size:12px;align-items:center">' +
+          '<a href="' + esc(f.webUrl || "#") + '" target="_blank" rel="noopener noreferrer" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📄 ' + esc(f.name) + "</a>" +
+          '<span class="pm-sub" style="white-space:nowrap">' + fmtSize(f.size) + "</span></div>";
+      }).join("");
+    } catch (e) {
+      if (el("pmFiles")) el("pmFiles").textContent = "Documents unavailable — " + (e.message || "no project folder yet.");
+      if (cnt) cnt.textContent = "";
+    }
   }
 
   function wireDrawer(l) {
@@ -590,6 +635,7 @@
           var body = "Hello " + (f.vendorName || "") + ",\n\nPlease quote the following scope for " +
             (pj.projectAddress || "our project") + ":\n\n" +
             l.scopeNames.slice(0, 20).map(function (s) { return "• " + s; }).join("\n").slice(0, 500) +
+            (pj.projectPlansURL ? "\n\nPLANS: " + pj.projectPlansURL : "") +
             "\n\nThank you,\n" + ((state.profile || {}).displayName || "");
           location.href = "mailto:" + encodeURIComponent(f.vendorEmail) +
             "?subject=" + encodeURIComponent(subj) + "&body=" + encodeURIComponent(body);
@@ -604,6 +650,49 @@
       if (!f.vendorName && !f.vendorCompany) f.vendorName = "DCR crew";
       write({ op: "qtAdd", projectId: PID, fields: f });
     };
+
+    // per-item document upload — chunked PUT straight to SharePoint, same as
+    // the project Files tab; files land beside the ones Access already made.
+    var fAdd = el("pmFileAdd"), fIn = el("pmFileIn");
+    if (fAdd && fIn) {
+      var fMsg = function (t) { var e2 = el("pmFileMsg"); if (e2) e2.textContent = t || ""; };
+      fAdd.onclick = function () { fIn.click(); };
+      fIn.onchange = async function () {
+        var files = Array.prototype.slice.call(fIn.files || []);
+        fIn.value = "";
+        fAdd.disabled = true;
+        try {
+          for (var i = 0; i < files.length; i++) {
+            var file = files[i];
+            if (!file.size) { fMsg("Skipped " + file.name + " (empty file)"); continue; }
+            fMsg("Uploading " + file.name + "…");
+            var s = await DCR.api("/api/portal?action=drive", { method: "POST",
+              body: { op: "uploadSession", projectId: PID, target: "taskDocs",
+                taskId: l.rowIds[0], name: file.name, mimeType: file.type } });
+            var CHUNK = 320 * 1024 * 24, pos = 0, total = file.size;
+            while (pos < total) {
+              var end = Math.min(pos + CHUNK, total);
+              await new Promise(function (resolve, reject) {
+                var x = new XMLHttpRequest();
+                x.open("PUT", s.uploadUrl);
+                x.setRequestHeader("Content-Range", "bytes " + pos + "-" + (end - 1) + "/" + total);
+                x.onload = function () {
+                  if (x.status === 200 || x.status === 201 || x.status === 202) resolve();
+                  else reject(new Error("Upload failed (" + x.status + ")"));
+                };
+                x.onerror = function () { reject(new Error("Upload failed — check your connection.")); };
+                x.send(file.slice(pos, end));
+              });
+              pos = end;
+            }
+          }
+          fMsg("✓ Saved");
+          setTimeout(function () { fMsg(""); }, 3000);
+          loadTaskFiles(l);
+        } catch (e) { fMsg(e.message || "Upload failed"); }
+        fAdd.disabled = false;
+      };
+    }
 
     var fg = function (state2, note) {
       write({ op: "flag", projectId: PID, itemKey: l.key, state: state2, note: note || "" }, "pmNoteMsg");
