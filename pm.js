@@ -129,6 +129,59 @@
     if (b) b.textContent = document.fullscreenElement ? "✕ Exit full screen" : "⛶ Full screen";
   });
 
+  /* ── extras: money spent that no estimate item accounts for ────────────
+     The concrete pump nobody priced. These rows carry no estimate-item link,
+     so they never roll into a lane — which is exactly why they need somewhere
+     visible to live, instead of quietly widening the gap between estimated
+     and actual. */
+  function extrasPanel() {
+    var p = state.payload, m = state.model;
+    if (!p.expenses || m.pricesHidden) return "";
+    var rows = m.unassignedRows || [];
+    var total = m.unassignedCosts || 0;
+    var open = projPrefs().extrasOpen || false;
+    return '<div class="pm-tk" data-open="' + (open ? "1" : "0") + '" id="pmExtras">' +
+      '<div class="tk-hd" id="pmExAdd">💸 Not in the estimate — ' + rows.length +
+        (rows.length ? " · " + C.money(total) : "") + " <span>" + (open ? "▾" : "▸") + "</span>" +
+      '<span style="flex:1"></span>' +
+      '<a class="pm-sub" id="pmExLink" href="project.html?id=' + esc(PID) + '&tab=expenses">Open the Expenses tab →</a></div>' +
+      (open
+        ? '<div style="padding:2px 14px 12px">' +
+          '<div class="pm-sub" style="margin-bottom:6px">Costs with no estimate item behind them — ' +
+          "the extras that eat the margin if nobody writes them down.</div>" +
+          '<div id="pmExList">' + costRowsHtml(rows, state.payload.can.estimate, false) + "</div>" +
+          (state.payload.can.estimate
+            ? '<div style="margin-top:8px"><button class="btn btn-ghost btn-sm" id="exAdd">＋ Add an unplanned cost</button></div>' +
+              costFormHtml("ex", false)
+            : "") +
+          "</div>"
+        : "") + "</div>";
+  }
+
+  function wireExtras() {
+    var hd = el("pmExAdd");
+    if (!hd) return;
+    hd.onclick = function (e) {
+      if (e.target && e.target.id === "pmExLink") return;
+      setPref("extrasOpen", el("pmExtras").dataset.open !== "1");
+      render();
+    };
+    var add = el("exAdd");
+    if (add) {
+      add.onclick = function () {
+        var f = el("exForm");
+        f.style.display = f.style.display === "none" ? "" : "none";
+        if (f.style.display === "") el("exDesc").focus();
+      };
+      el("exCancel").onclick = function () { el("exForm").style.display = "none"; el("exMsg").textContent = ""; };
+      el("exSave").onclick = function () { saveCost("ex", null, function () { render(); }); };
+    }
+    var root = el("pmRoot");
+    root.querySelectorAll("#pmExList .expDel").forEach(function (b) {
+      b.onclick = function () { deleteCost(b.dataset.e).then(function () { render(); }); };
+    });
+  }
+
   /* ── project tasks panel (the Access Tasks tab, per employee) ── */
   function tasksPanel() {
     var p = state.payload;
@@ -161,7 +214,7 @@
         return '<div class="tk-grp"><div class="tk-emp">' + esc(emp) + "</div>" + rows + "</div>";
       }).join("") + "</div>";
     }
-    return '<div class="pm-tk" data-open="' + (open ? "1" : "0") + '"><div class="tk-hd" id="pmTkHd">📋 Project tasks — ' +
+    return '<div class="pm-tk" id="pmTasksPanel" data-open="' + (open ? "1" : "0") + '"><div class="tk-hd" id="pmTkHd">📋 Project tasks — ' +
       pend.length + " pending · " + (p.tasks.length - pend.length) + " done <span>" + (open ? "▾" : "▸") + "</span>" +
       '<span style="flex:1"></span>' +
       '<a class="pm-sub" id="pmTkLink" href="project.html?id=' + esc(PID) + '&tab=tasks">Open the Tasks tab →</a></div>' +
@@ -175,7 +228,9 @@
     if (!hd) return;
     hd.onclick = function (e) {
       if (e.target && e.target.id === "pmTkLink") return;
-      var panel = document.querySelector(".pm-tk");
+      // by id, not by class: the extras panel shares .pm-tk and renders first,
+      // so a class lookup would swap the wrong panel out
+      var panel = el("pmTasksPanel");
       setPref("tasksOpen", panel.dataset.open !== "1");
       var holder = document.createElement("div");
       holder.innerHTML = tasksPanel();
@@ -284,7 +339,7 @@
           (document.fullscreenElement ? "✕ Exit full screen" : "⛶ Full screen") + "</button>" +
         '<span class="pm-legend">✓ Done · ● In progress · ⚠ Waiting · ◌ Not started</span>' +
       "</div>" +
-      chart + tasksPanel() + empty;
+      chart + extrasPanel() + tasksPanel() + empty;
 
     wire(compact);
   }
@@ -301,6 +356,7 @@
       else if (document.documentElement.requestFullscreen) { document.documentElement.requestFullscreen(); }
     };
     wireTasks();
+    wireExtras();
     var setup = el("pmSetup");
     if (setup) setup.onclick = async function () {
       setup.disabled = true;
@@ -390,6 +446,114 @@
     if (rs) rs.onclick = function () { setStatus("In Progress", "Resume this project (In Progress)"); };
   }
 
+  /* ── costs, invoices and tasks ─────────────────────────────────────────
+     A cost is one ProjectExpenseAnalisis row. Linking it to an estimate item
+     means stamping the item's estimate row id into ExpenseOriginalEstimateNumber
+     (plus the grouping name), which is exactly how the Access expense screen
+     has always joined them — so anything added here shows up there too, and
+     several rows per item is the normal case, not a special one.
+     Leave the link off and the cost is an extra that nobody estimated. */
+  var COST_KINDS = [
+    { k: "materials", label: "Material / supplier" },
+    { k: "contractors", label: "Subcontractor" },
+    { k: "invoice", label: "Invoice received" },
+  ];
+  function costTotal(e) { return (e.materials || 0) + (e.contractors || 0) + (e.invoice || 0); }
+  function costKindOf(e) {
+    if (e.invoice) return "Invoice";
+    if (e.contractors) return "Subcontractor";
+    if (e.materials) return "Material";
+    return "";
+  }
+  function todayInput() { return todayISO(); }
+
+  function costFormHtml(idp, forItem) {
+    return '<div class="pm-form" id="' + idp + 'Form" style="display:none">' +
+      '<div style="display:flex;gap:8px">' +
+        '<div style="flex:1"><label>Date</label><input type="date" id="' + idp + 'Date" value="' + todayInput() + '"></div>' +
+        '<div style="flex:1"><label>Kind</label><select id="' + idp + 'Kind">' +
+          COST_KINDS.map(function (c) { return '<option value="' + c.k + '">' + esc(c.label) + "</option>"; }).join("") +
+        "</select></div>" +
+      "</div>" +
+      '<label>What was it for</label><input id="' + idp + 'Desc" placeholder="e.g. concrete pump rental">' +
+      '<label>Amount</label><input id="' + idp + 'Amt" type="number" inputmode="decimal" step="0.01">' +
+      (forItem ? "" : '<label>Which part of the job (optional)</label><input id="' + idp + 'Grp" placeholder="e.g. Concrete">') +
+      '<div style="display:flex;gap:8px;margin-top:10px">' +
+      '<button class="btn btn-sm" id="' + idp + 'Save">＋ Add cost</button>' +
+      '<button class="btn btn-ghost btn-sm" id="' + idp + 'Cancel">Cancel</button></div>' +
+      '<div class="pm-msg" id="' + idp + 'Msg"></div></div>';
+  }
+
+  function costRowsHtml(rows, canEdit, hidden) {
+    if (!rows.length) return '<div class="pm-sub">Nothing recorded yet.</div>';
+    return rows.map(function (e) {
+      return '<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;' +
+        'font-size:12px;padding:4px 0;border-bottom:1px solid var(--border)">' +
+        "<span>" + esc(String(e.expenseDate || "").slice(0, 10)) + " · " +
+        esc(e.description || e.gropingName || "cost") +
+        (costKindOf(e) ? ' <span class="pm-sub">' + esc(costKindOf(e)) + "</span>" : "") + "</span>" +
+        "<span style='white-space:nowrap'><b>" + (hidden ? "" : C.money(costTotal(e))) + "</b>" +
+        (canEdit ? ' <button class="btn btn-ghost btn-sm expDel" data-e="' + esc(e.id) +
+          '" title="Remove this cost" style="padding:0 6px">🗑</button>' : "") + "</span></div>";
+    }).join("");
+  }
+
+  // One place that writes a cost row, used by the item drawer and the
+  // extras panel — the only difference is whether the item link is stamped.
+  async function saveCost(idp, link, onDone) {
+    var amt = Number((el(idp + "Amt") || {}).value);
+    var desc = String((el(idp + "Desc") || {}).value || "").trim();
+    var m = el(idp + "Msg");
+    if (!(amt > 0)) { if (m) m.textContent = "Enter an amount."; return; }
+    if (!desc) { if (m) m.textContent = "Say what the cost was for."; return; }
+    var kind = (el(idp + "Kind") || {}).value || "materials";
+    var d = (el(idp + "Date") || {}).value || todayISO();
+    var fields = { description: desc, expenseDate: new Date(d + "T12:00:00Z").toISOString() };
+    fields[kind] = amt;
+    if (link && link.rowId) fields.expenseOriginalEstimateNumber = String(link.rowId);
+    if (link && link.grouping) fields.gropingName = link.grouping;
+    else {
+      var g = String((el(idp + "Grp") || {}).value || "").trim();
+      if (g) fields.gropingName = g;
+    }
+    if (m) m.textContent = "Saving…";
+    try {
+      await DCR.api("/api/portal?action=project", { method: "POST",
+        body: { op: "expAdd", projectId: PID, fields: fields } });
+      await load();
+      if (onDone) onDone();
+    } catch (e) { if (m) m.textContent = e.message || "Could not save that cost."; }
+  }
+
+  async function deleteCost(id) {
+    if (!confirm("Remove this cost?")) return;
+    try {
+      await DCR.api("/api/portal?action=project", { method: "POST", body: { op: "expDelete", itemId: id } });
+      await load();
+    } catch (e) { alert(e.message || "Could not remove it."); }
+  }
+
+  // Tasks belonging to one estimate item: linked by the estimate row id we
+  // stamp into the sub-category when the task is raised here.
+  function tasksForLane(l) {
+    var ids = {};
+    (l.rowIds || []).forEach(function (r) { ids[String(r)] = 1; });
+    return (state.payload.tasks || []).filter(function (t) { return t.subCategory && ids[t.subCategory]; });
+  }
+  function itemTasksHtml(rows) {
+    if (!rows.length) return '<div class="pm-sub">No tasks for this item.</div>';
+    return rows.map(function (t) {
+      return '<div style="display:flex;gap:8px;font-size:12px;padding:4px 0;border-bottom:1px solid var(--border)' +
+        (t.complete ? ";opacity:.65" : "") + '">' +
+        "<span>" + (t.complete ? "✓" : /urgent/i.test(t.priority) ? "⚑" : "◌") + "</span>" +
+        "<span style='flex:1;min-width:0'><b>" + esc(t.name || "Task") + "</b>" +
+        (t.assignedPerson ? ' <span class="pm-sub">· ' + esc(t.assignedPerson) + "</span>" : "") +
+        (t.description ? '<div class="pm-sub">' + esc(t.description) + "</div>" : "") +
+        (t.complete && t.completedWork ? '<div style="color:var(--ok)">' + esc(t.completedWork) + "</div>" : "") +
+        "</span></div>";
+    }).join("");
+  }
+
   /* ── item drawer ── */
   function laneOf(key) {
     for (var i = 0; i < state.model.lanes.length; i++) if (state.model.lanes[i].key === key) return state.model.lanes[i];
@@ -424,6 +588,7 @@
         costRows.push(e);
       }
     });
+    var itemTasks = tasksForLane(l);
 
     var lbn = l.laborNames || [], mtn = l.materialNames || [];
     var scopeSec = "";
@@ -553,15 +718,33 @@
         ? (qRows ? '<table class="pm-qt">' + qRows + "</table>" : '<div class="pm-sub">No quote requests yet.</div>')
         : '<div class="pm-sub">Quote tracking isn\'t enabled yet.</div>') +
       addForm +
-      (costRows.length
-        ? '<div class="pm-h">Recorded costs · ' + costRows.length + "</div>" +
-          costRows.slice(0, 8).map(function (e) {
-            return '<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid var(--border)">' +
-              '<span>' + esc(e.description || e.gropingName || "expense") + "</span><b>" +
-              (hidden ? "" : C.money(e.materials + e.contractors + e.invoice)) + "</b></div>";
-          }).join("") +
-          '<a class="pm-sub" href="project.html?id=' + esc(PID) + '&tab=expenses">Open the Expenses tab →</a>'
+      // Costs and invoices against this item — as many as it takes.
+      '<div class="pm-h">Costs &amp; invoices' + (costRows.length ? " · " + costRows.length : "") +
+        (hidden || !costRows.length ? "" : ' <span class="pm-sub">' + C.money(costs) + " total</span>") + "</div>" +
+      '<div id="pmCostList">' + costRowsHtml(costRows, can.estimate, hidden) + "</div>" +
+      (can.estimate
+        ? '<div style="margin-top:6px"><button class="btn btn-ghost btn-sm" id="icAdd">＋ Add a cost or invoice</button></div>' +
+          costFormHtml("ic", true)
         : "") +
+      (costRows.length ? '<a class="pm-sub" href="project.html?id=' + esc(PID) + '&tab=expenses">Open the Expenses tab →</a>' : "") +
+
+      // Tasks raised against this item.
+      '<div class="pm-h">Tasks' + (itemTasks.length ? " · " + itemTasks.length : "") + "</div>" +
+      '<div id="pmItemTasks">' + itemTasksHtml(itemTasks) + "</div>" +
+      (can.status
+        ? '<div style="margin-top:6px"><button class="btn btn-ghost btn-sm" id="itAdd">＋ Add a task</button></div>' +
+          '<div class="pm-form" id="itForm" style="display:none">' +
+          '<label>Task</label><input id="itName" placeholder="e.g. order the pump for Friday">' +
+          '<label>Details</label><textarea id="itDesc" rows="2"></textarea>' +
+          '<div style="display:flex;gap:8px"><div style="flex:1"><label>Who</label><input id="itWho" value="' +
+            esc((l.assignees[0] && (l.assignees[0].name || l.assignees[0].email)) || "") + '"></div>' +
+          '<div style="flex:1"><label>Priority</label><select id="itPri"><option value="">Normal</option><option>Urgent</option></select></div></div>' +
+          '<div style="display:flex;gap:8px;margin-top:10px">' +
+          '<button class="btn btn-sm" id="itSave">＋ Add task</button>' +
+          '<button class="btn btn-ghost btn-sm" id="itCancel">Cancel</button></div>' +
+          '<div class="pm-msg" id="itMsg"></div></div>'
+        : "") +
+
       tkRow + filesSec + flagRow + noteBox +
       "</div>";
 
@@ -849,6 +1032,53 @@
           loadTaskFiles(l);
         } catch (e) { fMsg(e.message || "Upload failed"); }
         fAdd.disabled = false;
+      };
+    }
+
+    // costs & invoices for this item
+    var icAdd = el("icAdd");
+    if (icAdd) {
+      icAdd.onclick = function () {
+        var f = el("icForm");
+        f.style.display = f.style.display === "none" ? "" : "none";
+        if (f.style.display === "") el("icDesc").focus();
+      };
+      el("icCancel").onclick = function () { el("icForm").style.display = "none"; el("icMsg").textContent = ""; };
+      el("icSave").onclick = function () {
+        saveCost("ic", { rowId: l.rowIds[0], grouping: l.groupingName }, function () { renderDrawer(); });
+      };
+    }
+    d.querySelectorAll(".expDel").forEach(function (b) {
+      b.onclick = function () { deleteCost(b.dataset.e).then(function () { renderDrawer(); }); };
+    });
+
+    // tasks for this item
+    var itAdd = el("itAdd");
+    if (itAdd) {
+      itAdd.onclick = function () {
+        var f = el("itForm");
+        f.style.display = f.style.display === "none" ? "" : "none";
+        if (f.style.display === "") el("itName").focus();
+      };
+      el("itCancel").onclick = function () { el("itForm").style.display = "none"; el("itMsg").textContent = ""; };
+      el("itSave").onclick = async function () {
+        var name = String(el("itName").value || "").trim();
+        var m2 = el("itMsg");
+        if (!name) { m2.textContent = "Give the task a name."; return; }
+        m2.textContent = "Saving…";
+        try {
+          await DCR.api("/api/portal?action=project", { method: "POST", body: {
+            op: "taskAdd", projectId: PID, taskName: name,
+            description: String(el("itDesc").value || "").trim(),
+            category: l.groupingName,               // reads as a heading in Access
+            subCategory: String(l.rowIds[0] || ""), // the machine link back to the item
+            assignedPerson: String(el("itWho").value || "").trim(),
+            assignedEmail: (l.assignees[0] && l.assignees[0].email) || "",
+            priority: el("itPri").value || "",
+          } });
+          await load();
+          renderDrawer();
+        } catch (e2) { m2.textContent = e2.message || "Could not add that task."; }
       };
     }
 
