@@ -51,6 +51,11 @@
       return;
     }
     el("seNote").textContent = "Searching…";
+    // The "type at least 2 characters" hint has done its job by now — drop it
+    // so it can't sit under a search that is already running. Any previous
+    // results stay put until the new ones land, which keeps typing steady.
+    var placeholder = el("seResults").querySelector(".se-empty");
+    if (placeholder) placeholder.remove();
     try {
       var d = await DCR.api("/api/portal?action=search&q=" + encodeURIComponent(q));
       if (my !== seq) return; // stale response
