@@ -533,6 +533,63 @@
     } catch (e) { DCR.alert(e.message || "Could not remove it.", { title: "Couldn't remove it" }); }
   }
 
+  /* ── who this item is already assigned to ──────────────────────────────
+     TaskAssignedPerson is a multi-line blob the Access form builds by stacking
+     the contact's name, company and phone; TaskAssignedEmail holds the address.
+     Pull it apart so the quote form starts filled in with the person the item
+     is already assigned to, instead of making someone retype what we know. */
+  var RE_EMAIL = /[^\s,;<>()]+@[^\s,;<>()]+\.[a-z]{2,}/i;
+  // must swallow the opening paren of "(805) 674-1383", or it is left behind
+  // and reads as part of the name
+  var RE_PHONE = /(\+?\d{0,2}[\s.\-]*\(?\d{3}\)?[\s.\-]*\d{3}[\s.\-]*\d{4})/;
+  function assigneeSeed(l) {
+    var a = (l.assignees || [])[0];
+    if (!a) return null;
+    var raw = String(a.name || "");
+    var seed = { name: "", company: "", trade: "", email: String(a.email || "").trim(), phone: "" };
+    var lines = raw.split(/[\r\n]+/).map(function (s) { return s.trim(); }).filter(Boolean);
+    var leftovers = [];
+    lines.forEach(function (line) {
+      var em = line.match(RE_EMAIL), ph = line.match(RE_PHONE);
+      var rest = line;
+      if (em) { if (!seed.email) seed.email = em[0]; rest = rest.replace(em[0], " "); }
+      if (ph) { if (!seed.phone) seed.phone = ph[0].trim(); rest = rest.replace(ph[0], " "); }
+      rest = rest.replace(/\s{2,}/g, " ").trim();
+      if (rest) leftovers.push(rest);
+    });
+    seed.name = leftovers.shift() || "";
+    seed.company = leftovers.join(" ").trim();
+    return seed.name || seed.email || seed.phone ? seed : null;
+  }
+
+  // Fill the blanks the blob can't answer (company, trade, a proper email) from
+  // the Contacts record, matching on email first — the one reliable key —
+  // then on the name. Never overwrites something already on screen.
+  async function enrichVendorFromContacts(seed) {
+    var setIfBlank = function (id, v) {
+      var n = el(id);
+      if (n && !n.value && v) n.value = v;
+    };
+    var all;
+    try { all = await contactsBook(); } catch (e) { return null; }
+    var email = (seed.email || "").toLowerCase();
+    var name = (seed.name || "").toLowerCase();
+    var hit = null;
+    if (email) {
+      hit = all.filter(function (c) { return String(c.contactEMail || "").toLowerCase() === email; })[0] || null;
+    }
+    if (!hit && name.length > 3) {
+      hit = all.filter(function (c) { return String(c.contactName || "").toLowerCase() === name; })[0] ||
+        all.filter(function (c) { return String(c.contactName || "").toLowerCase().indexOf(name) !== -1; })[0] || null;
+    }
+    if (!hit) return null;
+    setIfBlank("qtCompany", hit.contactCompany);
+    setIfBlank("qtTrade", hit.contactTrade);
+    setIfBlank("qtEmail", hit.contactEMail);
+    setIfBlank("qtPhone", hit.contactPhone);
+    return hit;
+  }
+
   // Tasks belonging to one estimate item: linked by the estimate row id we
   // stamp into the sub-category when the task is raised here.
   function tasksForLane(l) {
@@ -605,6 +662,9 @@
         "</div>";
     }
 
+    // start the quote form from whoever the item is already assigned to
+    var seed = assigneeSeed(l) || { name: "", company: "", trade: "", email: "", phone: "" };
+
     var moneyRow = hidden ? "" :
       '<div class="pm-h">Money</div><div class="pm-money">' +
       [["Estimate", l.estTotal], ["Awarded", l.awarded], ["Invoiced", l.invoiced], ["Paid", l.paid], ["Costs recorded", costs]]
@@ -662,11 +722,12 @@
     var addForm = can.quotes
       ? '<div class="pm-h">Request a quote</div><div class="pm-form">' +
         '<div class="pm-sugg"><label>Vendor (from Contacts)</label>' +
-        '<input id="qtVendor" autocomplete="off" placeholder="Type a vendor name…"><div class="list" id="qtVList"></div></div>' +
-        '<div style="display:flex;gap:8px"><div style="flex:1"><label>Company</label><input id="qtCompany"></div>' +
-        '<div style="flex:1"><label>Trade</label><input id="qtTrade"></div></div>' +
-        '<div style="display:flex;gap:8px"><div style="flex:1"><label>Email</label><input id="qtEmail" type="email"></div>' +
-        '<div style="flex:1"><label>Phone</label><input id="qtPhone"></div></div>' +
+        '<input id="qtVendor" autocomplete="off" placeholder="Type a vendor name…" value="' +
+          esc(seed.name) + '"><div class="list" id="qtVList"></div></div>' +
+        '<div style="display:flex;gap:8px"><div style="flex:1"><label>Company</label><input id="qtCompany" value="' + esc(seed.company) + '"></div>' +
+        '<div style="flex:1"><label>Trade</label><input id="qtTrade" value="' + esc(seed.trade) + '"></div></div>' +
+        '<div style="display:flex;gap:8px"><div style="flex:1"><label>Email</label><input id="qtEmail" type="email" value="' + esc(seed.email) + '"></div>' +
+        '<div style="flex:1"><label>Phone</label><input id="qtPhone" value="' + esc(seed.phone) + '"></div></div>' +
         (hidden ? "" : '<label>Quoted amount (if already known)</label><input id="qtAmt" type="number" inputmode="decimal">') +
         '<label>Notes</label><textarea id="qtNotes" rows="2"></textarea>' +
         '<label>Quote document URL (optional)</label><input id="qtDoc" placeholder="https://…">' +
@@ -849,6 +910,16 @@
     // vendor typeahead over contacts
     var vend = el("qtVendor");
     var picked = { id: "" };
+    // The assignee blob gives us a name, and usually a phone and email. Company
+    // and trade only live in Contacts, so look the person up and fill the gaps.
+    if (vend) {
+      var seed0 = assigneeSeed(l);
+      if (seed0) {
+        enrichVendorFromContacts(seed0).then(function (hit) {
+          if (hit && !picked.id) picked.id = String(hit.id);
+        });
+      }
+    }
     if (vend) {
       var t = null;
       vend.addEventListener("input", function () {
