@@ -506,8 +506,9 @@
         '<label>Notes</label><textarea id="qtNotes" rows="2"></textarea>' +
         '<label>Quote document URL (optional)</label><input id="qtDoc" placeholder="https://…">' +
         '<label style="display:flex;align-items:center;gap:6px;margin-top:10px"><input type="checkbox" id="qtMail" checked style="width:auto"> Compose the request email now</label>' +
-        '<div style="display:flex;gap:8px;margin-top:10px">' +
+        '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">' +
         '<button class="btn btn-sm" id="qtSave">＋ Add quote request</button>' +
+        '<button class="btn btn-ghost btn-sm" id="qtAwardNow" title="Skip the bidding steps — record this vendor as the one doing the work">🏆 Award to this vendor</button>' +
         '<button class="btn btn-ghost btn-sm" id="qtSelf">We self-perform this</button></div>' +
         '<div class="pm-msg" id="qtMsg"></div></div>'
       : "";
@@ -747,8 +748,14 @@
       var f = collectFields();
       if (!f.vendorName && !f.vendorCompany) { msg("Give the vendor a name or a company."); return; }
       save.disabled = true;
+      msg("Saving…");
       try {
         await DCR.api("/api/portal?action=pm", { method: "POST", body: { op: "qtAdd", projectId: PID, fields: f } });
+        // Refresh FIRST. Opening the mail client used to happen before this, and
+        // navigating the window to a mailto: could stop the refresh from ever
+        // running — leaving a saved quote looking like nothing had happened.
+        await load();
+        renderDrawer();
         if ((el("qtMail") || {}).checked && f.vendorEmail) {
           var pj = state.model.project;
           var subj = "Quote request — " + (pj.internalIDNumber || "") + " " + (pj.projectName || "") + " — " + l.groupingName;
@@ -757,17 +764,48 @@
             l.scopeNames.slice(0, 20).map(function (s) { return "• " + s; }).join("\n").slice(0, 500) +
             (pj.projectPlansURL ? "\n\nPLANS: " + pj.projectPlansURL : "") +
             "\n\nThank you,\n" + ((state.profile || {}).displayName || "");
-          location.href = "mailto:" + encodeURIComponent(f.vendorEmail) +
+          // an anchor, not location.href: this must never take the app window with it
+          var a = document.createElement("a");
+          a.href = "mailto:" + encodeURIComponent(f.vendorEmail) +
             "?subject=" + encodeURIComponent(subj) + "&body=" + encodeURIComponent(body);
+          a.style.display = "none";
+          document.body.appendChild(a);
+          a.click();
+          setTimeout(function () { a.remove(); }, 0);
         }
-        await load();
-        renderDrawer();
       } catch (e) { msg(e.message || "Save failed"); save.disabled = false; }
+    };
+    // The rest of the app saves by itself now, so a form that needs a press has
+    // to say so — otherwise a filled-in vendor looks saved when it isn't.
+    ["qtVendor", "qtCompany", "qtEmail", "qtPhone", "qtAmt", "qtNotes", "qtDoc", "qtTrade"].forEach(function (id) {
+      var f2 = el(id);
+      if (!f2) return;
+      f2.addEventListener("input", function () {
+        var v = el("qtVendor"), c = el("qtCompany");
+        if ((v && v.value.trim()) || (c && c.value.trim())) {
+          msg("Not saved yet — press ＋ Add quote request");
+        }
+      });
+    });
+    // "pick vendor" on the chart means exactly this: you already know who is
+    // doing the work, so record it in one press instead of walking the
+    // request → received → award path that exists for competitive bidding.
+    var awardNow = el("qtAwardNow");
+    if (awardNow) awardNow.onclick = function () {
+      var f = collectFields("Awarded");
+      if (!f.vendorName && !f.vendorCompany) { msg("Give the vendor a name or a company."); return; }
+      var who = f.vendorCompany || f.vendorName;
+      if (!confirm("Award this item to " + who + "?" +
+        (f.quoteAmount ? "\n\n" + C.money(f.quoteAmount) : "\n\nNo amount entered — Committed to subs stays $0 until you add one."))) return;
+      awardNow.disabled = true;
+      msg("Saving…");
+      write({ op: "qtAdd", projectId: PID, fields: f });
     };
     var self = el("qtSelf");
     if (self) self.onclick = function () {
       var f = collectFields("Self");
       if (!f.vendorName && !f.vendorCompany) f.vendorName = "DCR crew";
+      msg("Saving…");
       write({ op: "qtAdd", projectId: PID, fields: f });
     };
 
