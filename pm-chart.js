@@ -63,6 +63,23 @@
     return h % 8;
   }
 
+  // Deterministic avatar tint for a person (identity, not status).
+  function avatarColor(name) {
+    var h = 0, s = String(name || "");
+    for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    return "hsl(" + (h % 360) + ",45%,45%)";
+  }
+  function todayISO() {
+    var d = new Date(), p = function (v) { return String(v).padStart(2, "0"); };
+    return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+  }
+  // SVG has no text-overflow, so clip by an estimated advance width.
+  function clip(str, maxPx, fontPx) {
+    var s = String(str == null ? "" : str);
+    var max = Math.max(3, Math.floor(maxPx / (fontPx * 0.55)));
+    return s.length > max ? s.slice(0, max - 1).replace(/[\s·]+$/, "") + "…" : s;
+  }
+
   function daysAgo(iso) {
     if (!iso) return null;
     var t = Date.parse(iso);
@@ -333,17 +350,27 @@
     };
   }
 
-  /* ── layout ──────────────────────────────────────────────────────────── */
+  /* ── layout ──────────────────────────────────────────────────────────────
+     Each expanded region carries its own item-identity column (color, who it's
+     assigned to, the group name, the labor/material scope, flags), so the item
+     is legible right where its nodes are — no separate rail to trace back to. */
   function layout(model, opts) {
     opts = opts || {};
     var compact = !!opts.compact;
-    var LANE_H = compact ? 25 : 36, NODE_H = compact ? 20 : 26, NODE_W = compact ? 68 : 104;
-    var GAP = compact ? 18 : 26, MS_R = compact ? 15 : 17;
+    var LANE_H = compact ? 42 : 54, NODE_H = compact ? 26 : 32, NODE_W = compact ? 84 : 118;
+    var GAP = compact ? 16 : 24, MS_R = compact ? 15 : 17;
+    // wide enough for the real scope text — on a big screen this reads better
+    // than the same words zoomed up inside a narrow box. The print report opts
+    // out (labels:false): its chart is scaled to half size and the item table
+    // right below it carries the same facts at a readable size.
+    var withLabels = opts.labels !== false;
+    var LABEL_W = withLabels ? (compact ? 256 : 330) : 0;
+    var LEAD = withLabels ? LABEL_W + GAP : 0;
     var lanes = opts.lanes || model.lanes;
     var n = lanes.length;
     var expA = model.regions.expandedA, expB = model.regions.expandedB;
-    var spanA = expA ? 2 * NODE_W + GAP : 170;
-    var spanB = expB ? 3 * NODE_W + 2 * GAP : 170;
+    var spanA = expA ? LEAD + 2 * NODE_W + GAP : 170;
+    var spanB = expB ? LEAD + 3 * NODE_W + 2 * GAP : 170;
     var x = {};
     x.M1 = 40; x.M2 = 150; x.M3 = 260;
     x.Astart = x.M3 + 46;
@@ -352,12 +379,18 @@
     x.Bstart = x.M6 + 46;
     x.M7 = x.Bstart + spanB + 56;
     var W = x.M7 + 70;
+    // node columns, computed once so the combs and the nodes can never disagree
+    var nodeX = { A: [], B: [] };
+    var ax = x.Astart + LEAD, bx = x.Bstart + LEAD;
+    nodeX.A = [ax, ax + NODE_W + GAP];
+    nodeX.B = [bx, bx + NODE_W + GAP, bx + 2 * (NODE_W + GAP)];
     var cy = 54, y0 = 150;
     var showLanes = (expA || expB) && n > 0;
     var H = showLanes ? y0 + n * LANE_H + 40 : y0 + 40;
     function laneY(i) { return y0 + i * LANE_H + LANE_H / 2; }
     return { x: x, W: W, H: H, cy: cy, y0: y0, laneY: laneY, LANE_H: LANE_H,
       NODE_H: NODE_H, NODE_W: NODE_W, GAP: GAP, MS_R: MS_R, compact: compact,
+      LABEL_W: LABEL_W, nodeX: nodeX,
       showLanes: showLanes, lanes: lanes };
   }
 
@@ -411,12 +444,13 @@
         '" fill="none" stroke="' + col + '" stroke-width="1.5"/>');
       s.push('<path d="M ' + (conv - 4) + " " + (cy + MS + 8) + " L " + conv + " " + (cy + MS) +
         " L " + (conv + 4) + " " + (cy + MS + 8) + '" fill="none" stroke="' + col + '" stroke-width="1.5"/>');
+      var cols = L.nodeX[region];
+      var lastRight = cols[cols.length - 1] + L.NODE_W;
       for (var i = 0; i < n; i++) {
         var y = L.laneY(i);
         s.push('<line x1="' + anchorX + '" y1="' + y + '" x2="' + startX + '" y2="' + y +
           '" stroke="' + col + '" stroke-width="1.2"/>');
-        var lastNode = region === "A" ? startX + 2 * L.NODE_W + L.GAP : startX + 3 * L.NODE_W + 2 * L.GAP;
-        s.push('<line x1="' + (lastNode - L.GAP) + '" y1="' + y + '" x2="' + conv + '" y2="' + y +
+        s.push('<line x1="' + lastRight + '" y1="' + y + '" x2="' + conv + '" y2="' + y +
           '" stroke="' + col + '" stroke-width="1.2"/>');
       }
     }
@@ -483,6 +517,66 @@
       var A_LABELS = { A1: "Quotes", A2: "Priced" };
       var B_LABELS = { B1: "Awarded", B2: "Invoiced", B3: "Paid" };
 
+      // Item identity, drawn at the head of each region's lane: the color slot,
+      // who it's assigned to, the group name, its labor/material scope and any
+      // flag — everything the old left rail carried, beside the nodes instead.
+      function laneLabel(lx, y, l) {
+        var h = L.LANE_H - 4, top = y - h / 2;
+        var nameF = L.compact ? 11 : 12.5, subF = L.compact ? 8.5 : 9.5;
+        var textX = lx + 30, textW = L.LABEL_W - 34;
+        var who = l.assignees.map(function (a) { return a.name || a.email; }).join(", ");
+        var scope = (l.laborNames || []).concat(l.materialNames || []).join(" · ");
+        var overdue = l.flag && l.flag.due && l.flag.due < todayISO();
+        var full = l.groupingName + (l.estimateName ? " — " + l.estimateName : "") +
+          "\n" + (who ? "Assigned: " + who : "Unassigned") + (scope ? "\n" + scope : "") +
+          (l.flag ? "\n" + l.flag.state.toUpperCase() + (l.flag.note ? ": " + l.flag.note : "") +
+            (l.flag.due ? " (due " + l.flag.due + (overdue ? ", OVERDUE" : "") + ")" : "") : "");
+
+        s.push('<g' + attr("lane:" + l.key + ":label") + "><title>" + esc(full) + "</title>");
+        s.push('<rect x="' + lx + '" y="' + top + '" width="' + L.LABEL_W + '" height="' + h +
+          '" rx="8" fill="var(--surface-2)" stroke="var(--border)" stroke-width="1"/>');
+        // group-identity color slot (the name always sits beside it)
+        s.push('<rect x="' + lx + '" y="' + top + '" width="5" height="' + h +
+          '" rx="2.5" fill="var(--gc' + (l.colorSlot || 0) + ')"/>');
+        // assignee avatar
+        var avY = top + h / 2;
+        if (l.initials) {
+          s.push('<circle cx="' + (lx + 18) + '" cy="' + avY + '" r="9.5" fill="' +
+            avatarColor(l.assignees[0].name || l.assignees[0].email) + '"/>');
+          s.push('<text x="' + (lx + 18) + '" y="' + (avY + 3.2) + '" text-anchor="middle" font-size="8.5" font-weight="800" fill="#fff">' +
+            esc(l.initials) + "</text>");
+        } else {
+          s.push('<circle cx="' + (lx + 18) + '" cy="' + avY + '" r="9.5" fill="none" stroke="var(--border)" stroke-width="1.5" stroke-dasharray="3 2"/>');
+          s.push('<text x="' + (lx + 18) + '" y="' + (avY + 3.5) + '" text-anchor="middle" font-size="9" fill="var(--text-muted)">?</text>');
+        }
+        // flag / attention badge, right-aligned on the first line
+        var badgeW = 0, bx2 = lx + L.LABEL_W - 6;
+        function badge(txt, bg, fg) {
+          var w = txt.length * 5.4 + 8;
+          badgeW = w + 5;
+          s.push('<rect x="' + (bx2 - w) + '" y="' + (top + 5) + '" width="' + w + '" height="12" rx="6" fill="' + bg + '"/>');
+          s.push('<text x="' + (bx2 - w / 2) + '" y="' + (top + 13.8) + '" text-anchor="middle" font-size="8" font-weight="800" fill="' + fg + '">' +
+            esc(txt) + "</text>");
+        }
+        if (l.flag && l.flag.state === "blocked") badge("BLOCKED", "var(--err)", "#fff");
+        else if (l.flag && l.flag.state === "complete") badge("DONE", "var(--ok)", "#fff");
+        else if (l.flag && l.flag.state === "important") badge(overdue ? "⚑ OVERDUE" : "⚑ " + (l.flag.due || "IMPORTANT"), overdue ? "var(--err)" : "var(--gold)", "#fff");
+        else if (l.attention) badge("⚠", "var(--gold)", "#fff");
+
+        // line 1: the item · line 2: who it's assigned to · line 3: the
+        // labor/material scope — the full text is in the group's <title>.
+        s.push('<text x="' + textX + '" y="' + (top + (L.compact ? 14 : 17)) + '" font-size="' + nameF +
+          '" font-weight="700" fill="var(--text)">' + esc(clip(l.groupingName, textW - badgeW, nameF)) + "</text>");
+        s.push('<text x="' + textX + '" y="' + (top + (L.compact ? 25 : 31)) + '" font-size="' + subF +
+          '" fill="' + (who ? "var(--text-muted)" : "var(--border)") + '">' +
+          esc(clip((who ? "👤 " + who : "unassigned"), textW, subF)) + "</text>");
+        if (scope) {
+          s.push('<text x="' + textX + '" y="' + (top + (L.compact ? 35 : 44)) + '" font-size="' + subF +
+            '" fill="var(--text-muted)" opacity=".8">' + esc(clip(scope, textW, subF)) + "</text>");
+        }
+        s.push("</g>");
+      }
+
       lanes.forEach(function (l, i) {
         var y = L.laneY(i);
         function node(nx, kind) {
@@ -498,18 +592,18 @@
           var lbl = (A_LABELS[kind] || B_LABELS[kind]);
           var glyph = GLYPH[st] || "";
           if (L.compact) {
-            s.push('<text x="' + (nx + L.NODE_W / 2) + '" y="' + (y + 4) + '" text-anchor="middle" font-size="9.5" fill="var(--text)">' +
-              glyph + " " + esc(stt.chip || lbl) + "</text>");
+            s.push('<text x="' + (nx + L.NODE_W / 2) + '" y="' + (y + 3.5) + '" text-anchor="middle" font-size="9.5" fill="var(--text)">' +
+              glyph + " " + esc(clip(stt.chip || lbl, L.NODE_W - 16, 9.5)) + "</text>");
           } else {
             s.push('<text x="' + (nx + 8) + '" y="' + (y - 1) + '" font-size="9.5" font-weight="700" fill="var(--text-muted)">' +
               glyph + " " + esc(lbl) + "</text>");
-            s.push('<text x="' + (nx + 8) + '" y="' + (y + 9) + '" font-size="9.5" fill="var(--text)" style="font-variant-numeric:tabular-nums">' +
-              esc(stt.chip || "") + "</text>");
+            s.push('<text x="' + (nx + 8) + '" y="' + (y + 10) + '" font-size="9.5" fill="var(--text)" style="font-variant-numeric:tabular-nums">' +
+              esc(clip(stt.chip || "", L.NODE_W - 14, 9.5)) + "</text>");
           }
           s.push("</g>");
         }
-        if (expA) { node(x.Astart, "A1"); node(x.Astart + L.NODE_W + L.GAP, "A2"); }
-        if (expB) { node(x.Bstart, "B1"); node(x.Bstart + L.NODE_W + L.GAP, "B2"); node(x.Bstart + 2 * (L.NODE_W + L.GAP), "B3"); }
+        if (expA) { if (L.LABEL_W) laneLabel(x.Astart, y, l); node(L.nodeX.A[0], "A1"); node(L.nodeX.A[1], "A2"); }
+        if (expB) { if (L.LABEL_W) laneLabel(x.Bstart, y, l); node(L.nodeX.B[0], "B1"); node(L.nodeX.B[1], "B2"); node(L.nodeX.B[2], "B3"); }
       });
     }
 

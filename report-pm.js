@@ -14,7 +14,9 @@
     var m = C.derive(payload, { expandedA: true, expandedB: true });
     var proj = m.project;
     var co = DCR.companyInfo || {};
-    var L = C.layout(m, { compact: true });
+    // labels off: the chart is scaled to fit the page, the table below carries
+    // each item's name, assignee and money at a readable size
+    var L = C.layout(m, { compact: true, labels: false });
     var lanes = m.lanes;
 
     var rows = lanes.map(function (l) {

@@ -95,11 +95,6 @@
     });
   }
 
-  function avColor(name) {
-    var h = 0, s = String(name || "");
-    for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-    return "hsl(" + (h % 360) + ",45%,45%)";
-  }
   function todayISO() {
     var d = new Date(), p = function (n) { return String(n).padStart(2, "0"); };
     return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
@@ -114,8 +109,7 @@
     var scroll = document.querySelector(".pm-scroll");
     var L = state.lastLayout;
     if (!stage || !scroll || !L) return;
-    var railW = window.matchMedia("(max-width:900px)").matches ? 150 : 200;
-    var natural = railW + L.W;
+    var natural = L.W;
     var z = 1;
     if (fitOn() && scroll.clientWidth > 40) {
       // -2px so sub-pixel rounding never trips the horizontal scrollbar
@@ -245,26 +239,6 @@
         : '<div class="pm-banner">Quote tracking isn\'t enabled yet — ask an admin to open this page and enable it.</div>';
     }
 
-    var railRows = lanes.map(function (l, i) {
-      var av = l.initials
-        ? '<span class="av" style="background:' + avColor(l.assignees[0].name || l.assignees[0].email) + '">' + esc(l.initials) + "</span>"
-        : '<span class="av none">?</span>';
-      var pastDue = l.flag && l.flag.state === "important" && l.flag.due && l.flag.due < todayISO();
-      var badge = l.flag && l.flag.state === "blocked" ? '<span class="bk" title="' + esc(l.flag.note || "") + '">BLOCKED</span>'
-        : l.flag && l.flag.state === "complete" ? '<span class="mk" title="Marked complete">✓M</span>'
-        : l.flag && l.flag.state === "important"
-          ? '<span class="fl"' + (pastDue ? ' style="color:var(--err)"' : "") + ' title="' +
-            esc((l.flag.note || "Important") + (l.flag.due ? " · due " + l.flag.due : "") + (pastDue ? " · OVERDUE" : "")) + '">⚑</span>'
-        : l.attention ? '<span class="dot" title="Needs attention"></span>' : "";
-      var names = l.assignees.map(function (a) { return a.name || a.email; }).join(", ");
-      var scope = (l.laborNames || []).concat(l.materialNames || []).join(" · ");
-      return '<div class="pm-lane" data-lane="' + esc(l.key) + '" style="height:' + L.LANE_H + 'px" title="' +
-        esc(l.groupingName + (names ? " — " + names : "") + (scope ? "\n" + scope : "")) + '">' +
-        '<span class="gdot" style="background:var(--gc' + (l.colorSlot || 0) + ')"></span>' + av +
-        '<span class="nm"><span class="t">' + esc(l.groupingName) + "</span>" +
-        (!compact && scope ? '<span class="sc">' + esc(scope) + "</span>" : "") + "</span>" + badge + "</div>";
-    }).join("");
-
     var bandTitles = "";
     if (true) {
       var x = L.x;
@@ -280,8 +254,6 @@
 
     var chart = m.lanes.length || m.known
       ? '<div class="pm-scroll"><div class="pm-stage">' +
-        '<div class="pm-rail"><div class="hd">' + lanes.length +
-          (lanes.length === m.lanes.length ? "" : " of " + m.lanes.length) + " items</div>" + railRows + "</div>" +
         '<div class="pm-svgwrap">' + bandTitles + C.svg(m, L, { interactive: true }) + "</div>" +
         "</div></div>"
       : "";
@@ -310,6 +282,8 @@
               return '<option' + (state.estFilter === nm ? " selected" : "") + ' value="' + esc(nm) + '">' + esc(nm || "(no name)") + "</option>";
             }).join("") + "</select>"
           : "") +
+        '<span class="pm-count">' + lanes.length +
+          (lanes.length === m.lanes.length ? "" : " of " + m.lanes.length) + " items</span>" +
         '<button class="pm-chip' + (state.attnOnly ? " on" : "") + '" id="pmAttn">⚠ Needs attention (' + m.attentionCount + ")</button>" +
         '<button class="pm-chip" id="pmDensity">' + (compact ? "Comfortable view" : "Compact view") + "</button>" +
         '<button class="pm-chip' + (fitOn() ? " on" : "") + '" id="pmFit" title="Scale the chart to fill the window">↔ Fit to screen</button>' +
@@ -345,9 +319,6 @@
       } catch (e) { el("pmSetupMsg").textContent = e.message || "Setup failed"; setup.disabled = false; }
     };
     var root = el("pmRoot");
-    root.querySelectorAll(".pm-lane").forEach(function (r) {
-      r.onclick = function () { openDrawer(r.dataset.lane); };
-    });
     root.querySelectorAll("[data-band]").forEach(function (b) {
       b.onclick = function () {
         var which = b.dataset.band;
