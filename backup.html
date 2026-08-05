@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DCR Portal — Backup</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      .bk-hero{display:flex; gap:16px; align-items:center; flex-wrap:wrap; padding:16px 18px;
+        border:1px solid var(--border); border-radius:12px; background:var(--surface); margin-bottom:16px;}
+      .bk-age{font-size:26px; font-weight:800; line-height:1.1;}
+      .bk-age .u{font-size:13px; font-weight:600; color:var(--text-muted); display:block; margin-top:2px;}
+      .bk-dot{width:14px; height:14px; border-radius:50%; flex-shrink:0;}
+      .bk-ok{background:#1f9d63;} .bk-warn{background:#d6a13a;} .bk-bad{background:#d9614f;}
+      .bk-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:14px;}
+      .bk-card{border:1px solid var(--border); border-radius:12px; background:var(--surface); padding:14px 16px;}
+      .bk-card h3{margin:0 0 8px; font-size:14px;}
+      .bk-rows{max-height:340px; overflow:auto; border:1px solid var(--border); border-radius:10px;}
+      .bk-row{display:flex; gap:10px; align-items:center; padding:6px 10px; font-size:12.5px;
+        border-bottom:1px solid var(--border);}
+      .bk-row:last-child{border-bottom:none;}
+      .bk-row .nm{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+      .bk-row .ct{font-variant-numeric:tabular-nums; color:var(--text-muted);}
+      .bk-row .st{width:18px; text-align:center;}
+      .bk-bar{height:8px; border-radius:5px; background:var(--surface-2); overflow:hidden; margin:10px 0;}
+      .bk-bar span{display:block; height:100%; background:var(--acc,#2f80d8); width:0; transition:width .2s;}
+      .bk-note{font-size:12.5px; color:var(--text-muted); line-height:1.55;}
+      .bk-note b{color:var(--text);}
+      .bk-warnbox{border:1px solid #d6a13a; background:rgba(214,161,58,.10); border-radius:10px;
+        padding:12px 14px; font-size:12.5px; line-height:1.55; margin-bottom:16px;}
+      table.bk-runs{width:100%; border-collapse:collapse; font-size:12.5px;}
+      table.bk-runs th{text-align:left; padding:6px 8px; border-bottom:2px solid var(--border); color:var(--text-muted); font-size:11px; text-transform:uppercase;}
+      table.bk-runs td{padding:6px 8px; border-bottom:1px solid var(--border);}
+    </style>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/png" href="icon-192.png" />
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#171d25" />
+  </head>
+  <body>
+    <div class="topbar">
+      <div class="brand">
+        <img class="brand-logo" src="logo.png" alt="DCR Framing" />
+        <h1 id="companyName">DCR Portal — Backup</h1>
+      </div>
+      <div class="top-actions">
+        <span class="pill" id="userPill">…</span>
+        <a class="btn btn-ghost btn-sm" href="admin.html">Admin</a>
+        <a class="btn btn-ghost btn-sm" href="dashboard.html">Dashboard</a>
+        <button class="btn btn-ghost btn-sm" id="logoutBtn">Log out</button>
+      </div>
+    </div>
+
+    <main class="content">
+      <div class="page-head">
+        <h2>Database backup</h2>
+      </div>
+      <div class="msg error" id="pageErr"></div>
+
+      <div class="bk-hero" id="bkHero"><div class="spinner">Loading…</div></div>
+
+      <div class="bk-warnbox" id="bkWarn"></div>
+
+      <div class="bk-grid">
+        <div class="bk-card" style="grid-column:1/-1">
+          <h3>Run a backup</h3>
+          <div class="bk-note" id="bkPlanNote">Checking what there is to back up…</div>
+          <div class="bk-bar"><span id="bkBar"></span></div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center">
+            <button class="btn" id="bkGo" disabled>💾 Back up now</button>
+            <button class="btn btn-ghost btn-sm" id="bkDl" style="display:none">⬇ Download a copy</button>
+            <span class="bk-note" id="bkStatus"></span>
+          </div>
+          <div class="bk-rows" id="bkRows" style="display:none; margin-top:12px"></div>
+        </div>
+      </div>
+
+      <div class="bk-card" style="margin-top:16px">
+        <h3>Previous backups</h3>
+        <div id="bkRuns"><div class="spinner">Loading…</div></div>
+      </div>
+    </main>
+
+    <script src="config.js"></script>
+    <script src="common.js"></script>
+    <script src="backup.js"></script>
+  </body>
+</html>
