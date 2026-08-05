@@ -511,9 +511,13 @@
     livePaintPage();
   };
 
+  var LIVE_STATES = /\b(dcr-live|idle|dirty|saving|saved|error|invalid)\b/g;
   function livePaint(node, s, rec) {
     if (!node) return;
-    node.className = "dcr-live " + s.state;
+    // Keep whatever classes the page put on this node — pages hook their own
+    // (".qtLive" and friends) and blindly overwriting className loses them.
+    if (node._dcrBase === undefined) node._dcrBase = node.className.replace(LIVE_STATES, "").trim();
+    node.className = ("dcr-live " + node._dcrBase + " " + s.state).replace(/\s+/g, " ").trim();
     node.setAttribute("role", "status");
     node.setAttribute("aria-live", "polite");
     node.textContent = s.text;

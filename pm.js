@@ -611,6 +611,24 @@
     }).join("");
   }
 
+  // A money field just saved. Repaint the chart straight away — that is
+  // outside the drawer, so nothing the user is typing into moves. The drawer's
+  // own totals wait until they have finished tabbing through the row, because
+  // re-rendering it mid-edit would pull the field out from under them.
+  function moneySaved(row, qid, fields) {
+    var q = (state.payload.quotes || []).filter(function (x) { return String(x.id) === String(qid); })[0];
+    if (q) for (var k in fields) q[k] = fields[k];
+    rederive();
+    if (!row.contains(document.activeElement)) { renderDrawer(); return; }
+    if (row._deferred) return;
+    row._deferred = true;
+    row.addEventListener("focusout", function once(e) {
+      if (row.contains(e.relatedTarget)) return;   // moved to the next money field
+      row.removeEventListener("focusout", once);
+      renderDrawer();
+    });
+  }
+
   /* ── item drawer ── */
   function laneOf(key) {
     for (var i = 0; i < state.model.lanes.length; i++) if (state.model.lanes[i].key === key) return state.model.lanes[i];
@@ -711,9 +729,9 @@
             (hidden ? "" : (q.quoteAmount || "")) + '" title="What you agreed to pay">' +
           '<input type="number" step="0.01" placeholder="Invoice $" class="qtInv" style="width:86px;padding:4px 6px" value="' + (hidden ? "" : (q.invoiceAmount || "")) + '">' +
           '<input type="number" step="0.01" placeholder="Paid $" class="qtPaid" style="width:86px;padding:4px 6px" value="' + (hidden ? "" : (q.paidAmount || "")) + '">' +
-          '<button class="btn btn-ghost btn-sm qtInvSave" style="padding:2px 8px">Save</button>' +
+          '<span class="dcr-live qtLive"></span>' +
           (!hidden && !(Number(q.quoteAmount) > 0)
-            ? '<div style="flex-basis:100%;color:var(--gold)">No agreed amount yet — enter it so invoices can be checked against it.</div>' : "") +
+            ? '<div style="flex-basis:100%;color:var(--gold)" class="qtNoAmt">No agreed amount yet — enter it so invoices can be checked against it.</div>' : "") +
           "</div>"
         : "";
       var invStrip = money3;
@@ -905,17 +923,30 @@
         write({ op: "qtUpdate", itemId: b.dataset.q, fields: { quoteNotes: notes } });
       };
     });
+    // Money on an awarded row saves itself, like the rest of the app. On blur,
+    // never per keystroke: "1" is a real number on the way to "12147.50", and
+    // these figures drive Committed to subs and the over/under checks.
     d.querySelectorAll(".qtInvRow").forEach(function (row) {
-      row.querySelector(".qtInvSave").onclick = function () {
-        var f = {};
-        var amt = row.querySelector(".qtAmt2").value;
-        var inv = row.querySelector(".qtInv").value, paid = row.querySelector(".qtPaid").value;
-        if (amt !== "") f.quoteAmount = Number(amt);
-        if (inv !== "") f.invoiceAmount = Number(inv);
-        if (paid !== "") f.paidAmount = Number(paid);
-        if (!Object.keys(f).length) return;
-        write({ op: "qtUpdate", itemId: row.dataset.q, fields: f });
-      };
+      var qid = row.dataset.q;
+      var q0 = l.quotes.filter(function (x) { return String(x.id) === String(qid); })[0] || {};
+      var num = function (v) { return v === "" || v == null ? 0 : Number(v); };
+      var saver = DCR.live.record({
+        key: "quote:" + qid,
+        status: row.querySelector(".qtLive"),
+        write: function (fields) {
+          return DCR.api("/api/portal?action=pm", { method: "POST",
+            body: { op: "qtUpdate", itemId: qid, fields: fields } });
+        },
+        validate: function (f, v) { return v === null || isFinite(v); },
+        onSaved: function (fields) { moneySaved(row, qid, fields); },
+      });
+      saver.baseline({ quoteAmount: num(q0.quoteAmount), invoiceAmount: num(q0.invoiceAmount), paidAmount: num(q0.paidAmount) });
+      [[".qtAmt2", "quoteAmount"], [".qtInv", "invoiceAmount"], [".qtPaid", "paidAmount"]].forEach(function (p) {
+        var inp = row.querySelector(p[0]);
+        if (!inp) return;
+        inp.addEventListener("input", function () { saver.set(p[1], num(inp.value)); });
+        inp.addEventListener("blur", function () { saver.set(p[1], num(inp.value)); saver.flush(); });
+      });
     });
 
     // vendor typeahead over contacts
