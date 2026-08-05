@@ -202,7 +202,9 @@
     try {
       var d = await DCR.api("/api/portal?action=backup&op=runs");
       renderHero(d.runs);
-      el("bkRuns").innerHTML = d.runs.length
+      var cmp = d.runs.filter(function (r) { return r.complete; }).length
+        ? '<div style="margin-bottom:10px"><a class="btn btn-ghost btn-sm" href="restore.html">🔍 Compare a backup with live data</a></div>' : "";
+      el("bkRuns").innerHTML = cmp + (d.runs.length
         ? '<table class="bk-runs"><thead><tr><th>Run</th><th>When</th><th>Lists</th><th>Size</th><th></th></tr></thead><tbody>' +
           d.runs.map(function (r) {
             var d2 = daysSince(r.modifiedTime);
@@ -211,7 +213,7 @@
               "<td>" + r.parts + "</td><td>" + fmtBytes(r.bytes) + "</td>" +
               '<td>' + (r.webUrl ? '<a target="_blank" rel="noopener noreferrer" href="' + esc(r.webUrl) + '">open ↗</a>' : "") + "</td></tr>";
           }).join("") + "</tbody></table>"
-        : '<div class="bk-note">No backups yet.</div>';
+        : '<div class="bk-note">No backups yet.</div>');
     } catch (e) { el("bkRuns").innerHTML = '<div class="bk-note">' + esc(e.message) + "</div>"; }
   }
 

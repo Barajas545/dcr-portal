@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DCR Portal — Compare with a backup</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      .rs-bar{display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:14px;}
+      .rs-bar select{padding:8px 10px; border:1px solid var(--border); border-radius:8px;
+        background:var(--surface); color:var(--text); min-width:230px;}
+      .rs-cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin:14px 0;}
+      .rs-card{border:1px solid var(--border); border-radius:12px; background:var(--surface); padding:12px 14px;}
+      .rs-card .k{font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted);}
+      .rs-card .v{font-size:24px; font-weight:800; font-variant-numeric:tabular-nums; margin-top:2px;}
+      .rs-card.bad .v{color:#d9614f;} .rs-card.warn .v{color:#d6a13a;} .rs-card.ok .v{color:#1f9d63;}
+      .rs-bar2{height:8px; border-radius:5px; background:var(--surface-2); overflow:hidden; margin:10px 0;}
+      .rs-bar2 span{display:block; height:100%; background:#2f80d8; width:0; transition:width .2s;}
+      table.rs{width:100%; border-collapse:collapse; font-size:12.5px;}
+      table.rs th{text-align:left; padding:6px 8px; border-bottom:2px solid var(--border);
+        color:var(--text-muted); font-size:11px; text-transform:uppercase;}
+      table.rs td{padding:6px 8px; border-bottom:1px solid var(--border); vertical-align:top;}
+      table.rs td.n{text-align:right; font-variant-numeric:tabular-nums;}
+      .rs-del{color:#d9614f; font-weight:700;} .rs-chg{color:#d6a13a; font-weight:700;}
+      .rs-new{color:var(--text-muted);}
+      .rs-open{cursor:pointer; text-decoration:underline dotted;}
+      .rs-detail{background:var(--surface-2); font-size:12px;}
+      .rs-detail table{width:100%; border-collapse:collapse;}
+      .rs-detail td{padding:3px 8px; border-bottom:1px solid var(--border);}
+      .rs-was{color:#d9614f;} .rs-is{color:#1f9d63;}
+      .rs-note{font-size:12.5px; color:var(--text-muted); line-height:1.55;}
+      .rs-info{border:1px solid var(--border); background:var(--surface); border-radius:10px;
+        padding:12px 14px; font-size:12.5px; line-height:1.55; margin-bottom:14px;}
+    </style>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/png" href="icon-192.png" />
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#171d25" />
+  </head>
+  <body>
+    <div class="topbar">
+      <div class="brand">
+        <img class="brand-logo" src="logo.png" alt="DCR Framing" />
+        <h1 id="companyName">DCR Portal — Compare</h1>
+      </div>
+      <div class="top-actions">
+        <span class="pill" id="userPill">…</span>
+        <a class="btn btn-ghost btn-sm" href="backup.html">Backup</a>
+        <a class="btn btn-ghost btn-sm" href="dashboard.html">Dashboard</a>
+        <button class="btn btn-ghost btn-sm" id="logoutBtn">Log out</button>
+      </div>
+    </div>
+
+    <main class="content">
+      <div class="page-head"><h2>Compare live data with a backup</h2></div>
+      <div class="msg error" id="pageErr"></div>
+
+      <div class="rs-info">
+        This reads only — nothing is written or changed. It answers one question:
+        <b>what is different now compared with the backup you pick?</b>
+        Rows that vanished are the ones to look at hardest; rows added since are
+        normal work. Only the columns SharePoint actually stores are compared —
+        calculated totals are skipped because they recompute themselves.
+      </div>
+
+      <div class="rs-bar">
+        <label class="rs-note" for="rsRun">Backup:</label>
+        <select id="rsRun"></select>
+        <label class="rs-note"><input type="checkbox" id="rsFiles"> include the file library (slow, 18k rows)</label>
+        <button class="btn" id="rsGo" disabled>Compare</button>
+        <span class="rs-note" id="rsStatus"></span>
+      </div>
+      <div class="rs-bar2"><span id="rsBar"></span></div>
+
+      <div id="rsSummary"></div>
+      <div id="rsTable"></div>
+    </main>
+
+    <script src="config.js"></script>
+    <script src="common.js"></script>
+    <script src="restore.js"></script>
+  </body>
+</html>
