@@ -43,6 +43,11 @@
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
     });
   }
+  // Two forms, deliberately. `compact` is for the chart chips, where a node is
+  // ~130px wide and "$12k" is all that fits. Everywhere a figure is read as
+  // money — the tiles, the quote rows, the printed report — it is exact to the
+  // cent, because $12,147.50 rounded to $12,148 is a number nobody can
+  // reconcile against an invoice.
   function money(n, compact) {
     if (n == null || !isFinite(n)) return "";
     if (compact) {
@@ -52,7 +57,8 @@
       if (a >= 1000) return "$" + (Math.round(n / 100) / 10) + "k";
       return "$" + Math.round(n);
     }
-    return "$" + Number(n).toLocaleString("en-US", { maximumFractionDigits: 0 });
+    return "$" + Number(n).toLocaleString("en-US",
+      { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
   // Stable group-identity color slot (0..7). The 8 hues live in CSS as
   // --gc0..--gc7 (per-theme steps of a CVD-validated categorical palette);
