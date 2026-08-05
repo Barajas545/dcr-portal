@@ -650,7 +650,7 @@
     } catch (e) {
       el("pvSave").textContent = "💾 Save Notes ●";
       hint("SAVE FAILED: " + (e.message || "error"));
-      alert(e.message || "Save failed");
+      DCR.alert(e.message || "Save failed");
     }
     el("pvSave").disabled = false;
   }

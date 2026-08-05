@@ -550,7 +550,7 @@
 
   function ieMailto(kind) {
     var email = el("ie_email").value.trim();
-    if (!email) { alert("No e-mail address set."); return; }
+    if (!email) { DCR.alert("No e-mail address set."); return; }
     var p = state.project||{};
     var title = el("ie_title").value || "estimate item";
     var subj = (kind==="quote" ? "Quote request — " : "Following up — ") +
@@ -611,13 +611,13 @@
           await DCR.api("/api/portal?action=project", { method:"POST", body:{ op:"toAdd", projectId: PID, fields: fields } });
           DCR.takeoff.invalidate();   // the Takeoffs tab is now holding a stale row set
           ieSubTakeoff();
-        } catch (e) { alert(e.message||"Add failed"); }
+        } catch (e) { DCR.alert(e.message||"Add failed"); }
       };
       box.querySelectorAll("[data-iet-del]").forEach(function(b){
         b.onclick = async function(){
-          if (!confirm("Delete this takeoff line?")) return;
+          if (!(await DCR.confirm("Delete this takeoff line?", { title: "Delete line", danger: true, okText: "Delete" }))) return;
           try { await DCR.api("/api/portal?action=project", { method:"POST", body:{ op:"toDelete", itemId: b.getAttribute("data-iet-del") } }); DCR.takeoff.invalidate(); ieSubTakeoff(); }
-          catch (e) { alert(e.message||"Delete failed"); }
+          catch (e) { DCR.alert(e.message||"Delete failed"); }
         };
       });
     } catch (e) { box.innerHTML = '<div class="pj-empty">'+esc(e.message)+'</div>'; }
@@ -653,13 +653,13 @@
           if (el("ieeCon").value!=="") fields.contractors = Number(el("ieeCon").value);
           await DCR.api("/api/portal?action=project", { method:"POST", body:{ op:"expAdd", projectId: PID, fields: fields } });
           ieSubExpenses();
-        } catch (e) { alert(e.message||"Add failed"); }
+        } catch (e) { DCR.alert(e.message||"Add failed"); }
       };
       box.querySelectorAll("[data-iee-del]").forEach(function(b){
         b.onclick = async function(){
-          if (!confirm("Delete this expense?")) return;
+          if (!(await DCR.confirm("Delete this expense?", { title: "Delete expense", danger: true, okText: "Delete" }))) return;
           try { await DCR.api("/api/portal?action=project", { method:"POST", body:{ op:"expDelete", itemId: b.getAttribute("data-iee-del") } }); ieSubExpenses(); }
-          catch (e) { alert(e.message||"Delete failed"); }
+          catch (e) { DCR.alert(e.message||"Delete failed"); }
         };
       });
     } catch (e) { box.innerHTML = '<div class="pj-empty">'+esc(e.message)+'</div>'; }
@@ -687,12 +687,12 @@
   }
 
   async function delEstRow(rowId) {
-    if (!confirm("Delete this estimate line? This cannot be undone.")) return;
+    if (!(await DCR.confirm("This cannot be undone.", { title: "Delete this estimate line?", danger: true, okText: "Delete" }))) return;
     try {
       await DCR.api("/api/portal?action=project", { method:"POST", body:{ op:"estDelete", itemId: rowId } });
       if (state.ie && String(state.ie.id)===String(rowId)) el("ieModal").classList.remove("open");
       loadEstimate();
-    } catch (e) { alert(e.message || "Delete failed"); }
+    } catch (e) { DCR.alert(e.message || "Delete failed"); }
   }
 
   var EXP_DEFS = [
@@ -784,7 +784,8 @@
     var what = kind === "exp"
       ? [fmtDate(row.expenseDate), expDesc(row)].filter(Boolean).join(" — ")
       : (row.itemName || row.description || "this record");
-    if (!confirm("Delete this " + SUB_CFG[kind].title.toLowerCase() + "?\n\n" + what + "\n\nThis cannot be undone.")) return;
+    if (!(await DCR.confirm(what + "\n\nThis cannot be undone.",
+      { title: "Delete this " + SUB_CFG[kind].title.toLowerCase() + "?", danger: true, okText: "Delete" }))) return;
     var btn = el("subDelete");
     btn.disabled = true;
     el("subMsg").textContent = "Deleting…";
@@ -803,11 +804,11 @@
     scope.querySelectorAll("[data-sub-del]").forEach(function(b){
       b.onclick = async function(){
         var p=b.getAttribute("data-sub-del").split(":");
-        if (!confirm("Delete this record? This cannot be undone.")) return;
+        if (!(await DCR.confirm("This cannot be undone.", { title: "Delete this record?", danger: true, okText: "Delete" }))) return;
         try {
           await DCR.api("/api/portal?action=project", { method:"POST", body:{ op:p[0]+"Delete", itemId:p[1] } });
           SUB_CFG[p[0]].reload();
-        } catch (e) { alert(e.message||"Delete failed"); }
+        } catch (e) { DCR.alert(e.message||"Delete failed"); }
       };
     });
   }
@@ -1074,7 +1075,7 @@
           try {
             await DCR.api("/api/portal?action=project", { method:"POST", body:{ op:"payUpdate", itemId:row.id, fields:{ paymentPAID:newVal } } });
             loadPayments();
-          } catch (e) { alert(e.message||"Update failed"); }
+          } catch (e) { DCR.alert(e.message||"Update failed"); }
         };
       });
     } catch (e) { pane.innerHTML = '<div class="pj-empty">'+esc(e.message)+'</div>'; }
@@ -1128,7 +1129,7 @@
           var row = state.taskRows.find(function(r){ return String(r.id)===cb.getAttribute("data-tk"); });
           if (row) row.taskCompleteCheck = cb.checked;
           renderTasks();
-        } catch (e) { alert(e.message||"Update failed"); cb.checked=!cb.checked; }
+        } catch (e) { DCR.alert(e.message||"Update failed"); cb.checked=!cb.checked; }
       };
     });
   }
@@ -1294,7 +1295,7 @@
         var d = await r.json();
         msg("", "");
         if (d.webViewLink || webViewLink) window.open(d.webViewLink || webViewLink, "_blank");
-        else alert("File is too large to preview and has no Drive link.");
+        else DCR.alert("File is too large to preview and has no Drive link.");
         return;
       }
       if (!r.ok) throw new Error("Could not open file");
@@ -1384,7 +1385,7 @@
       anRender();
       el("anModal").classList.add("open");
     };
-    img.onerror = function(){ alert("Could not read that image."); anNext(); };
+    img.onerror = function(){ DCR.alert("Could not read that image."); anNext(); };
     img.src = url;
   }
 
@@ -1682,7 +1683,7 @@
       var f = this.files && this.files[0]; if (!f) return;
       var ext = (f.name.split(".").pop() || "mp4").toLowerCase();
       try { await uploadToDrive(f, "pictures", "VID "+capStamp()+"."+ext, f.type || "video/mp4"); loadFiles(); }
-      catch (e) { alert(e.message || "Upload failed"); capProg(""); }
+      catch (e) { DCR.alert(e.message || "Upload failed"); capProg(""); }
     });
     document.querySelectorAll("[data-antool]").forEach(function(b){
       b.onclick = function(){
@@ -1707,7 +1708,7 @@
       el("anSave").disabled = true;
       el("anCanvas").toBlob(async function(blob){
         try { await uploadToDrive(blob, "pictures", "IMG "+capStamp()+".jpg", "image/jpeg"); }
-        catch (e) { alert(e.message || "Upload failed"); }
+        catch (e) { DCR.alert(e.message || "Upload failed"); }
         el("anSave").disabled = false;
         anNext();
       }, "image/jpeg", 0.9);
@@ -1717,17 +1718,17 @@
       var ext = (f.name.split(".").pop() || "jpg").toLowerCase();
       el("anOrig").disabled = true;
       try { await uploadToDrive(f, "pictures", "IMG "+capStamp()+"."+ext, f.type || "image/jpeg"); }
-      catch (e) { alert(e.message || "Upload failed"); }
+      catch (e) { DCR.alert(e.message || "Upload failed"); }
       el("anOrig").disabled = false;
       anNext();
     };
     var cv = el("anCanvas");
-    cv.addEventListener("pointerdown", function(e){
+    cv.addEventListener("pointerdown", async function(e){
       e.preventDefault();
       try { cv.setPointerCapture(e.pointerId); } catch(ex){}
       var p = anPos(e);
       if (an.tool === "text") {
-        var t = prompt("Text:");
+        var t = await DCR.ask("What should it say?", { title: "Add text", placeholder: "Type the label" });
         if (t) { an.ops.push({ tool:"text", x:p[0], y:p[1], text:t, color:an.color }); anRender(); }
         return;
       }

@@ -72,7 +72,7 @@
       var l = state.leads.find(function(x){ return String(x.id)===String(id); });
       if (l) l.leadLastcontactedDate = new Date().toISOString();
       render();
-    } catch (e) { alert(e.message || "Update failed"); }
+    } catch (e) { DCR.alert(e.message || "Update failed"); }
   }
 
   function openModal(id) {
@@ -108,11 +108,11 @@
   }
 
   async function delLead(id) {
-    if (!confirm("Delete this lead? This cannot be undone.")) return;
+    if (!(await DCR.confirm("This cannot be undone.", { title: "Delete this lead?", danger: true, okText: "Delete" }))) return;
     try {
       await DCR.api("/api/portal?action=leads", { method:"POST", body:{ op:"leadDelete", itemId:id } });
       await load();
-    } catch (e) { alert(e.message || "Delete failed"); }
+    } catch (e) { DCR.alert(e.message || "Delete failed"); }
   }
 
   /* ── convert to project ── */

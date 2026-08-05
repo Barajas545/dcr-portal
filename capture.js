@@ -527,9 +527,9 @@
     el("pickRetryGps").onclick = locate;
     el("confirmNo").onclick = function () { show("stepPick"); };
     el("confirmYes").onclick = startShooting;
-    el("shootDone").onclick = function () {
+    el("shootDone").onclick = async function () {
       var busy = state.jobs.some(function (j) { return j.status !== "done" && j.status !== "failed"; });
-      if (busy && !confirm("Some files are still uploading. Leave anyway?")) return;
+      if (busy && !(await DCR.confirm("Some files are still uploading.", { title: "Leave anyway?", danger: true, okText: "Leave" }))) return;
       state.jobs = []; renderJobs(); show("stepPick");
     };
     el("shootPhoto").onclick = function () { el("inPhoto").value = ""; el("inPhoto").click(); };

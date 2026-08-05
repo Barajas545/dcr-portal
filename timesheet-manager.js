@@ -303,7 +303,7 @@ async function doDeleteEntry(itemId,empName,empId,dateKey){
 
 /* ── CSV export ── */
 function exportCSV(){
-  var employees=getWeekData(); if(!employees.length){ alert("No data to export."); return; }
+  var employees=getWeekData(); if(!employees.length){ DCR.alert("No data to export."); return; }
   var rows=[], header=["Employee","Employee ID"];
   for(var i=0;i<7;i++){ var d=new Date(pmWeekStart); d.setDate(d.getDate()+i); header.push(pmDayNames[i]+" "+pmFormatDateShort(d)); } header.push("Total"); rows.push(header);
   employees.forEach(function(emp){ var row=[emp.name,emp.id]; for(var i=0;i<7;i++) row.push(emp.days[pmDayKeys[i]]||0); row.push(emp.total); rows.push(row); });

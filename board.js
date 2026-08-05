@@ -244,7 +244,7 @@
     } catch (e) {
       p.estimateStatus = old;
       render();
-      alert("Could not move project: " + (e.message || "error"));
+      DCR.alert("Could not move project: " + (e.message || "error"));
     }
   }
 

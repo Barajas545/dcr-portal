@@ -153,7 +153,7 @@
         srcInto(img, p);
       });
       grid.querySelectorAll("[data-del]").forEach(function (b) {
-        b.onclick = function () {
+        b.onclick = async function () {
           // never silently discard work: say exactly what would be lost
           var i = Number(b.dataset.del), e = entries[i] || {};
           var what = e.cad
@@ -162,7 +162,7 @@
               ? "Delete this photo?\n\nIt has " + e.ann.items.length + " markup item" +
                 (e.ann.items.length === 1 ? "" : "s") + " (arrows/notes/measurements) that will be lost."
               : "Delete this photo?\n\nThis cannot be undone.";
-          if (!confirm(what)) return;
+          if (!(await DCR.confirm(what, { title: "Delete photo", danger: true, okText: "Delete" }))) return;
           entries.splice(i, 1);
           render();
           changed();

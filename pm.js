@@ -433,7 +433,7 @@
     setTimeout(function () { document.addEventListener("pointerdown", close, true); }, 30);
     async function setStatus(st, label) {
       var msgEl = el("ppMsg");
-      if (!confirm(label + "?")) return;
+      if (!(await DCR.confirm(label + "?", { title: "Change the project stage" }))) return;
       try {
         await DCR.api("/api/portal?action=board", { method: "POST", body: { op: "status", projectId: PID, newStatus: st } });
         pop.classList.remove("open");
@@ -526,11 +526,11 @@
   }
 
   async function deleteCost(id) {
-    if (!confirm("Remove this cost?")) return;
+    if (!(await DCR.confirm("Remove this cost?", { title: "Remove cost", danger: true, okText: "Remove" }))) return;
     try {
       await DCR.api("/api/portal?action=project", { method: "POST", body: { op: "expDelete", itemId: id } });
       await load();
-    } catch (e) { alert(e.message || "Could not remove it."); }
+    } catch (e) { DCR.alert(e.message || "Could not remove it.", { title: "Couldn't remove it" }); }
   }
 
   // Tasks belonging to one estimate item: linked by the estimate row id we
@@ -798,13 +798,14 @@
       } catch (e) {
         var m2 = el(msgEl || "qtMsg");
         if (m2) m2.textContent = e.message || "Save failed";
-        else alert(e.message || "Save failed");
+        else DCR.alert(e.message || "Save failed", { title: "Couldn't save" });
       }
     }
 
     d.querySelectorAll(".qtRecv").forEach(function (b) {
-      b.onclick = function () {
-        var amt = state.model.pricesHidden ? null : prompt("Quoted amount ($):");
+      b.onclick = async function () {
+        var amt = state.model.pricesHidden ? null
+          : await DCR.ask("What did they quote?", { title: "Mark quote received", type: "number", label: "Quoted amount ($)" });
         if (amt === null && !state.model.pricesHidden) return;
         var f = { quoteStatus: "Received" };
         if (amt && Number(amt) > 0) f.quoteAmount = Number(amt);
@@ -812,14 +813,14 @@
       };
     });
     d.querySelectorAll(".qtAward").forEach(function (b) {
-      b.onclick = function () {
-        if (!confirm("Award this item to the vendor? Other quotes stay recorded.")) return;
+      b.onclick = async function () {
+        if (!(await DCR.confirm("Other quotes stay recorded for comparison.", { title: "Award this item to the vendor?", okText: "Award" }))) return;
         write({ op: "qtUpdate", itemId: b.dataset.q, fields: { quoteStatus: "Awarded" } });
       };
     });
     d.querySelectorAll(".qtDel").forEach(function (b) {
-      b.onclick = function () {
-        if (!confirm("Delete this quote row?")) return;
+      b.onclick = async function () {
+        if (!(await DCR.confirm("Delete this quote row?", { title: "Delete quote", danger: true, okText: "Delete" }))) return;
         write({ op: "qtDelete", itemId: b.dataset.q });
       };
     });
@@ -974,12 +975,14 @@
     // doing the work, so record it in one press instead of walking the
     // request → received → award path that exists for competitive bidding.
     var awardNow = el("qtAwardNow");
-    if (awardNow) awardNow.onclick = function () {
+    if (awardNow) awardNow.onclick = async function () {
       var f = collectFields("Awarded");
       if (!f.vendorName && !f.vendorCompany) { msg("Give the vendor a name or a company."); return; }
       var who = f.vendorCompany || f.vendorName;
-      if (!confirm("Award this item to " + who + "?" +
-        (f.quoteAmount ? "\n\n" + C.money(f.quoteAmount) : "\n\nNo amount entered — Committed to subs stays $0 until you add one."))) return;
+      if (!(await DCR.confirm(
+        f.quoteAmount ? C.money(f.quoteAmount) + " agreed."
+          : "No amount entered — Committed to subs stays $0, and any invoice will read as unmeasured until you add one.",
+        { title: "Award this item to " + who + "?", okText: "Award" }))) return;
       awardNow.disabled = true;
       msg("Saving…");
       write({ op: "qtAdd", projectId: PID, fields: f });
@@ -1086,28 +1089,40 @@
       write({ op: "flag", projectId: PID, itemKey: l.key, state: state2, note: note || "" }, "pmNoteMsg");
     };
     var b3 = el("fgImp"), c3 = el("fgClear3");
-    if (b3) b3.onclick = function () {
-      var note = prompt("What needs to happen? (e.g. invoice due, inspection, order materials)");
-      if (note === null) return;
-      // re-ask only the date, so a typo never costs the note they just typed
-      var due = "", ask = "Due date (YYYY-MM-DD), or leave blank:";
-      for (;;) {
-        var v = prompt(ask, due);
-        if (v === null) return;
-        due = v.trim();
-        if (!due || /^\d{4}-\d{2}-\d{2}$/.test(due)) break;
-        ask = 'Use the format YYYY-MM-DD (e.g. ' + todayISO() + "), or leave blank:";
-      }
-      write({ op: "flag", projectId: PID, itemKey: l.key, state: "important", note: note, due: due }, "pmNoteMsg");
+    // note and due date in ONE dialog — the old flow asked twice, and a typo in
+    // the second prompt threw away what you had already typed in the first
+    if (b3) b3.onclick = async function () {
+      var r = await DCR.modal({
+        title: "⚑ Mark important",
+        message: "It shows on the chart, and turns red once the date passes.",
+        okText: "Flag it",
+        fields: [
+          { name: "note", label: "What needs to happen?", placeholder: "e.g. invoice due, inspection, order materials" },
+          { name: "due", label: "Due date (optional)", type: "date" },
+        ],
+        validate: function (v) {
+          if (!String(v.note || "").trim()) return "Say what needs to happen.";
+          return "";
+        },
+      });
+      if (!r) return;
+      write({ op: "flag", projectId: PID, itemKey: l.key, state: "important",
+        note: r.note.trim(), due: r.due || "" }, "pmNoteMsg");
     };
     if (c3) c3.onclick = function () { fg(null); };
     var b1 = el("fgBlock"), b2 = el("fgDone"), c1 = el("fgClear"), c2 = el("fgClear2");
-    if (b1) b1.onclick = function () {
-      var note = prompt("What is it blocked on?");
+    if (b1) b1.onclick = async function () {
+      var note = await DCR.ask("What is it blocked on?", {
+        title: "⛔ Mark blocked", okText: "Mark blocked", danger: true,
+        placeholder: "e.g. waiting on the permit",
+        validate: function (v) { return String(v.v || "").trim() ? "" : "Say what it is waiting on."; },
+      });
       if (note === null) return;
-      fg("blocked", note);
+      fg("blocked", note.trim());
     };
-    if (b2) b2.onclick = function () { if (confirm("Mark this whole item complete?")) fg("complete"); };
+    if (b2) b2.onclick = async function () {
+      if (await DCR.confirm("Every stage of this item will read as done.", { title: "Mark this whole item complete?", okText: "Mark complete" })) fg("complete");
+    };
     if (c1) c1.onclick = function () { fg(null); };
     if (c2) c2.onclick = function () { fg(null); };
 

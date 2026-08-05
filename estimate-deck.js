@@ -859,12 +859,13 @@
       b.onclick = function () { playNote(list[Number(b.dataset.i)], b); };
     });
     el("edNotesList").querySelectorAll(".delNote").forEach(function (b) {
-      b.onclick = function () {
+      b.onclick = async function () {
         var n = list[Number(b.dataset.i)] || {};
         var preview = (n.transcript || "").trim().replace(/\s+/g, " ").slice(0, 70);
-        if (!confirm("Delete this voice note?\n\nThe recording" +
+        if (!(await DCR.confirm("The recording" +
           (n.transcript ? ' and its transcript ("' + preview + (preview.length >= 70 ? "…" : "") + '")' : "") +
-          " will be removed from this estimate. This cannot be undone.")) return;
+          " will be removed from this estimate. This cannot be undone.",
+          { title: "Delete this voice note?", danger: true, okText: "Delete" }))) return;
         list.splice(Number(b.dataset.i), 1);
         renderAudioList();
         autoSaveMedia();
@@ -907,7 +908,7 @@
         audioEl.onended = function () { btn.textContent = "▶"; };
         audioEl.play();
       })
-      .catch(function () { alert("Could not load the audio."); });
+      .catch(function () { DCR.alert("Could not load the audio."); });
   }
 
   function setRecPhase(phase) {
@@ -953,7 +954,7 @@
     } catch (e) {
       if (rec.sr) { try { rec.sr.stop(); } catch (e2) {} }
       state._rec = null;
-      alert("Microphone unavailable: " + (e.message || e.name || "permission denied"));
+      DCR.alert("Microphone unavailable: " + (e.message || e.name || "permission denied"));
     }
   }
 

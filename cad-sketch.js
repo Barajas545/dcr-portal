@@ -1784,8 +1784,8 @@
     q("#csFit").onclick = fit;
     q("#csUndo").onclick = doUndo;
     q("#csRedo").onclick = doRedo;
-    q("#csCancel").onclick = function () {
-      if (st.dirty && !confirm("Discard the changes to this drawing?")) return;
+    q("#csCancel").onclick = async function () {
+      if (st.dirty && !(await DCR.confirm("Your markup on this drawing will be lost.", { title: "Discard the changes?", danger: true, okText: "Discard" }))) return;
       close();
     };
     q("#csSave").onclick = save;

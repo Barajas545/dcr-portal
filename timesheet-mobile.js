@@ -181,7 +181,7 @@ function deleteEntry(id){
 }
 async function confirmDelete(id){
   try{ await DCR.api("/api/portal?action=timesheets",{method:"DELETE",body:{itemId:id}}); await loadData(); }
-  catch(e){ alert("Error deleting: "+(e.message||"try again")); }
+  catch(e){ DCR.alert("Error deleting: "+(e.message||"try again")); }
 }
 
 /* ── submit ── */

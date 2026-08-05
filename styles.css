@@ -204,3 +204,37 @@ tbody tr:hover { background: var(--surface-2); }
   .dcr-live.saved { color: #6fd3a4; }
   .dcr-live.error, .dcr-live.invalid { color: #f0937f; }
 }
+
+/* ── app dialogs (DCR.modal) ──────────────────────────────────────────────
+   Centred in the app and branded, instead of the browser's own prompt box
+   with the hosting domain in its title. */
+.dcr-mo {
+  position: fixed; inset: 0; z-index: 2147483000; display: none;
+  align-items: center; justify-content: center; padding: 20px;
+  background: rgba(0,0,0,.45); backdrop-filter: blur(2px);
+}
+.dcr-mo.open { display: flex; animation: dcrMoIn .12s ease-out; }
+.dcr-mo-card {
+  width: 100%; max-width: 420px; background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px 16px;
+  box-shadow: 0 18px 60px rgba(0,0,0,.45);
+}
+@keyframes dcrMoIn { from { opacity: 0 } to { opacity: 1 } }
+.dcr-mo-hd { display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
+  font-size: 12px; font-weight: 700; color: var(--text-muted); letter-spacing: .02em; }
+.dcr-mo-hd img { height: 20px; width: auto; }
+.dcr-mo-t { font-size: 16px; font-weight: 800; margin-bottom: 4px; }
+.dcr-mo-m { font-size: 13.5px; line-height: 1.5; color: var(--text); margin-bottom: 4px; white-space: pre-wrap; }
+.dcr-mo-f { margin-top: 10px; }
+.dcr-mo-f label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 3px; font-weight: 600; }
+.dcr-mo-f input, .dcr-mo-f textarea, .dcr-mo-f select {
+  width: 100%; box-sizing: border-box; padding: 9px 11px; font-size: 14px; font-family: inherit;
+  border: 1px solid var(--border); border-radius: 9px; background: var(--bg); color: var(--text);
+}
+.dcr-mo-f input:focus, .dcr-mo-f textarea:focus, .dcr-mo-f select:focus { outline: 2px solid #2f80d8; outline-offset: 1px; }
+.dcr-mo-err { color: #d9614f; font-size: 12.5px; min-height: 16px; margin-top: 6px; }
+.dcr-mo-ft { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
+.dcr-mo-danger { background: #c44b3b; border-color: #c44b3b; color: #fff; }
+@media (prefers-color-scheme: dark) {
+  .dcr-mo-hd img { filter: invert(1); }
+}

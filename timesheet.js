@@ -379,7 +379,7 @@ function deleteCard(id) {
 }
 async function confirmDelete(id) {
   try { await DCR.api("/api/portal?action=timesheets", { method:"DELETE", body:{ itemId:id } }); await loadData(); }
-  catch(e){ alert("Error deleting entry: "+(e.message||"try again")); }
+  catch(e){ DCR.alert("Error deleting entry: "+(e.message||"try again")); }
 }
 
 async function submitEntry() {

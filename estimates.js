@@ -61,12 +61,12 @@
     el("seList").querySelectorAll(".delEst").forEach(function (b) {
       b.onclick = async function (ev) {
         ev.stopPropagation();
-        if (!confirm("Delete this estimate? This cannot be undone.")) return;
+        if (!(await DCR.confirm("This cannot be undone.", { title: "Delete this estimate?", danger: true, okText: "Delete" }))) return;
         try {
           await DCR.api("/api/portal?action=sales&part=estimates&id=" + encodeURIComponent(b.dataset.id), { method: "DELETE" });
           state.estimates = state.estimates.filter(function (x) { return x.id !== b.dataset.id; });
           renderEstimates();
-        } catch (e2) { alert(e2.message || "Delete failed."); }
+        } catch (e2) { DCR.alert(e2.message || "Delete failed."); }
       };
     });
   }
@@ -253,7 +253,7 @@
     el("r_price").oninput = updateCps;
     el("refDelete").onclick = async function () {
       if (!state.editingRef) return;
-      if (!confirm("Delete this reference project?")) return;
+      if (!(await DCR.confirm("Delete this reference project?", { title: "Delete reference", danger: true, okText: "Delete" }))) return;
       try {
         await DCR.api("/api/portal?action=sales&part=refs&id=" + encodeURIComponent(state.editingRef.id), { method: "DELETE" });
         closeRefModal();

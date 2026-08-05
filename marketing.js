@@ -111,7 +111,7 @@
       x[field] = newVal;
       if (field==="marketingTaskMarkComplete" && newVal && !x.marketingTaskCompletedDate) x.marketingTaskCompletedDate = new Date().toISOString();
       render();
-    } catch (e) { alert(e.message || "Update failed"); }
+    } catch (e) { DCR.alert(e.message || "Update failed"); }
   }
 
   /* ── modal ── */
@@ -165,11 +165,11 @@
   }
 
   async function delTask(id) {
-    if (!confirm("Delete this marketing task? This cannot be undone.")) return;
+    if (!(await DCR.confirm("This cannot be undone.", { title: "Delete this marketing task?", danger: true, okText: "Delete" }))) return;
     try {
       await DCR.api("/api/portal?action=mtasks", { method:"POST", body:{ op:"mtDelete", itemId:id } });
       await load();
-    } catch (e) { alert(e.message || "Delete failed"); }
+    } catch (e) { DCR.alert(e.message || "Delete failed"); }
   }
 
   /* ── data ── */

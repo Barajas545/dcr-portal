@@ -150,6 +150,153 @@
     },
   };
 
+  /* ── DCR.modal — the app's own dialogs ──────────────────────────────────
+     Replaces window.prompt/confirm/alert, which render as "barajas545.github.io
+     says…" with the browser's own chrome — wrong name, wrong look, and stuck
+     to the top of the screen. This one is centred in the app, carries the
+     company mark, themes with the rest of the portal, and returns a Promise.
+
+       await DCR.confirm("Delete this row?", { danger: true })   -> true/false
+       await DCR.ask("What needs to happen?")                    -> string|null
+       await DCR.alert("Saved.")
+       await DCR.modal({ title, message, fields:[…], okText })   -> {name:value}|null
+
+     Several fields in one dialog is the point: asking for a note and then a
+     date in two stacked prompts is how the old flow felt clumsy. */
+  var modalStack = [];
+
+  function modalEl() {
+    var host = document.getElementById("dcrModalHost");
+    if (host) return host;
+    host = document.createElement("div");
+    host.id = "dcrModalHost";
+    host.className = "dcr-mo";
+    host.innerHTML = '<div class="dcr-mo-card" role="dialog" aria-modal="true"></div>';
+    document.body.appendChild(host);
+    return host;
+  }
+
+  DCR.modal = function (opts) {
+    opts = opts || {};
+    var fields = opts.fields || [];
+    return new Promise(function (resolve) {
+      var host = modalEl();
+      var card = host.querySelector(".dcr-mo-card");
+      var lastFocus = document.activeElement;
+      var co = DCR.companyInfo || {};
+
+      card.innerHTML =
+        '<div class="dcr-mo-hd">' +
+          (co.logo ? '<img src="' + DCR.esc(co.logo) + '" alt="">' : "") +
+          "<span>" + DCR.esc(co.name || DCR.company || "DCR") + "</span></div>" +
+        (opts.title ? '<div class="dcr-mo-t">' + DCR.esc(opts.title) + "</div>" : "") +
+        (opts.message ? '<div class="dcr-mo-m">' + DCR.esc(opts.message) + "</div>" : "") +
+        fields.map(function (f, i) {
+          var id = "dcrMoF" + i;
+          var lab = f.label ? '<label for="' + id + '">' + DCR.esc(f.label) + "</label>" : "";
+          if (f.type === "textarea") {
+            return '<div class="dcr-mo-f">' + lab + '<textarea id="' + id + '" rows="' + (f.rows || 3) +
+              '" placeholder="' + DCR.esc(f.placeholder || "") + '">' + DCR.esc(f.value || "") + "</textarea></div>";
+          }
+          if (f.type === "select") {
+            return '<div class="dcr-mo-f">' + lab + '<select id="' + id + '">' +
+              (f.options || []).map(function (o) {
+                var v = o.value !== undefined ? o.value : o;
+                var t = o.label !== undefined ? o.label : o;
+                return '<option value="' + DCR.esc(v) + '"' + (String(v) === String(f.value) ? " selected" : "") + ">" + DCR.esc(t) + "</option>";
+              }).join("") + "</select></div>";
+          }
+          return '<div class="dcr-mo-f">' + lab + '<input id="' + id + '" type="' + (f.type || "text") +
+            '" placeholder="' + DCR.esc(f.placeholder || "") + '" value="' + DCR.esc(f.value || "") + '"' +
+            (f.step ? ' step="' + DCR.esc(f.step) + '"' : "") + "></div>";
+        }).join("") +
+        '<div class="dcr-mo-err" id="dcrMoErr"></div>' +
+        '<div class="dcr-mo-ft">' +
+          (opts.cancel === false ? "" : '<button type="button" class="btn btn-ghost btn-sm" id="dcrMoNo">' +
+            DCR.esc(opts.cancelText || "Cancel") + "</button>") +
+          '<button type="button" class="btn btn-sm' + (opts.danger ? " dcr-mo-danger" : "") + '" id="dcrMoYes">' +
+            DCR.esc(opts.okText || "OK") + "</button>" +
+        "</div>";
+
+      host.classList.add("open");
+      var entry = { host: host, resolve: resolve, done: false };
+      modalStack.push(entry);
+
+      function close(value) {
+        if (entry.done) return;
+        entry.done = true;
+        modalStack.pop();
+        host.classList.remove("open");
+        document.removeEventListener("keydown", onKey, true);
+        try { if (lastFocus && lastFocus.focus) lastFocus.focus(); } catch (e) {}
+        resolve(value);
+      }
+      function values() {
+        var out = {};
+        fields.forEach(function (f, i) {
+          var n = document.getElementById("dcrMoF" + i);
+          out[f.name || String(i)] = n ? n.value : "";
+        });
+        return out;
+      }
+      function submit() {
+        var v = values();
+        if (opts.validate) {
+          var problem = opts.validate(v);
+          if (problem) { document.getElementById("dcrMoErr").textContent = problem; return; }
+        }
+        close(fields.length ? v : true);
+      }
+      function onKey(e) {
+        if (modalStack[modalStack.length - 1] !== entry) return;
+        if (e.key === "Escape") { e.preventDefault(); close(null); }
+        else if (e.key === "Enter" && !e.shiftKey) {
+          var t = e.target;
+          if (t && t.tagName === "TEXTAREA") return;   // Enter is a newline there
+          e.preventDefault(); submit();
+        }
+      }
+      document.addEventListener("keydown", onKey, true);
+      card.querySelector("#dcrMoYes").onclick = submit;
+      var no = card.querySelector("#dcrMoNo");
+      if (no) no.onclick = function () { close(null); };
+      host.onclick = function (e) { if (e.target === host) close(null); };
+
+      var first = card.querySelector("input, textarea, select");
+      setTimeout(function () {
+        if (first) { first.focus(); if (first.select) first.select(); }
+        else card.querySelector("#dcrMoYes").focus();
+      }, 20);
+    });
+  };
+
+  // prompt() → string or null
+  DCR.ask = function (message, opts) {
+    opts = opts || {};
+    return DCR.modal({
+      title: opts.title || "", message: message,
+      okText: opts.okText || "OK", danger: opts.danger,
+      fields: [{ name: "v", type: opts.type || "text", value: opts.value || "",
+        placeholder: opts.placeholder || "", label: opts.label || "" }],
+      validate: opts.validate,
+    }).then(function (r) { return r ? r.v : null; });
+  };
+  // confirm() → true/false
+  DCR.confirm = function (message, opts) {
+    opts = opts || {};
+    return DCR.modal({
+      title: opts.title || "", message: message,
+      okText: opts.okText || "Yes", cancelText: opts.cancelText || "Cancel",
+      danger: opts.danger, fields: [],
+    }).then(function (r) { return r === true; });
+  };
+  // alert() → resolves when dismissed
+  DCR.alert = function (message, opts) {
+    opts = opts || {};
+    return DCR.modal({ title: opts.title || "", message: message,
+      okText: opts.okText || "OK", cancel: false, fields: [] }).then(function () {});
+  };
+
   /* ── DCR.live — the auto-save engine ────────────────────────────────────
      Edits persist by themselves; nobody hunts for a Save button. One saver per
      RECORD (not per field), so every dirty field of a record coalesces into a

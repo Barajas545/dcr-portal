@@ -254,9 +254,11 @@
     var row = state.editing;
     if (!row) return;
     var warn = state.editingKind === "product"
-      ? "Delete this material? Its colors will remain and should be deleted too. Continue?"
-      : "Delete this color?";
-    if (!confirm(warn)) return;
+      ? "Its colors will remain and should be deleted too."
+      : "This cannot be undone.";
+    if (!(await DCR.confirm(warn, {
+      title: state.editingKind === "product" ? "Delete this material?" : "Delete this color?",
+      danger: true, okText: "Delete" }))) return;
     try {
       await DCR.api("/api/portal?action=sales&part=materials&id=" + encodeURIComponent(row.id), { method: "DELETE" });
       closeModal();
