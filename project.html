@@ -500,9 +500,12 @@
           <datalist id="pjJumpList"></datalist>
         </div>
         <a class="pj-btn" id="pjPmBtn" title="Progress chart — stages, items, quotes and money">📊 Progress</a>
-        <button class="pj-btn pj-btn-primary" id="pjSave" disabled>💾 Save</button>
+        <button class="pj-btn" id="pjSave" title="This page saves by itself — use this only to save right now">💾 Save now</button>
       </div>
-      <div class="pj-msg" id="pjMsg"></div>
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <span class="dcr-live" id="pjMsg"></span>
+        <span class="pj-msg" id="pjNotice"></span>
+      </div>
 
       <div class="pj-tabs" id="pjTabs">
         <button class="pj-tab active" data-tab="overview">Overview</button>

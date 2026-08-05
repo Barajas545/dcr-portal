@@ -134,8 +134,9 @@
     } catch (e) { el("pjThumb").textContent = "no preview"; }
   }
 
+  // transient page notices — the auto-save badge owns #pjMsg
   function msg(kind, text) {
-    var m = el("pjMsg"); m.textContent = text; m.className = "pj-msg " + (kind||"");
+    var m = el("pjNotice"); m.textContent = text; m.className = "pj-msg " + (kind||"");
     if (kind==="ok") setTimeout(function(){ if(m.textContent===text){m.textContent="";} }, 3500);
   }
 
@@ -162,11 +163,17 @@
 
   function renderOverview() {
     var p = state.project;
-    state.originals = {}; state.dirty = {};
+    // Seed the saver's "what the server has" in the SAME shape the inputs
+    // produce, or a field reads as changed the moment it's touched.
+    state.originals = {};
     [SEC_PROJECT,SEC_CLIENT,SEC_LINKS,SEC_NOTES,SEC_CHECK].forEach(function(sec){
-      sec.forEach(function(d){ state.originals[d[0]] = p[d[0]]; });
+      sec.forEach(function(d){
+        state.originals[d[0]] = d[2]==="date"
+          ? (dateInputVal(p[d[0]]) ? dateInputVal(p[d[0]]) + "T12:00:00Z" : null)
+          : p[d[0]];
+      });
     });
-    SEC_BOOLS.forEach(function(d){ state.originals[d[0]] = p[d[0]]; });
+    SEC_BOOLS.forEach(function(d){ state.originals[d[0]] = !!p[d[0]]; });
     state.originals.checkTagNames = p.checkTagNames;
 
     var links = [
@@ -198,9 +205,9 @@
           return '<label class="pj-check"><input type="checkbox" data-key="'+d[0]+'" data-type="bool"'+(state.project[d[0]]?" checked":"")+(state.canWrite?"":" disabled")+'> '+esc(d[1])+'</label>';
         }).join("")+'</div></div>';
 
-    el("pane-overview").querySelectorAll("[data-key]").forEach(function(inp){
-      inp.addEventListener(inp.type==="checkbox"?"change":"input", function(){ markDirty(inp); });
-    });
+    // The form saves itself — no Save button to remember. One saver per record,
+    // so every field on this page coalesces into a single PATCH.
+    projectSaver().baseline(state.originals).bind(el("pane-overview"));
     // multi-line note boxes grow to fit their content
     el("pane-overview").querySelectorAll('textarea[data-type="area"]').forEach(function(ta){
       autoGrow(ta);
@@ -213,41 +220,31 @@
         var on = Array.prototype.filter.call(el("pjTagWrap").querySelectorAll(".pj-tag.on"), function(x){return true;})
           .map(function(x){ return "#"+x.getAttribute("data-tag"); });
         var all = on.concat(extra.map(function(e){ return "#"+e; }));
-        state.dirty.checkTagNames = all.join(", ");
-        el("pjSave").disabled = false;
+        // a tag click is complete the moment it happens — save right away
+        projectSaver().set("checkTagNames", all.join(", "), { now: true });
       });
     });
   }
 
-  function markDirty(inp) {
-    var key = inp.getAttribute("data-key"), type = inp.getAttribute("data-type");
-    var orig = state.originals[key];
-    var val;
-    if (type==="bool") val = inp.checked;
-    else if (type==="num") val = inp.value==="" ? null : Number(inp.value);
-    else if (type==="date") val = inp.value ? inp.value + "T12:00:00Z" : null;
-    else val = inp.value;
-    var origCmp = type==="date" ? dateInputVal(orig) : (orig==null?"":orig);
-    var valCmp = type==="date" ? (inp.value||"") : (val==null?"":val);
-    if (String(valCmp) === String(origCmp)) delete state.dirty[key];
-    else state.dirty[key] = val;
-    el("pjSave").disabled = Object.keys(state.dirty).length === 0;
-  }
-
-  async function saveOverview() {
-    var keys = Object.keys(state.dirty);
-    if (!keys.length) return;
-    el("pjSave").disabled = true; msg("", "Saving…");
-    var fields = {};
-    keys.forEach(function(k){ fields[k] = state.dirty[k]; });
-    try {
-      await DCR.api("/api/portal?action=data", { method:"PATCH", body:{ list:"project", itemId:PID, fields:fields } });
-      msg("ok","✓ Saved");
-      await loadRecord();
-    } catch (e) {
-      msg("err", e.message || "Save failed");
-      el("pjSave").disabled = false;
-    }
+  /* ── live saving of the project record ──────────────────────────────────
+     Every writer of the Project row (Overview form, tag chips, Mailing notes)
+     shares this one saver, keyed by record, so they can never race or clobber
+     each other. Success patches state.project in place: re-rendering mid-edit
+     would eat the caret and the textarea's grown height. */
+  function projectSaver() {
+    return DCR.live.record({
+      key: "project:" + PID,
+      status: "pjMsg",
+      write: function (fields) {
+        return DCR.api("/api/portal?action=data", {
+          method: "PATCH",
+          body: { list: "project", itemId: PID, fields: fields, lean: true },
+        });
+      },
+      onSaved: function (fields) {
+        for (var k in fields) { state.project[k] = fields[k]; state.originals[k] = fields[k]; }
+      },
+    });
   }
 
   /* ── tabs ── */
@@ -1206,20 +1203,17 @@
         '<a class="pj-btn pj-btn-sm" href="'+follow+'">✉️ Follow-up email</a>' +
         '<a class="pj-btn pj-btn-sm" href="'+blank+'">✉️ Blank email</a></div></div>' +
       '<div class="pj-sec"><h3>Email notes</h3>' +
-        '<textarea id="mailNotes" '+(state.canWrite?"":"disabled ")+'style="width:100%;box-sizing:border-box;min-height:90px;padding:9px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text)">'+esc(p.projectEMailNotes||"")+'</textarea>' +
-        (state.canWrite?'<div style="margin-top:8px;display:flex;gap:8px;align-items:center"><button class="pj-btn pj-btn-primary pj-btn-sm" id="mailSave">✓ Save notes</button><span class="pj-msg" id="mailMsg"></span></div>':"")+'</div>' +
+        '<textarea id="mailNotes" data-key="projectEMailNotes" '+(state.canWrite?"":"disabled ")+'style="width:100%;box-sizing:border-box;min-height:90px;padding:9px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text)">'+esc(p.projectEMailNotes||"")+'</textarea>' +
+        (state.canWrite?'<div style="margin-top:8px;display:flex;gap:8px;align-items:center"><span class="dcr-live" id="mailMsg"></span></div>':"")+'</div>' +
       '<div class="pj-sec"><h3>Find a contact</h3><input class="pj-search" id="ctSearch" placeholder="Search contacts…"><div id="ctResults" style="margin-top:10px"></div></div>';
 
-    var ms = el("mailSave");
-    if (ms) ms.onclick = async function(){
-      ms.disabled = true;
-      try {
-        await DCR.api("/api/portal?action=data", { method:"PATCH", body:{ list:"project", itemId:PID, fields:{ projectEMailNotes: el("mailNotes").value } } });
-        state.project.projectEMailNotes = el("mailNotes").value;
-        el("mailMsg").textContent="✓ Saved"; el("mailMsg").className="pj-msg ok";
-      } catch (e) { el("mailMsg").textContent=e.message; el("mailMsg").className="pj-msg err"; }
-      ms.disabled = false;
-    };
+    // same record saver as the Overview form — these notes used to be lost
+    // entirely if you navigated away without pressing Save
+    if (state.canWrite) {
+      projectSaver().baseline({ projectEMailNotes: p.projectEMailNotes })
+        .bind(el("pane-mailing"));
+      DCR.live.record({ key: "project:" + PID, status: "mailMsg" });
+    }
 
     var contacts = null;
     el("ctSearch").addEventListener("input", async function(){
@@ -1626,7 +1620,10 @@
     if (!PID) { el("pjTitle").textContent = "No project selected"; el("pane-overview").innerHTML='<div class="pj-empty">Open a project from the <a href="board.html" style="color:var(--acc)">Board</a>.</div>'; return; }
 
     document.querySelectorAll(".pj-tab").forEach(function(t){ t.onclick = function(){ switchTab(t.getAttribute("data-tab")); }; });
-    el("pjSave").onclick = saveOverview;
+    // The page saves itself; this is a "flush now" affordance for anyone who
+    // still reaches for Save, and doubles as the manual retry after a failure.
+    el("pjSave").onclick = function () { DCR.live.flushAll(); };
+    DCR.live.mountBadge("pjMsg");
     var pmBtn = el("pjPmBtn");
     if (pmBtn) pmBtn.href = "pm.html?id=" + encodeURIComponent(PID);
     el("tkCancel").onclick = function(){ el("taskModal").classList.remove("open"); };
@@ -1757,7 +1754,7 @@
     };
     el("noteSave").onclick = noteSave;
     el("noteCancel").onclick = function(){ el("noteModal").classList.remove("open"); };
-    window.addEventListener("beforeunload", function(e){ if (Object.keys(state.dirty).length) { e.preventDefault(); e.returnValue=""; } });
+    // (the unsaved-work guard now lives in common.js and covers every record)
 
     // Restore the Expenses filter: the URL wins (a shared link, or ← Back from
     // the printed report), then this tab's last session (a plain reload), then

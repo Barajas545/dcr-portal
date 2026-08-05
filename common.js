@@ -150,6 +150,306 @@
     },
   };
 
+  /* ── DCR.live — the auto-save engine ────────────────────────────────────
+     Edits persist by themselves; nobody hunts for a Save button. One saver per
+     RECORD (not per field), so every dirty field of a record coalesces into a
+     single write and a record never has two writes in flight.
+
+       var saver = DCR.live.record({
+         key: "project:" + PID,          // same key === same saver
+         status: "pjMsg",                // where the badge paints
+         write: function (fields) { return DCR.api(…, {body:{fields:fields}}); },
+         onSaved: function (fields) { … patch local state IN PLACE … }
+       });
+       saver.baseline(record);           // what the server already has
+       saver.bind(paneEl);               // wire every [data-key] input
+       saver.set("projectNotes", txt);   // or drive it by hand
+
+     Deliberately NOT auto-saved anywhere: creating, deleting, uploading,
+     emailing, and workflow stage changes. Those stay one deliberate click. */
+  var LIVE_DELAY = 800;        // idle after the last keystroke
+  var LIVE_NOW = 120;          // discrete controls: instant to a human, but long
+                               // enough that a burst of clicks is one write
+  var LIVE_CEILING = 4000;     // …but never wait longer than this while typing
+  var LIVE_BACKOFF = [2000, 6000, 15000];
+  var liveRecords = {};
+  var livePageNodes = [];
+
+  function liveNorm(v) {
+    if (v === null || v === undefined) return "";
+    if (typeof v === "boolean") return v ? "1" : "";
+    if (typeof v === "number") return isFinite(v) ? String(v) : "";
+    return String(v);
+  }
+  function liveCount(o) { return Object.keys(o).length; }
+  // Worth trying again? Network, throttling and server faults are; 400/403 are not.
+  function liveRetryable(e) {
+    if (!navigator.onLine) return true;
+    if (!e || !e.status) return true;                 // fetch failed outright
+    return e.status >= 500 || e.status === 429 || e.status === 408;
+  }
+  function liveRetryAfter(e) {
+    var s = e && e.data && Number(e.data.retryAfter);
+    return isFinite(s) && s > 0 ? Math.min(s, 60) * 1000 : 0;
+  }
+  function liveClock(d) {
+    var h = d.getHours(), m = d.getMinutes();
+    var ap = h >= 12 ? "pm" : "am";
+    h = h % 12; if (!h) h = 12;
+    return h + ":" + (m < 10 ? "0" + m : m) + ap;
+  }
+
+  function LiveRecord(opts) {
+    this.opts = opts;
+    this.base = {};       // last values known to be on the server
+    this.pend = {};       // dirty, not yet sent
+    this.bad = {};        // held back by validate()
+    this.timer = null;
+    this.retryTimer = null;
+    this.firstDirtyAt = 0;
+    this.inflight = null;
+    this.tries = 0;
+    this.state = "idle";  // idle | dirty | saving | saved | error | invalid
+    this.savedAt = null;
+    this.err = null;
+    this.nodes = [];
+  }
+
+  LiveRecord.prototype.baseline = function (obj) {
+    if (!obj) return this;
+    for (var k in obj) if (Object.prototype.hasOwnProperty.call(obj, k)) this.base[k] = obj[k];
+    // anything that now matches the server is no longer dirty
+    for (var p in this.pend) {
+      if (liveNorm(this.pend[p]) === liveNorm(this.base[p])) delete this.pend[p];
+    }
+    return this;
+  };
+
+  LiveRecord.prototype.set = function (field, value, o) {
+    o = o || {};
+    if (this.opts.validate && !this.opts.validate(field, value)) {
+      this.bad[field] = true;
+      delete this.pend[field];
+      this.state = "invalid";
+      this.paint();
+      return this;
+    }
+    delete this.bad[field];
+    if (liveNorm(value) === liveNorm(this.base[field])) delete this.pend[field];
+    else this.pend[field] = value;
+
+    if (!liveCount(this.pend)) {
+      if (this.state === "dirty" || this.state === "invalid") {
+        this.state = this.savedAt ? "saved" : "idle";
+      }
+      clearTimeout(this.timer); this.timer = null; this.firstDirtyAt = 0;
+      this.paint();
+      return this;
+    }
+    if (this.state !== "saving") this.state = "dirty";
+    this.paint();
+    this.arm(o.now ? LIVE_NOW : 0);
+    return this;
+  };
+
+  LiveRecord.prototype.arm = function (fixed) {
+    var self = this;
+    if (!this.firstDirtyAt) this.firstDirtyAt = Date.now();
+    clearTimeout(this.timer);
+    var wait;
+    if (fixed) {
+      wait = fixed;
+    } else {
+      var elapsed = Date.now() - this.firstDirtyAt;
+      wait = Math.max(0, Math.min(this.opts.delay || LIVE_DELAY, LIVE_CEILING - elapsed));
+    }
+    this.timer = setTimeout(function () { self.flush(); }, wait);
+  };
+
+  LiveRecord.prototype.flush = function () {
+    var self = this;
+    clearTimeout(this.timer); this.timer = null;
+    clearTimeout(this.retryTimer); this.retryTimer = null;
+    if (this.inflight) return this.inflight;          // one write at a time, in order
+    if (!liveCount(this.pend)) return Promise.resolve();
+
+    var fields = this.pend;
+    this.pend = {};
+    this.firstDirtyAt = 0;
+    this.state = "saving";
+    this.paint();
+
+    this.inflight = Promise.resolve()
+      .then(function () { return self.opts.write(fields); })
+      .then(function (res) {
+        self.inflight = null; self.tries = 0; self.err = null;
+        for (var k in fields) self.base[k] = fields[k];
+        self.state = "saved"; self.savedAt = new Date();
+        try { if (self.opts.onSaved) self.opts.onSaved(fields, res); } catch (e) { /* never break the page */ }
+        self.paint();
+        if (liveCount(self.pend)) return self.flush();   // typed while saving
+      })
+      .catch(function (e) {
+        self.inflight = null;
+        // put the failed values back UNDER anything newer the user typed
+        var merged = {}, k;
+        for (k in fields) merged[k] = fields[k];
+        for (k in self.pend) merged[k] = self.pend[k];
+        self.pend = merged;
+        self.err = e; self.state = "error";
+        self.paint();
+        if (liveRetryable(e) && self.tries < LIVE_BACKOFF.length) {
+          var wait = liveRetryAfter(e) || LIVE_BACKOFF[self.tries];
+          self.tries++;
+          self.retryTimer = setTimeout(function () { self.flush(); }, wait);
+        }
+      });
+    return this.inflight;
+  };
+
+  LiveRecord.prototype.retry = function () { this.tries = 0; return this.flush(); };
+  LiveRecord.prototype.busy = function () { return !!(this.inflight || liveCount(this.pend)); };
+  LiveRecord.prototype.dispose = function () {
+    var self = this;
+    var p = this.flush();
+    delete liveRecords[this.opts.key];
+    return p.then(function () { self.nodes = []; });
+  };
+
+  // Wire every [data-key] control under root. Discrete controls (checkbox,
+  // select, date) save on change; typed fields debounce and flush on blur.
+  LiveRecord.prototype.bind = function (root, o) {
+    var self = this;
+    o = o || {};
+    if (!root) return this;
+    Array.prototype.forEach.call(root.querySelectorAll("[data-key]"), function (inp) {
+      if (inp._dcrLive) return;
+      inp._dcrLive = true;
+      var discrete = inp.type === "checkbox" || inp.type === "radio" ||
+        inp.tagName === "SELECT" || inp.type === "date";
+      inp.addEventListener(discrete ? "change" : "input", function () {
+        self.set(inp.getAttribute("data-key"), DCR.live.inputValue(inp), { now: discrete });
+      });
+      if (!discrete) {
+        inp.addEventListener("blur", function () {
+          self.set(inp.getAttribute("data-key"), DCR.live.inputValue(inp));
+          self.flush();
+        });
+      }
+    });
+    if (o.baseline !== false) this.paint();
+    return this;
+  };
+
+  LiveRecord.prototype.summary = function () {
+    var bad = Object.keys(this.bad);
+    if (this.state === "error") {
+      var offline = !navigator.onLine;
+      return { state: "error", retry: !offline,
+        text: offline ? "Offline — saves when you reconnect"
+          : "⚠ " + ((this.err && this.err.message) || "Couldn't save") };
+    }
+    if (bad.length) return { state: "invalid", text: "Can't save " + bad[0] + " — check the value" };
+    if (this.state === "saving") {
+      return { state: "saving", text: this.tries ? "Saving… (retry " + this.tries + ")" : "Saving…" };
+    }
+    if (this.state === "dirty") return { state: "dirty", text: "• Unsaved" };
+    if (this.state === "saved") return { state: "saved", text: "✓ Saved " + liveClock(this.savedAt) };
+    return { state: "idle", text: "" };
+  };
+
+  LiveRecord.prototype.paint = function () {
+    var s = this.summary(), self = this;
+    this.nodes.forEach(function (n) { livePaint(n, s, self); });
+    livePaintPage();
+  };
+
+  function livePaint(node, s, rec) {
+    if (!node) return;
+    node.className = "dcr-live " + s.state;
+    node.setAttribute("role", "status");
+    node.setAttribute("aria-live", "polite");
+    node.textContent = s.text;
+    if (s.retry && rec) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "dcr-live-retry";
+      b.textContent = "Retry";
+      b.onclick = function () { rec.retry(); };
+      node.appendChild(document.createTextNode(" "));
+      node.appendChild(b);
+    }
+  }
+
+  var LIVE_RANK = { error: 5, invalid: 4, saving: 3, dirty: 2, saved: 1, idle: 0 };
+  function livePaintPage() {
+    if (!livePageNodes.length) return;
+    var worst = null, rec = null;
+    for (var k in liveRecords) {
+      var s = liveRecords[k].summary();
+      if (!worst || LIVE_RANK[s.state] > LIVE_RANK[worst.state]) { worst = s; rec = liveRecords[k]; }
+    }
+    livePageNodes.forEach(function (n) { livePaint(n, worst || { state: "idle", text: "" }, rec); });
+  }
+
+  function liveNode(x) { return typeof x === "string" ? document.getElementById(x) : x; }
+
+  DCR.live = {
+    // Same key returns the same saver — that IS the coalescing guarantee.
+    // Re-calling refreshes the callbacks, which a re-render will have replaced.
+    record: function (opts) {
+      var rec = liveRecords[opts.key];
+      if (rec) {
+        for (var k in opts) if (k !== "key") rec.opts[k] = opts[k];
+      } else {
+        rec = liveRecords[opts.key] = new LiveRecord(opts);
+      }
+      var n = liveNode(opts.status);
+      if (n && rec.nodes.indexOf(n) === -1) rec.nodes.push(n);
+      rec.paint();
+      return rec;
+    },
+    get: function (key) { return liveRecords[key] || null; },
+    inputValue: function (inp) {
+      var type = inp.getAttribute && inp.getAttribute("data-type");
+      if (type === "bool" || inp.type === "checkbox") return inp.checked;
+      if (type === "num") return inp.value === "" ? null : Number(inp.value);
+      if (type === "date") return inp.value ? inp.value + "T12:00:00Z" : null;
+      return inp.value;
+    },
+    busy: function () {
+      for (var k in liveRecords) if (liveRecords[k].busy()) return true;
+      return false;
+    },
+    flushAll: function () {
+      var all = [];
+      for (var k in liveRecords) all.push(liveRecords[k].flush());
+      return Promise.all(all);
+    },
+    // A page-wide badge: shows the worst state of every record on the page, so
+    // the header always answers "is my work safe?" even from another tab.
+    mountBadge: function (x) {
+      var n = liveNode(x);
+      if (n && livePageNodes.indexOf(n) === -1) livePageNodes.push(n);
+      livePaintPage();
+      return n;
+    },
+  };
+
+  // One guard for the whole app: warn only while something is genuinely
+  // unsaved, and take every chance to get it written.
+  window.addEventListener("beforeunload", function (e) {
+    if (!DCR.live.busy()) return;
+    DCR.live.flushAll();
+    e.preventDefault();
+    e.returnValue = "";
+  });
+  window.addEventListener("pagehide", function () { DCR.live.flushAll(); });
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "hidden") DCR.live.flushAll();
+  });
+  window.addEventListener("online", function () { DCR.live.flushAll(); });
+
   window.DCR = DCR;
 
   // Register the service worker so the portal is installable as an app and
