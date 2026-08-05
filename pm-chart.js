@@ -220,6 +220,10 @@
           if (b1.s !== "done") return { s: "notStarted", chip: "" };
           if (hidden) return invDated ? { s: "done", chip: "invoiced" } : { s: "inProgress", chip: "" };
           if (awarded > 0 && inv >= 0.999 * awarded) return { s: "done", chip: money(inv, true) };
+          // With no agreed amount there is nothing to measure against, so an
+          // invoice is unverified — not an overrun. Saying "$1.5k of $0" reads
+          // as a blown budget when it only means the award has no price yet.
+          if (inv > 0 && !(awarded > 0)) return { s: "inProgress", chip: money(inv, true) + " · unset" };
           if (inv > 0) return { s: "attention", chip: money(inv, true) + " of " + money(awarded, true) };
           return { s: "inProgress", chip: "no invoice" };
         }

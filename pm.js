@@ -702,12 +702,21 @@
           '<button class="btn btn-ghost btn-sm qtDel" data-q="' + esc(q.id) + '" style="padding:2px 8px">🗑</button>' +
           "</div>"
         : "";
-      var invStrip = awarded && can.quotes
-        ? '<div style="display:flex;gap:6px;margin-top:5px;align-items:center;font-size:11.5px" class="qtInvRow" data-q="' + esc(q.id) + '">' +
-          '<input type="number" placeholder="Invoice $" class="qtInv" style="width:86px;padding:4px 6px" value="' + (hidden ? "" : (q.invoiceAmount || "")) + '">' +
-          '<input type="number" placeholder="Paid $" class="qtPaid" style="width:86px;padding:4px 6px" value="' + (hidden ? "" : (q.paidAmount || "")) + '">' +
-          '<button class="btn btn-ghost btn-sm qtInvSave" style="padding:2px 8px">Save</button></div>'
+      // The agreed amount has to be editable here. It is the figure every other
+      // number is measured against — Committed to subs, and whether an invoice
+      // is over or under — and awarding without one is easy to do.
+      var money3 = awarded && can.quotes
+        ? '<div style="display:flex;gap:6px;margin-top:5px;align-items:center;font-size:11.5px;flex-wrap:wrap" class="qtInvRow" data-q="' + esc(q.id) + '">' +
+          '<input type="number" step="0.01" placeholder="Awarded $" class="qtAmt2" style="width:92px;padding:4px 6px" value="' +
+            (hidden ? "" : (q.quoteAmount || "")) + '" title="What you agreed to pay">' +
+          '<input type="number" step="0.01" placeholder="Invoice $" class="qtInv" style="width:86px;padding:4px 6px" value="' + (hidden ? "" : (q.invoiceAmount || "")) + '">' +
+          '<input type="number" step="0.01" placeholder="Paid $" class="qtPaid" style="width:86px;padding:4px 6px" value="' + (hidden ? "" : (q.paidAmount || "")) + '">' +
+          '<button class="btn btn-ghost btn-sm qtInvSave" style="padding:2px 8px">Save</button>' +
+          (!hidden && !(Number(q.quoteAmount) > 0)
+            ? '<div style="flex-basis:100%;color:var(--gold)">No agreed amount yet — enter it so invoices can be checked against it.</div>' : "") +
+          "</div>"
         : "";
+      var invStrip = money3;
       return '<tr><td><b>' + esc(q.vendorCompany || q.vendorName || "(vendor)") + "</b>" +
         (q.vendorTrade ? ' <span class="pm-sub">' + esc(q.vendorTrade) + "</span>" : "") +
         (q._ambiguous ? ' <span class="pm-sub" title="Matched by grouping name only">≈</span>' : "") +
@@ -899,7 +908,9 @@
     d.querySelectorAll(".qtInvRow").forEach(function (row) {
       row.querySelector(".qtInvSave").onclick = function () {
         var f = {};
+        var amt = row.querySelector(".qtAmt2").value;
         var inv = row.querySelector(".qtInv").value, paid = row.querySelector(".qtPaid").value;
+        if (amt !== "") f.quoteAmount = Number(amt);
         if (inv !== "") f.invoiceAmount = Number(inv);
         if (paid !== "") f.paidAmount = Number(paid);
         if (!Object.keys(f).length) return;
