@@ -100,38 +100,11 @@
     return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
   }
 
-  /* ── fit-to-screen: scale the whole stage (rail + svg + overlays) with CSS
-     zoom so a 4K monitor shows the full network large, not a small chart in
-     a corner. zoom (unlike transform) keeps position:sticky working. ── */
-  function fitOn() { return projPrefs().fitWidth !== false; } // default on
-  function applyFit() {
-    var stage = document.querySelector(".pm-stage");
-    var scroll = document.querySelector(".pm-scroll");
-    var L = state.lastLayout;
-    if (!stage || !scroll || !L) return;
-    var natural = L.W;
-    var z = 1;
-    if (fitOn() && scroll.clientWidth > 40) {
-      // -2px so sub-pixel rounding never trips the horizontal scrollbar
-      z = Math.max(1, Math.min(3, (scroll.clientWidth - 2) / natural));
-    }
-    stage.style.zoom = z === 1 ? "" : z.toFixed(3);
-  }
-  // Growing the chart can add the page's vertical scrollbar, which narrows the
-  // track it was measured against — one settle pass re-measures after layout.
-  function applyFitSettled() {
-    applyFit();
-    requestAnimationFrame(applyFit);
-  }
-  var fitTimer = null;
-  window.addEventListener("resize", function () {
-    clearTimeout(fitTimer);
-    fitTimer = setTimeout(applyFitSettled, 120);
-  });
+  /* The chart is never scaled: text stays at portal size and a bigger screen
+     simply shows more of it at once. Only the browser's own zoom changes it. */
   document.addEventListener("fullscreenchange", function () {
     var b = el("pmFs");
     if (b) b.textContent = document.fullscreenElement ? "✕ Exit full screen" : "⛶ Full screen";
-    setTimeout(applyFitSettled, 60);
   });
 
   /* ── project tasks panel (the Access Tasks tab, per employee) ── */
@@ -197,7 +170,6 @@
     var lanes = visibleLanes();
     var compact = state.density !== null ? state.density === "compact" : lanes.length > 18;
     var L = C.layout(m, { compact: compact, lanes: lanes });
-    state.lastLayout = L;
     var estNames = [];
     m.lanes.forEach(function (l) { if (estNames.indexOf(l.estimateName) === -1) estNames.push(l.estimateName); });
 
@@ -286,7 +258,6 @@
           (lanes.length === m.lanes.length ? "" : " of " + m.lanes.length) + " items</span>" +
         '<button class="pm-chip' + (state.attnOnly ? " on" : "") + '" id="pmAttn">⚠ Needs attention (' + m.attentionCount + ")</button>" +
         '<button class="pm-chip" id="pmDensity">' + (compact ? "Comfortable view" : "Compact view") + "</button>" +
-        '<button class="pm-chip' + (fitOn() ? " on" : "") + '" id="pmFit" title="Scale the chart to fill the window">↔ Fit to screen</button>' +
         '<button class="pm-chip" id="pmFs" title="Use the whole monitor">' +
           (document.fullscreenElement ? "✕ Exit full screen" : "⛶ Full screen") + "</button>" +
         '<span class="pm-legend">✓ Done · ● In progress · ⚠ Waiting · ◌ Not started</span>' +
@@ -294,7 +265,6 @@
       chart + tasksPanel() + empty;
 
     wire(compact);
-    applyFitSettled();
   }
 
   function wire(compact) {
@@ -304,7 +274,6 @@
     if (est) est.onchange = function () { state.estFilter = this.value; render(); };
     el("pmAttn").onclick = function () { state.attnOnly = !state.attnOnly; render(); };
     el("pmDensity").onclick = function () { state.density = compact ? "comfortable" : "compact"; render(); };
-    el("pmFit").onclick = function () { setPref("fitWidth", !fitOn()); this.classList.toggle("on", fitOn()); applyFitSettled(); };
     el("pmFs").onclick = function () {
       if (document.fullscreenElement) { document.exitFullscreen(); }
       else if (document.documentElement.requestFullscreen) { document.documentElement.requestFullscreen(); }

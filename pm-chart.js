@@ -357,20 +357,21 @@
   function layout(model, opts) {
     opts = opts || {};
     var compact = !!opts.compact;
-    var LANE_H = compact ? 42 : 54, NODE_H = compact ? 26 : 32, NODE_W = compact ? 84 : 118;
-    var GAP = compact ? 16 : 24, MS_R = compact ? 15 : 17;
-    // wide enough for the real scope text — on a big screen this reads better
-    // than the same words zoomed up inside a narrow box. The print report opts
-    // out (labels:false): its chart is scaled to half size and the item table
-    // right below it carries the same facts at a readable size.
+    // Text is portal-normal size (13/12px) and never scaled: a bigger screen
+    // means more of the chart is visible at once, not larger type. Every box is
+    // sized around that text rather than the other way round.
+    var LANE_H = compact ? 44 : 62, NODE_H = compact ? 30 : 40, NODE_W = compact ? 112 : 132;
+    var GAP = compact ? 16 : 22, MS_R = compact ? 16 : 18;
+    // The print report opts out (labels:false): its chart is scaled down to fit
+    // the page and the item table below carries the same facts at full size.
     var withLabels = opts.labels !== false;
-    var LABEL_W = withLabels ? (compact ? 256 : 330) : 0;
+    var LABEL_W = withLabels ? (compact ? 330 : 380) : 0;
     var LEAD = withLabels ? LABEL_W + GAP : 0;
     var lanes = opts.lanes || model.lanes;
     var n = lanes.length;
     var expA = model.regions.expandedA, expB = model.regions.expandedB;
-    var spanA = expA ? LEAD + 2 * NODE_W + GAP : 170;
-    var spanB = expB ? LEAD + 3 * NODE_W + 2 * GAP : 170;
+    var spanA = expA ? LEAD + 2 * NODE_W + GAP : 210;
+    var spanB = expB ? LEAD + 3 * NODE_W + 2 * GAP : 210;
     var x = {};
     x.M1 = 40; x.M2 = 150; x.M3 = 260;
     x.Astart = x.M3 + 46;
@@ -384,7 +385,7 @@
     var ax = x.Astart + LEAD, bx = x.Bstart + LEAD;
     nodeX.A = [ax, ax + NODE_W + GAP];
     nodeX.B = [bx, bx + NODE_W + GAP, bx + 2 * (NODE_W + GAP)];
-    var cy = 54, y0 = 150;
+    var cy = 58, y0 = 168;   // room for the milestone label + date at body size
     var showLanes = (expA || expB) && n > 0;
     var H = showLanes ? y0 + n * LANE_H + 40 : y0 + 40;
     function laneY(i) { return y0 + i * LANE_H + LANE_H / 2; }
@@ -469,13 +470,13 @@
     // collapsed region aggregate nodes
     function aggregate(startX, region, pct, human) {
       if ((region === "A" ? expA : expB) || !true) return;
-      var w = 170, h = 30, y = cy - h / 2;
+      var w = 210, h = 38, y = cy - h / 2;
       s.push('<g' + attr("band:" + region) + '><rect x="' + startX + '" y="' + y + '" width="' + w +
-        '" height="' + h + '" rx="9" fill="var(--surface)" stroke="' +
+        '" height="' + h + '" rx="10" fill="var(--surface)" stroke="' +
         (pct >= 100 ? "var(--ok)" : "var(--acc)") + '" stroke-width="1.5"/>');
-      s.push('<text x="' + (startX + w / 2) + '" y="' + (cy - 2) + '" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--text)">' +
+      s.push('<text x="' + (startX + w / 2) + '" y="' + (cy - 3) + '" text-anchor="middle" font-size="13" font-weight="700" fill="var(--text)">' +
         esc((region === "A" ? "Bidding" : "Execution") + " · " + pct + "%") + "</text>");
-      s.push('<text x="' + (startX + w / 2) + '" y="' + (cy + 10) + '" text-anchor="middle" font-size="9.5" fill="var(--text-muted)">' +
+      s.push('<text x="' + (startX + w / 2) + '" y="' + (cy + 12) + '" text-anchor="middle" font-size="12" fill="var(--text-muted)">' +
         esc(human) + " ▾</text></g>");
     }
     aggregate(x.Astart, "A", model.regions.pctA, model.regions.humanA);
@@ -493,17 +494,17 @@
       }
       s.push('<circle cx="' + mx + '" cy="' + cy + '" r="' + MS + '" fill="var(--surface)" stroke="' + ring + '" stroke-width="' + rw + '"/>');
       if (m.done) {
-        s.push('<text x="' + mx + '" y="' + (cy + 5) + '" text-anchor="middle" font-size="14" font-weight="800" fill="var(--ok)">✓</text>');
+        s.push('<text x="' + mx + '" y="' + (cy + 6) + '" text-anchor="middle" font-size="17" font-weight="800" fill="var(--ok)">✓</text>');
       } else {
-        s.push('<text x="' + mx + '" y="' + (cy + 4) + '" text-anchor="middle" font-size="11" font-weight="700" fill="' +
+        s.push('<text x="' + mx + '" y="' + (cy + 5) + '" text-anchor="middle" font-size="13" font-weight="700" fill="' +
           (m.current ? "var(--acc)" : "var(--text-muted)") + '">' + m.n + "</text>");
       }
-      s.push('<text x="' + mx + '" y="84" text-anchor="middle" font-size="11" font-weight="700" fill="' +
+      s.push('<text x="' + mx + '" y="88" text-anchor="middle" font-size="13" font-weight="700" fill="' +
         (m.done || m.current ? "var(--text)" : "var(--text-muted)") + '">' + esc(m.label) + "</text>");
-      if (m.date) s.push('<text x="' + mx + '" y="97" text-anchor="middle" font-size="10" fill="var(--text-muted)">' + esc(m.date) + "</text>");
+      if (m.date) s.push('<text x="' + mx + '" y="104" text-anchor="middle" font-size="12" fill="var(--text-muted)">' + esc(m.date) + "</text>");
       if (m.n === 5 && m.current && model.statusDates["Sent"]) {
         var d = daysAgo(model.statusDates["Sent"]);
-        if (d != null) hintChip = '<text x="' + mx + '" y="110" text-anchor="middle" font-size="9.5" fill="var(--gold)">Sent ' + d + "d ago</text>";
+        if (d != null) hintChip = '<text x="' + mx + '" y="120" text-anchor="middle" font-size="12" fill="var(--gold)">Sent ' + d + "d ago</text>";
       }
       s.push("</g>");
     });
@@ -521,9 +522,9 @@
       // who it's assigned to, the group name, its labor/material scope and any
       // flag — everything the old left rail carried, beside the nodes instead.
       function laneLabel(lx, y, l) {
-        var h = L.LANE_H - 4, top = y - h / 2;
-        var nameF = L.compact ? 11 : 12.5, subF = L.compact ? 8.5 : 9.5;
-        var textX = lx + 30, textW = L.LABEL_W - 34;
+        var h = L.LANE_H - 6, top = y - h / 2;
+        var nameF = 13, subF = 12;                       // portal body sizes
+        var textX = lx + 38, textW = L.LABEL_W - 46;
         var who = l.assignees.map(function (a) { return a.name || a.email; }).join(", ");
         var scope = (l.laborNames || []).concat(l.materialNames || []).join(" · ");
         var overdue = l.flag && l.flag.due && l.flag.due < todayISO();
@@ -539,23 +540,23 @@
         s.push('<rect x="' + lx + '" y="' + top + '" width="5" height="' + h +
           '" rx="2.5" fill="var(--gc' + (l.colorSlot || 0) + ')"/>');
         // assignee avatar
-        var avY = top + h / 2;
+        var avY = top + h / 2, avR = 13;
         if (l.initials) {
-          s.push('<circle cx="' + (lx + 18) + '" cy="' + avY + '" r="9.5" fill="' +
+          s.push('<circle cx="' + (lx + 22) + '" cy="' + avY + '" r="' + avR + '" fill="' +
             avatarColor(l.assignees[0].name || l.assignees[0].email) + '"/>');
-          s.push('<text x="' + (lx + 18) + '" y="' + (avY + 3.2) + '" text-anchor="middle" font-size="8.5" font-weight="800" fill="#fff">' +
+          s.push('<text x="' + (lx + 22) + '" y="' + (avY + 4) + '" text-anchor="middle" font-size="11" font-weight="800" fill="#fff">' +
             esc(l.initials) + "</text>");
         } else {
-          s.push('<circle cx="' + (lx + 18) + '" cy="' + avY + '" r="9.5" fill="none" stroke="var(--border)" stroke-width="1.5" stroke-dasharray="3 2"/>');
-          s.push('<text x="' + (lx + 18) + '" y="' + (avY + 3.5) + '" text-anchor="middle" font-size="9" fill="var(--text-muted)">?</text>');
+          s.push('<circle cx="' + (lx + 22) + '" cy="' + avY + '" r="' + avR + '" fill="none" stroke="var(--border)" stroke-width="1.5" stroke-dasharray="3 2"/>');
+          s.push('<text x="' + (lx + 22) + '" y="' + (avY + 4) + '" text-anchor="middle" font-size="11.5" fill="var(--text-muted)">?</text>');
         }
         // flag / attention badge, right-aligned on the first line
-        var badgeW = 0, bx2 = lx + L.LABEL_W - 6;
+        var badgeW = 0, bx2 = lx + L.LABEL_W - 8;
         function badge(txt, bg, fg) {
-          var w = txt.length * 5.4 + 8;
-          badgeW = w + 5;
-          s.push('<rect x="' + (bx2 - w) + '" y="' + (top + 5) + '" width="' + w + '" height="12" rx="6" fill="' + bg + '"/>');
-          s.push('<text x="' + (bx2 - w / 2) + '" y="' + (top + 13.8) + '" text-anchor="middle" font-size="8" font-weight="800" fill="' + fg + '">' +
+          var w = txt.length * 6.2 + 12;
+          badgeW = w + 8;
+          s.push('<rect x="' + (bx2 - w) + '" y="' + (top + 6) + '" width="' + w + '" height="17" rx="8.5" fill="' + bg + '"/>');
+          s.push('<text x="' + (bx2 - w / 2) + '" y="' + (top + 18) + '" text-anchor="middle" font-size="10.5" font-weight="800" fill="' + fg + '">' +
             esc(txt) + "</text>");
         }
         if (l.flag && l.flag.state === "blocked") badge("BLOCKED", "var(--err)", "#fff");
@@ -563,16 +564,22 @@
         else if (l.flag && l.flag.state === "important") badge(overdue ? "⚑ OVERDUE" : "⚑ " + (l.flag.due || "IMPORTANT"), overdue ? "var(--err)" : "var(--gold)", "#fff");
         else if (l.attention) badge("⚠", "var(--gold)", "#fff");
 
-        // line 1: the item · line 2: who it's assigned to · line 3: the
-        // labor/material scope — the full text is in the group's <title>.
-        s.push('<text x="' + textX + '" y="' + (top + (L.compact ? 14 : 17)) + '" font-size="' + nameF +
+        // Comfortable stacks name / assignee / scope; compact keeps the same
+        // type size and drops to two lines instead of shrinking the text.
+        s.push('<text x="' + textX + '" y="' + (top + 18) + '" font-size="' + nameF +
           '" font-weight="700" fill="var(--text)">' + esc(clip(l.groupingName, textW - badgeW, nameF)) + "</text>");
-        s.push('<text x="' + textX + '" y="' + (top + (L.compact ? 25 : 31)) + '" font-size="' + subF +
-          '" fill="' + (who ? "var(--text-muted)" : "var(--border)") + '">' +
-          esc(clip((who ? "👤 " + who : "unassigned"), textW, subF)) + "</text>");
-        if (scope) {
-          s.push('<text x="' + textX + '" y="' + (top + (L.compact ? 35 : 44)) + '" font-size="' + subF +
-            '" fill="var(--text-muted)" opacity=".8">' + esc(clip(scope, textW, subF)) + "</text>");
+        if (L.compact) {
+          s.push('<text x="' + textX + '" y="' + (top + 34) + '" font-size="' + subF +
+            '" fill="var(--text-muted)">' +
+            esc(clip((who ? "👤 " + who : "unassigned") + (scope ? "  ·  " + scope : ""), textW, subF)) + "</text>");
+        } else {
+          s.push('<text x="' + textX + '" y="' + (top + 36) + '" font-size="' + subF +
+            '" fill="' + (who ? "var(--text-muted)" : "var(--border)") + '">' +
+            esc(clip((who ? "👤 " + who : "unassigned"), textW, subF)) + "</text>");
+          if (scope) {
+            s.push('<text x="' + textX + '" y="' + (top + 51) + '" font-size="' + subF +
+              '" fill="var(--text-muted)" opacity=".8">' + esc(clip(scope, textW, subF)) + "</text>");
+          }
         }
         s.push("</g>");
       }
@@ -592,13 +599,13 @@
           var lbl = (A_LABELS[kind] || B_LABELS[kind]);
           var glyph = GLYPH[st] || "";
           if (L.compact) {
-            s.push('<text x="' + (nx + L.NODE_W / 2) + '" y="' + (y + 3.5) + '" text-anchor="middle" font-size="9.5" fill="var(--text)">' +
-              glyph + " " + esc(clip(stt.chip || lbl, L.NODE_W - 16, 9.5)) + "</text>");
+            s.push('<text x="' + (nx + L.NODE_W / 2) + '" y="' + (y + 4.5) + '" text-anchor="middle" font-size="12" fill="var(--text)">' +
+              glyph + " " + esc(clip(stt.chip || lbl, L.NODE_W - 18, 12)) + "</text>");
           } else {
-            s.push('<text x="' + (nx + 8) + '" y="' + (y - 1) + '" font-size="9.5" font-weight="700" fill="var(--text-muted)">' +
+            s.push('<text x="' + (nx + 10) + '" y="' + (y - 3) + '" font-size="12" font-weight="700" fill="var(--text-muted)">' +
               glyph + " " + esc(lbl) + "</text>");
-            s.push('<text x="' + (nx + 8) + '" y="' + (y + 10) + '" font-size="9.5" fill="var(--text)" style="font-variant-numeric:tabular-nums">' +
-              esc(clip(stt.chip || "", L.NODE_W - 14, 9.5)) + "</text>");
+            s.push('<text x="' + (nx + 10) + '" y="' + (y + 13) + '" font-size="12.5" fill="var(--text)" style="font-variant-numeric:tabular-nums">' +
+              esc(clip(stt.chip || "", L.NODE_W - 18, 12.5)) + "</text>");
           }
           s.push("</g>");
         }
