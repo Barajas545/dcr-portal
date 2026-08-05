@@ -27,7 +27,7 @@
         : l.flag && l.flag.state === "complete" ? "Complete"
         : l.pctB >= 100 ? "Paid" : l.invoiced > 0 ? "Invoicing" : l.awarded > 0 ? "In progress"
         : l.requests ? "Bidding" : l.priced ? "Priced" : "Not started";
-      return "<tr><td>" + esc(l.groupingName) +
+      return '<tr><td><span class="gdot" style="background:var(--gc' + (l.colorSlot || 0) + ')"></span>' + esc(l.groupingName) +
         (l.estimateName ? ' <span style="color:var(--text-muted)">· ' + esc(l.estimateName) + "</span>" : "") + "</td>" +
         "<td>" + esc(l.assignees.map(function (a) { return a.name || a.email; }).join(", ") || "—") + "</td>" +
         '<td class="num">' + l.quotes.filter(function (q) { return q.quoteStatus !== "Self"; }).length + "</td>" +

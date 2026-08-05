@@ -9,8 +9,22 @@
       :root{
         --acc:#2f80d8; --acc-2:#1f6fc8; --tint:rgba(47,128,216,0.12); --tint-2:rgba(47,128,216,0.22);
         --gold:#d6a13a; --ok:#2fa679; --err:#d9614f;
+        /* group-identity palette (light steps; CVD-validated, fixed order) */
+        --gc0:#2a78d6; --gc1:#eb6834; --gc2:#1baf7a; --gc3:#eda100;
+        --gc4:#e87ba4; --gc5:#008300; --gc6:#4a3aa7; --gc7:#e34948;
       }
-      .pm{max-width:1400px; margin:0 auto; padding:14px 16px 40px;}
+      @media (prefers-color-scheme: dark){
+        :root{
+          /* same hues stepped for the dark surface */
+          --gc0:#3987e5; --gc1:#d95926; --gc2:#199e70; --gc3:#c98500;
+          --gc4:#d55181; --gc5:#008300; --gc6:#9085e9; --gc7:#e66767;
+        }
+      }
+      /* full-bleed: the chart is the point of this page — use the whole monitor.
+         Control rows stay readable: everything except the chart + tasks panel is
+         capped and centered so a 4K screen doesn't strand the toolbar. */
+      .pm{max-width:none; margin:0 auto; padding:14px 16px 40px;}
+      .pm > *:not(.pm-scroll):not(.pm-tk){max-width:1900px; margin-left:auto; margin-right:auto;}
       .pm-head{display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:10px;}
       .pm-title{font-size:20px; font-weight:800;}
       .pm-sub{font-size:12.5px; color:var(--text-muted);}
@@ -42,10 +56,36 @@
       .pm-lane .av{width:22px; height:22px; border-radius:50%; flex-shrink:0; color:#fff; font-size:9.5px;
         font-weight:800; display:inline-flex; align-items:center; justify-content:center;}
       .pm-lane .av.none{border:1.5px dashed var(--border); color:var(--text-muted); background:transparent;}
-      .pm-lane .nm{font-size:12px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1;}
+      .pm-lane .nm{font-size:12px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; min-width:0;}
+      .pm-lane .nm .t{display:block; line-height:1.2; overflow:hidden; text-overflow:ellipsis;}
+      .pm-lane .nm .sc{display:block; font-size:9.5px; font-weight:500; color:var(--text-muted);
+        line-height:1.2; overflow:hidden; text-overflow:ellipsis;}
+      .pm-lane .gdot{width:4px; align-self:stretch; margin:4px 0; border-radius:2px; flex-shrink:0;
+        -webkit-print-color-adjust:exact; print-color-adjust:exact;}
       .pm-lane .dot{width:8px; height:8px; border-radius:50%; background:var(--gold); flex-shrink:0;}
       .pm-lane .bk{font-size:8.5px; font-weight:800; color:#fff; background:var(--err); border-radius:6px; padding:1px 5px;}
       .pm-lane .mk{font-size:8.5px; font-weight:800; color:#fff; background:var(--ok); border-radius:6px; padding:1px 5px;}
+      .pm-lane .fl{font-size:12px; color:var(--gold); font-weight:800; flex-shrink:0;}
+      /* project tasks panel */
+      .pm-tk{margin-top:14px; border:1px solid var(--border); border-radius:12px; background:var(--surface); overflow:hidden;}
+      .pm-tk .tk-hd{display:flex; align-items:center; gap:8px; padding:10px 14px; cursor:pointer;
+        font-size:13px; font-weight:800;}
+      .pm-tk .tk-hd:hover{background:var(--tint);}
+      /* per-employee cards on a grid — a person's tasks never split apart */
+      .pm-tk .tk-body{padding:2px 14px 12px; display:grid;
+        grid-template-columns:repeat(auto-fill, minmax(380px, 1fr)); gap:4px 26px; align-items:start;}
+      .pm-tk .tk-grp{min-width:0;}
+      .pm-tk .tk-emp{font-size:12px; font-weight:800; margin:12px 0 4px;
+        border-bottom:2px solid var(--border); padding-bottom:3px;}
+      .pm-tk .tk-row{display:flex; gap:8px; padding:5px 0; border-bottom:1px solid var(--border);
+        font-size:12px;}
+      .pm-tk .tk-row.done{opacity:.65;}
+      .pm-tk .tk-ic{flex-shrink:0; width:16px; text-align:center; font-weight:800;}
+      .pm-tk .tk-row.done .tk-ic{color:var(--ok);}
+      .pm-tk .tk-b{flex:1; min-width:0;}
+      .pm-tk .tk-d{color:var(--text-muted); margin-top:1px;}
+      .pm-tk .tk-w{color:var(--ok); margin-top:1px;}
+      .pm-tk .tk-urg{font-size:8.5px; font-weight:800; color:#fff; background:var(--err); border-radius:6px; padding:1px 5px;}
       .pm-svgwrap{position:relative;}
       .pm-bandtitle{position:absolute; top:118px; font-size:11px; font-weight:800; letter-spacing:.04em;
         color:var(--text); cursor:pointer; display:flex; align-items:center; gap:6px; z-index:2;}
@@ -96,10 +136,12 @@
         border-radius:11px; box-shadow:0 10px 32px rgba(0,0,0,.35); padding:12px 14px; display:none;}
       .pm-pop.open{display:block;}
       @media (max-width:900px){ .pm-rail{flex-basis:150px; width:150px;} .pm-drawer{width:100vw;} }
+      @media (min-width:2200px){ .pm-drawer{width:560px;} }
       @media print{
         .topbar, .pm-bar, .pm-head .btn, .pm-head select, .pm-drawer, .pm-ovl, .pm-pop{display:none !important;}
         .pm-scroll{border:none; overflow:visible;}
         .pm-scroll svg{width:100%; height:auto;}
+        .pm-stage{zoom:1 !important;} /* fit-to-screen zoom must not leak onto paper */
       }
     </style>
   <link rel="manifest" href="manifest.json" />

@@ -88,6 +88,7 @@
       if (state.attnOnly && !l.attention) return false;
       if (!q) return true;
       var hay = (l.groupingName + " " + l.estimateName + " " +
+        (l.laborNames || []).join(" ") + " " + (l.materialNames || []).join(" ") + " " +
         l.assignees.map(function (a) { return a.name + " " + a.email; }).join(" ") + " " +
         l.quotes.map(function (x) { return (x.vendorName || "") + " " + (x.vendorCompany || ""); }).join(" ")).toLowerCase();
       return hay.indexOf(q) !== -1;
@@ -99,6 +100,102 @@
     for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
     return "hsl(" + (h % 360) + ",45%,45%)";
   }
+  function todayISO() {
+    var d = new Date(), p = function (n) { return String(n).padStart(2, "0"); };
+    return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+  }
+
+  /* ── fit-to-screen: scale the whole stage (rail + svg + overlays) with CSS
+     zoom so a 4K monitor shows the full network large, not a small chart in
+     a corner. zoom (unlike transform) keeps position:sticky working. ── */
+  function fitOn() { return projPrefs().fitWidth !== false; } // default on
+  function applyFit() {
+    var stage = document.querySelector(".pm-stage");
+    var scroll = document.querySelector(".pm-scroll");
+    var L = state.lastLayout;
+    if (!stage || !scroll || !L) return;
+    var railW = window.matchMedia("(max-width:900px)").matches ? 150 : 200;
+    var natural = railW + L.W;
+    var z = 1;
+    if (fitOn() && scroll.clientWidth > 40) {
+      // -2px so sub-pixel rounding never trips the horizontal scrollbar
+      z = Math.max(1, Math.min(3, (scroll.clientWidth - 2) / natural));
+    }
+    stage.style.zoom = z === 1 ? "" : z.toFixed(3);
+  }
+  // Growing the chart can add the page's vertical scrollbar, which narrows the
+  // track it was measured against — one settle pass re-measures after layout.
+  function applyFitSettled() {
+    applyFit();
+    requestAnimationFrame(applyFit);
+  }
+  var fitTimer = null;
+  window.addEventListener("resize", function () {
+    clearTimeout(fitTimer);
+    fitTimer = setTimeout(applyFitSettled, 120);
+  });
+  document.addEventListener("fullscreenchange", function () {
+    var b = el("pmFs");
+    if (b) b.textContent = document.fullscreenElement ? "✕ Exit full screen" : "⛶ Full screen";
+    setTimeout(applyFitSettled, 60);
+  });
+
+  /* ── project tasks panel (the Access Tasks tab, per employee) ── */
+  function tasksPanel() {
+    var p = state.payload;
+    if (!p.tasks || !p.tasks.length) return "";
+    var pend = p.tasks.filter(function (t) { return !t.complete; });
+    var open = projPrefs().tasksOpen !== undefined ? projPrefs().tasksOpen : pend.length > 0;
+    var body = "";
+    if (open) {
+      var byEmp = {};
+      p.tasks.forEach(function (t) {
+        var k = t.assignedPerson || "(unassigned)";
+        (byEmp[k] = byEmp[k] || []).push(t);
+      });
+      body = '<div class="tk-body">' + Object.keys(byEmp).sort().map(function (emp) {
+        var rows = byEmp[emp].map(function (t) {
+          var urgent = !t.complete && /urgent/i.test(t.priority || "");
+          return '<div class="tk-row' + (t.complete ? " done" : "") + '">' +
+            '<span class="tk-ic">' + (t.complete ? "✓" : urgent ? "⚑" : "◌") + "</span>" +
+            '<div class="tk-b"><div><b>' + esc(t.name || t.category || "Task") + "</b>" +
+            (urgent ? ' <span class="tk-urg">URGENT</span>' : "") +
+            (t.category && t.category !== t.name ? ' <span class="pm-sub">· ' + esc(t.category) + "</span>" : "") +
+            ' <span class="pm-sub">' +
+              esc(t.complete
+                ? "done" + (t.dateCompleted ? " " + C.fmtDay(t.dateCompleted) : "")
+                : (t.dateRequested ? "requested " + C.fmtDay(t.dateRequested) : "")) + "</span></div>" +
+            (t.description ? '<div class="tk-d">' + esc(t.description) + "</div>" : "") +
+            (t.complete && t.completedWork ? '<div class="tk-w">' + esc(t.completedWork) + "</div>" : "") +
+            "</div></div>";
+        }).join("");
+        return '<div class="tk-grp"><div class="tk-emp">' + esc(emp) + "</div>" + rows + "</div>";
+      }).join("") + "</div>";
+    }
+    return '<div class="pm-tk" data-open="' + (open ? "1" : "0") + '"><div class="tk-hd" id="pmTkHd">📋 Project tasks — ' +
+      pend.length + " pending · " + (p.tasks.length - pend.length) + " done <span>" + (open ? "▾" : "▸") + "</span>" +
+      '<span style="flex:1"></span>' +
+      '<a class="pm-sub" id="pmTkLink" href="project.html?id=' + esc(PID) + '&tab=tasks">Open the Tasks tab →</a></div>' +
+      body + "</div>";
+  }
+
+  // Collapse/expand swaps only this panel — a full render() would reset the
+  // chart's horizontal scroll and restart the milestone pulse for nothing.
+  function wireTasks() {
+    var hd = el("pmTkHd");
+    if (!hd) return;
+    hd.onclick = function (e) {
+      if (e.target && e.target.id === "pmTkLink") return;
+      var panel = document.querySelector(".pm-tk");
+      setPref("tasksOpen", panel.dataset.open !== "1");
+      var holder = document.createElement("div");
+      holder.innerHTML = tasksPanel();
+      if (panel && holder.firstChild) {
+        panel.parentNode.replaceChild(holder.firstChild, panel);
+        wireTasks();
+      } else { render(); }
+    };
+  }
 
   function render() {
     var m = state.model, p = state.payload, root = el("pmRoot");
@@ -106,6 +203,7 @@
     var lanes = visibleLanes();
     var compact = state.density !== null ? state.density === "compact" : lanes.length > 18;
     var L = C.layout(m, { compact: compact, lanes: lanes });
+    state.lastLayout = L;
     var estNames = [];
     m.lanes.forEach(function (l) { if (estNames.indexOf(l.estimateName) === -1) estNames.push(l.estimateName); });
 
@@ -151,13 +249,20 @@
       var av = l.initials
         ? '<span class="av" style="background:' + avColor(l.assignees[0].name || l.assignees[0].email) + '">' + esc(l.initials) + "</span>"
         : '<span class="av none">?</span>';
+      var pastDue = l.flag && l.flag.state === "important" && l.flag.due && l.flag.due < todayISO();
       var badge = l.flag && l.flag.state === "blocked" ? '<span class="bk" title="' + esc(l.flag.note || "") + '">BLOCKED</span>'
         : l.flag && l.flag.state === "complete" ? '<span class="mk" title="Marked complete">✓M</span>'
+        : l.flag && l.flag.state === "important"
+          ? '<span class="fl"' + (pastDue ? ' style="color:var(--err)"' : "") + ' title="' +
+            esc((l.flag.note || "Important") + (l.flag.due ? " · due " + l.flag.due : "") + (pastDue ? " · OVERDUE" : "")) + '">⚑</span>'
         : l.attention ? '<span class="dot" title="Needs attention"></span>' : "";
       var names = l.assignees.map(function (a) { return a.name || a.email; }).join(", ");
+      var scope = (l.laborNames || []).concat(l.materialNames || []).join(" · ");
       return '<div class="pm-lane" data-lane="' + esc(l.key) + '" style="height:' + L.LANE_H + 'px" title="' +
-        esc(l.groupingName + (names ? " — " + names : "")) + '">' + av +
-        '<span class="nm">' + esc(l.groupingName) + "</span>" + badge + "</div>";
+        esc(l.groupingName + (names ? " — " + names : "") + (scope ? "\n" + scope : "")) + '">' +
+        '<span class="gdot" style="background:var(--gc' + (l.colorSlot || 0) + ')"></span>' + av +
+        '<span class="nm"><span class="t">' + esc(l.groupingName) + "</span>" +
+        (!compact && scope ? '<span class="sc">' + esc(scope) + "</span>" : "") + "</span>" + badge + "</div>";
     }).join("");
 
     var bandTitles = "";
@@ -207,11 +312,15 @@
           : "") +
         '<button class="pm-chip' + (state.attnOnly ? " on" : "") + '" id="pmAttn">⚠ Needs attention (' + m.attentionCount + ")</button>" +
         '<button class="pm-chip" id="pmDensity">' + (compact ? "Comfortable view" : "Compact view") + "</button>" +
+        '<button class="pm-chip' + (fitOn() ? " on" : "") + '" id="pmFit" title="Scale the chart to fill the window">↔ Fit to screen</button>' +
+        '<button class="pm-chip" id="pmFs" title="Use the whole monitor">' +
+          (document.fullscreenElement ? "✕ Exit full screen" : "⛶ Full screen") + "</button>" +
         '<span class="pm-legend">✓ Done · ● In progress · ⚠ Waiting · ◌ Not started</span>' +
       "</div>" +
-      chart + empty;
+      chart + tasksPanel() + empty;
 
     wire(compact);
+    applyFitSettled();
   }
 
   function wire(compact) {
@@ -221,6 +330,12 @@
     if (est) est.onchange = function () { state.estFilter = this.value; render(); };
     el("pmAttn").onclick = function () { state.attnOnly = !state.attnOnly; render(); };
     el("pmDensity").onclick = function () { state.density = compact ? "comfortable" : "compact"; render(); };
+    el("pmFit").onclick = function () { setPref("fitWidth", !fitOn()); this.classList.toggle("on", fitOn()); applyFitSettled(); };
+    el("pmFs").onclick = function () {
+      if (document.fullscreenElement) { document.exitFullscreen(); }
+      else if (document.documentElement.requestFullscreen) { document.documentElement.requestFullscreen(); }
+    };
+    wireTasks();
     var setup = el("pmSetup");
     if (setup) setup.onclick = async function () {
       setup.disabled = true;
@@ -348,6 +463,21 @@
       }
     });
 
+    var lbn = l.laborNames || [], mtn = l.materialNames || [];
+    var scopeSec = "";
+    if (lbn.length || mtn.length) {
+      var li = function (arr) {
+        return arr.slice(0, 20).map(function (s) {
+          return '<div style="padding:2px 0;font-size:12px">• ' + esc(s) + "</div>";
+        }).join("") + (arr.length > 20 ? '<div class="pm-sub">+' + (arr.length - 20) + " more</div>" : "");
+      };
+      scopeSec = '<div class="pm-h">Scope</div>' +
+        '<div style="display:flex;gap:16px;flex-wrap:wrap">' +
+        (lbn.length ? '<div style="flex:1;min-width:150px"><div class="pm-sub" style="font-weight:700">Labor</div>' + li(lbn) + "</div>" : "") +
+        (mtn.length ? '<div style="flex:1;min-width:150px"><div class="pm-sub" style="font-weight:700">Materials</div>' + li(mtn) + "</div>" : "") +
+        "</div>";
+    }
+
     var moneyRow = hidden ? "" :
       '<div class="pm-h">Money</div><div class="pm-money">' +
       [["Estimate", l.estTotal], ["Awarded", l.awarded], ["Invoiced", l.invoiced], ["Paid", l.paid], ["Costs recorded", costs]]
@@ -422,6 +552,9 @@
 
     var flagRow = can.status
       ? '<div class="pm-h">Item flag</div><div style="display:flex;gap:6px;flex-wrap:wrap">' +
+        (l.flag && l.flag.state === "important"
+          ? '<button class="btn btn-ghost btn-sm" id="fgClear3">Clear ⚑ important</button>'
+          : '<button class="btn btn-ghost btn-sm" id="fgImp">⚑ Mark important…</button>') +
         (l.flag && l.flag.state === "blocked"
           ? '<button class="btn btn-ghost btn-sm" id="fgClear">Clear BLOCKED</button>'
           : '<button class="btn btn-ghost btn-sm" id="fgBlock">⛔ Mark blocked…</button>') +
@@ -429,7 +562,10 @@
           ? '<button class="btn btn-ghost btn-sm" id="fgClear2">Un-mark complete</button>'
           : '<button class="btn btn-ghost btn-sm" id="fgDone">✓ Mark item complete</button>') +
         "</div>" +
-        (l.flag ? '<div class="pm-sub" style="margin-top:4px">' + esc((l.flag.note ? l.flag.note + " — " : "") + (l.flag.by || "") + " " + (l.flag.at || "")) + "</div>" : "")
+        (l.flag ? '<div class="pm-sub" style="margin-top:4px' +
+          (l.flag.due && l.flag.due < todayISO() ? ";color:var(--err);font-weight:700" : "") + '">' +
+          esc((l.flag.note ? l.flag.note + " — " : "") + (l.flag.by || "") + " " + (l.flag.at || "") +
+            (l.flag.due ? " · due " + l.flag.due + (l.flag.due < todayISO() ? " · OVERDUE" : "") : "")) + "</div>" : "")
       : "";
 
     var noteBox = can.log
@@ -439,7 +575,7 @@
       : "";
 
     d.innerHTML =
-      '<div class="dh"><div style="flex:1;min-width:0">' +
+      '<div class="dh" style="border-left:4px solid var(--gc' + (l.colorSlot || 0) + ')"><div style="flex:1;min-width:0">' +
         '<div style="font-size:16px;font-weight:800">' + esc(l.groupingName) + "</div>" +
         '<div class="pm-sub">' + esc(l.estimateName || "") +
           (l.assignees.length ? " · " + esc(l.assignees.map(function (a) { return a.name || a.email; }).join(", ")) : " · unassigned") + "</div>" +
@@ -448,7 +584,7 @@
       '<button class="btn btn-ghost btn-sm" id="pmCopyLink" title="Copy link to this item">🔗</button>' +
       '<button class="btn btn-ghost btn-sm" id="pmDrawerX">✕</button></div>' +
       '<div class="db">' +
-      moneyRow +
+      scopeSec + moneyRow +
       '<div class="pm-h">Quotes' + (l.quotes.length ? " · " + l.quotes.length : "") + "</div>" +
       (state.model.quotesReady
         ? (qRows ? '<table class="pm-qt">' + qRows + "</table>" : '<div class="pm-sub">No quote requests yet.</div>')
@@ -697,6 +833,22 @@
     var fg = function (state2, note) {
       write({ op: "flag", projectId: PID, itemKey: l.key, state: state2, note: note || "" }, "pmNoteMsg");
     };
+    var b3 = el("fgImp"), c3 = el("fgClear3");
+    if (b3) b3.onclick = function () {
+      var note = prompt("What needs to happen? (e.g. invoice due, inspection, order materials)");
+      if (note === null) return;
+      // re-ask only the date, so a typo never costs the note they just typed
+      var due = "", ask = "Due date (YYYY-MM-DD), or leave blank:";
+      for (;;) {
+        var v = prompt(ask, due);
+        if (v === null) return;
+        due = v.trim();
+        if (!due || /^\d{4}-\d{2}-\d{2}$/.test(due)) break;
+        ask = 'Use the format YYYY-MM-DD (e.g. ' + todayISO() + "), or leave blank:";
+      }
+      write({ op: "flag", projectId: PID, itemKey: l.key, state: "important", note: note, due: due }, "pmNoteMsg");
+    };
+    if (c3) c3.onclick = function () { fg(null); };
     var b1 = el("fgBlock"), b2 = el("fgDone"), c1 = el("fgClear"), c2 = el("fgClear2");
     if (b1) b1.onclick = function () {
       var note = prompt("What is it blocked on?");

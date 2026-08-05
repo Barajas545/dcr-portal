@@ -54,6 +54,15 @@
     }
     return "$" + Number(n).toLocaleString("en-US", { maximumFractionDigits: 0 });
   }
+  // Stable group-identity color slot (0..7). The 8 hues live in CSS as
+  // --gc0..--gc7 (per-theme steps of a CVD-validated categorical palette);
+  // the group NAME is always printed beside the color — never color alone.
+  function groupSlot(name) {
+    var s = String(name || ""), h = 0;
+    for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    return h % 8;
+  }
+
   function daysAgo(iso) {
     if (!iso) return null;
     var t = Date.parse(iso);
@@ -235,7 +244,7 @@
       if (flag && flag.state === "complete") { pctA = 100; pctB = 100; }
       var attention = (!flag || flag.state !== "complete") &&
         (overdue || nodes.B2.s === "attention" || nodes.B3.s === "attention" ||
-          (flag && flag.state === "blocked"));
+          (flag && (flag.state === "blocked" || flag.state === "important")));
 
       var assignees = it.assignees || [];
       var initials = "";
@@ -250,6 +259,8 @@
         rowIds: it.rowIds, assignees: assignees, initials: initials,
         estTotal: it.estTotal, quotedPrice: it.quotedPrice, priced: it.priced,
         scopeNames: it.scopeNames || [], quotes: qs, requests: requests.length,
+        laborNames: it.laborNames || [], materialNames: it.materialNames || [],
+        colorSlot: groupSlot(it.groupingName),
         takeoff: it.takeoff || null,
         awarded: awarded, invoiced: inv, paid: paid,
         nodes: nodes, pctA: pctA, pctB: Math.round(pctB), flag: flag, attention: attention,
@@ -508,7 +519,7 @@
 
   window.PMChart = {
     derive: derive, layout: layout, svg: svg,
-    money: money, fmtDay: fmtDay, daysAgo: daysAgo, esc: esc,
+    money: money, fmtDay: fmtDay, daysAgo: daysAgo, esc: esc, groupSlot: groupSlot,
     STAGE_COLORS: STAGE_COLORS, SEP: SEP,
   };
 })();

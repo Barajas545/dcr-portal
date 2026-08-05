@@ -8,7 +8,11 @@
       /* paper-white report, always light — this page exists to be printed */
       :root{ --surface:#fff; --surface-2:#f2f4f7; --border:#d7dde4; --text:#1b2733;
         --text-muted:#5a6b7d; --acc:#2f80d8; --tint:rgba(47,128,216,.10);
-        --gold:#b07d18; --ok:#1f7a55; --err:#c44b3b; }
+        --gold:#b07d18; --ok:#1f7a55; --err:#c44b3b;
+        --gc0:#2a78d6; --gc1:#eb6834; --gc2:#1baf7a; --gc3:#eda100;
+        --gc4:#e87ba4; --gc5:#008300; --gc6:#4a3aa7; --gc7:#e34948; }
+      .gdot{display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:5px; vertical-align:baseline;
+        -webkit-print-color-adjust:exact; print-color-adjust:exact;}
       *{box-sizing:border-box;}
       body{margin:0; font-family:system-ui,"Segoe UI",Arial,sans-serif; background:#e8ebef; color:var(--text);}
       .bar{display:flex; gap:8px; align-items:center; padding:10px 16px; background:#171d25;}
