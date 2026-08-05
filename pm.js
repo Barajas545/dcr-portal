@@ -95,6 +95,28 @@
     });
   }
 
+  /* Vendor directory for the quote form. The Contacts table is small (~200
+     rows), so it's fetched once per page load and filtered in the browser
+     rather than re-queried on every keystroke. NOTE: the data endpoint
+     answers with `value` — reading `items`/`rows` silently yields nothing. */
+  var contactsCache = null;
+  function contactsBook() {
+    if (contactsCache) return contactsCache;
+    contactsCache = DCR.api("/api/portal?action=data&list=contacts&top=999")
+      .then(function (res) {
+        return (res.value || []).map(function (c) {
+          c._pre = [c.contactName, c.contactCompany, c.contactTrade]
+            .map(function (v) { return String(v || "").trim().toLowerCase(); })
+            .filter(Boolean);
+          c._hay = [c.contactName, c.contactCompany, c.contactTrade, c.contactNickName,
+            c.contactEMail, c.contactPhone].join(" ").toLowerCase();
+          return c;
+        });
+      })
+      .catch(function (e) { contactsCache = null; throw e; });  // let the next keystroke retry
+    return contactsCache;
+  }
+
   function todayISO() {
     var d = new Date(), p = function (n) { return String(n).padStart(2, "0"); };
     return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
@@ -650,33 +672,55 @@
         var q = vend.value.trim();
         if (q.length < 2) { el("qtVList").classList.remove("on"); return; }
         t = setTimeout(async function () {
+          var list = el("qtVList");
+          if (!list) return;
+          var all;
           try {
-            var res = await DCR.api("/api/portal?action=data&list=contacts&top=999");
-            var rows = (res.items || res.rows || []).filter(function (c) {
-              var hay = ((c.contactName || "") + " " + (c.contactCompany || "") + " " + (c.contactTrade || "")).toLowerCase();
-              return hay.indexOf(q.toLowerCase()) !== -1;
-            }).slice(0, 6);
-            var list = el("qtVList");
-            list.innerHTML = rows.map(function (c) {
-              return '<div data-c="' + esc(c.id) + '"><b>' + esc(c.contactName || c.contactCompany || "?") + "</b>" +
-                ' <span class="pm-sub">' + esc([c.contactCompany, c.contactTrade].filter(Boolean).join(" · ")) + "</span></div>";
-            }).join("");
-            list.classList.toggle("on", !!rows.length);
-            list.querySelectorAll("[data-c]").forEach(function (it) {
-              it.onclick = function () {
-                var c = rows.filter(function (x) { return String(x.id) === it.dataset.c; })[0];
-                if (!c) return;
-                picked.id = String(c.id);
-                vend.value = c.contactName || "";
-                el("qtCompany").value = c.contactCompany || "";
-                el("qtTrade").value = c.contactTrade || "";
-                el("qtEmail").value = c.contactEMail || "";
-                el("qtPhone").value = c.contactPhone || "";
-                list.classList.remove("on");
-              };
-            });
-          } catch (e) { /* contacts denied → manual entry still works */ }
-        }, 200);
+            all = await contactsBook();
+          } catch (e) {
+            list.innerHTML = '<div class="none">Couldn\'t reach Contacts — type the vendor in by hand.</div>';
+            list.classList.add("on");
+            return;
+          }
+          var ql = q.toLowerCase();
+          // prefix hits first (typing "dcr" should surface DCR Framing, not a
+          // company that merely mentions it), then anywhere-matches
+          var pre = [], any = [];
+          for (var i = 0; i < all.length && pre.length + any.length < 60; i++) {
+            var c = all[i];
+            if (c._hay.indexOf(ql) === -1) continue;
+            var starts = false;
+            for (var j = 0; j < c._pre.length; j++) {
+              if (c._pre[j].indexOf(ql) === 0) { starts = true; break; }
+            }
+            (starts ? pre : any).push(c);
+          }
+          var rows = pre.concat(any).slice(0, 8);
+          if (!rows.length) {
+            list.innerHTML = '<div class="none">No contact matches “' + esc(q) +
+              '” — type the vendor in by hand, or add them in Contacts.</div>';
+            list.classList.add("on");
+            return;
+          }
+          list.innerHTML = rows.map(function (c) {
+            return '<div data-c="' + esc(c.id) + '"><b>' + esc(c.contactName || c.contactCompany || "?") + "</b>" +
+              ' <span class="pm-sub">' + esc([c.contactCompany, c.contactTrade, c.contactPhone].filter(Boolean).join(" · ")) + "</span></div>";
+          }).join("");
+          list.classList.add("on");
+          list.querySelectorAll("[data-c]").forEach(function (it) {
+            it.onclick = function () {
+              var c = rows.filter(function (x) { return String(x.id) === it.dataset.c; })[0];
+              if (!c) return;
+              picked.id = String(c.id);
+              vend.value = c.contactName || c.contactCompany || "";
+              el("qtCompany").value = c.contactCompany || "";
+              el("qtTrade").value = c.contactTrade || "";
+              el("qtEmail").value = c.contactEMail || "";
+              el("qtPhone").value = c.contactPhone || "";
+              list.classList.remove("on");
+            };
+          });
+        }, 180);
       });
     }
 
