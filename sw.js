@@ -3,7 +3,7 @@
    always up to date (no stale-cache surprises). Responses are cached only as an
    offline fallback. Cross-origin requests (the Vercel API) and non-GET requests
    (logins, saves) are never intercepted — they always hit the network directly. */
-const CACHE = "dcr-portal-v3";
+const CACHE = "dcr-portal-v4";
 
 self.addEventListener("install", function () {
   self.skipWaiting(); // activate the new worker immediately
@@ -25,7 +25,12 @@ self.addEventListener("fetch", function (event) {
 
   event.respondWith((async function () {
     try {
-      const fresh = await fetch(req);                     // network first — always current when online
+      // "Network first" only means something if the request actually reaches
+      // the network. A plain fetch(req) still consults the browser's own HTTP
+      // cache, so GitHub Pages' max-age let a page load new HTML against a JS
+      // file the browser was still holding — a shipped fix looking unshipped.
+      // no-cache revalidates every time (a 304 costs nothing when unchanged).
+      const fresh = await fetch(req, { cache: "no-cache" });
       if (fresh && fresh.ok) {
         const cache = await caches.open(CACHE);
         cache.put(req, fresh.clone());
