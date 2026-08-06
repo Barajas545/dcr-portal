@@ -95,6 +95,20 @@
       .pm-drawer.open{transform:none;}
       .pm-drawer .dh{display:flex; align-items:flex-start; gap:10px; padding:14px 16px; border-bottom:1px solid var(--border);}
       .pm-drawer .db{flex:1; overflow-y:auto; padding:12px 16px 24px;}
+      /* collapsible drawer sections */
+      .pm-sec{border-bottom:1px solid var(--border);}
+      .pm-sec:last-of-type{border-bottom:none;}
+      .pm-sec-hd{display:flex; align-items:center; gap:8px; width:100%; padding:11px 2px;
+        background:none; border:none; cursor:pointer; text-align:left; color:var(--text);
+        font-size:11.5px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; font-family:inherit;}
+      .pm-sec-hd:hover{color:var(--acc);}
+      .pm-sec-hd .cav{display:inline-block; width:10px; color:var(--text-muted); transition:transform .12s;
+        transform:rotate(-90deg);}
+      .pm-sec.open .pm-sec-hd .cav{transform:none;}
+      .pm-sec-hd .n{font-weight:700; text-transform:none; letter-spacing:0; color:var(--text-muted); font-size:11.5px;}
+      .pm-sec-bd{display:none; padding:0 2px 14px;}
+      .pm-sec.open .pm-sec-bd{display:block;}
+      .pm-sec-bd > .pm-h:first-child{margin-top:0;}
       .pm-h{font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); margin:14px 0 6px;}
       .pm-money{display:flex; gap:8px; flex-wrap:wrap;}
       .pm-money .pm-card{min-width:96px; padding:6px 10px;}

@@ -648,6 +648,35 @@
     el("pmDrawer").classList.remove("open");
   }
 
+  /* ── drawer sections ───────────────────────────────────────────────────
+     The drawer carries everything about one item, which is a lot to scroll
+     past when you came for one number. Each block folds, and every body is
+     rendered whether open or not — toggling is a class, never a re-render, so
+     a half-typed amount or an in-flight save is never thrown away.
+     Open/closed is remembered per section across items and visits. */
+  var SEC_KEY = "dcr_pm_secs";
+  function secOpen(key, dflt) {
+    try {
+      var all = JSON.parse(localStorage.getItem(SEC_KEY) || "{}");
+      return all[key] === undefined ? dflt : !!all[key];
+    } catch (e) { return dflt; }
+  }
+  function secSet(key, open) {
+    try {
+      var all = JSON.parse(localStorage.getItem(SEC_KEY) || "{}");
+      all[key] = !!open;
+      localStorage.setItem(SEC_KEY, JSON.stringify(all));
+    } catch (e) {}
+  }
+  function section(key, title, count, body, dflt) {
+    if (!body) return "";
+    var open = secOpen(key, dflt);
+    return '<section class="pm-sec' + (open ? " open" : "") + '" data-sec="' + esc(key) + '">' +
+      '<button type="button" class="pm-sec-hd"><span class="cav">▾</span>' + esc(title) +
+      ' <span class="n" id="secN-' + esc(key) + '">' + esc(String(count || "")) + "</span></button>" +
+      '<div class="pm-sec-bd">' + body + "</div></section>";
+  }
+
   function renderDrawer() {
     var l = laneOf(state.drawerKey);
     var d = el("pmDrawer");
@@ -673,7 +702,7 @@
           return '<div style="padding:2px 0;font-size:12px">• ' + esc(s) + "</div>";
         }).join("") + (arr.length > 20 ? '<div class="pm-sub">+' + (arr.length - 20) + " more</div>" : "");
       };
-      scopeSec = '<div class="pm-h">Scope</div>' +
+      scopeSec =
         '<div style="display:flex;gap:16px;flex-wrap:wrap">' +
         (lbn.length ? '<div style="flex:1;min-width:150px"><div class="pm-sub" style="font-weight:700">Labor</div>' + li(lbn) + "</div>" : "") +
         (mtn.length ? '<div style="flex:1;min-width:150px"><div class="pm-sub" style="font-weight:700">Materials</div>' + li(mtn) + "</div>" : "") +
@@ -684,7 +713,7 @@
     var seed = assigneeSeed(l) || { name: "", company: "", trade: "", email: "", phone: "" };
 
     var moneyRow = hidden ? "" :
-      '<div class="pm-h">Money</div><div class="pm-money">' +
+      '<div class="pm-money">' +
       [["Estimate", l.estTotal], ["Awarded", l.awarded], ["Invoiced", l.invoiced], ["Paid", l.paid], ["Costs recorded", costs]]
         .map(function (c) {
           return '<div class="pm-card"><div class="k">' + esc(c[0]) + '</div><div class="v" style="font-size:13.5px">' + C.money(c[1] || 0) + "</div></div>";
@@ -692,7 +721,7 @@
 
     var tkRow = "";
     if (l.takeoff && l.takeoff.lines) {
-      tkRow = '<div class="pm-h">Material takeoff</div>' +
+      tkRow = '<div class="pm-h" style="margin-top:12px">Material takeoff</div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px">' +
         '<span>📐 ' + l.takeoff.lines + " line" + (l.takeoff.lines === 1 ? "" : "s") +
         (l.takeoff.names && l.takeoff.names.length ? ' <span class="pm-sub">· ' + esc(l.takeoff.names.join(", ")) + "</span>" : "") + "</span>" +
@@ -700,8 +729,7 @@
         '<a class="pm-sub" href="project.html?id=' + esc(PID) + '&tab=takeoffs">Open the Takeoffs tab →</a>';
     }
 
-    var filesSec = '<div class="pm-h">Item documents <span id="pmFCount"></span></div>' +
-      '<div id="pmFiles" class="pm-sub">Loading…</div>' +
+    var filesSec = '<div id="pmFiles" class="pm-sub">Loading…</div>' +
       '<div style="margin-top:6px"><input type="file" id="pmFileIn" multiple style="display:none">' +
       '<button class="btn btn-ghost btn-sm" id="pmFileAdd">＋ Add document</button> ' +
       '<span class="pm-msg" id="pmFileMsg"></span></div>';
@@ -747,7 +775,7 @@
     }).join("");
 
     var addForm = can.quotes
-      ? '<div class="pm-h">Request a quote</div><div class="pm-form">' +
+      ? '<div class="pm-h" style="margin-top:12px">Request a quote</div><div class="pm-form">' +
         '<div class="pm-sugg"><label>Vendor (from Contacts)</label>' +
         '<input id="qtVendor" autocomplete="off" placeholder="Type a vendor name…" value="' +
           esc(seed.name) + '"><div class="list" id="qtVList"></div></div>' +
@@ -800,41 +828,60 @@
       '<button class="btn btn-ghost btn-sm" id="pmCopyLink" title="Copy link to this item">🔗</button>' +
       '<button class="btn btn-ghost btn-sm" id="pmDrawerX">✕</button></div>' +
       '<div class="db">' +
-      scopeSec + moneyRow +
-      '<div class="pm-h">Quotes' + (l.quotes.length ? " · " + l.quotes.length : "") + "</div>" +
-      (state.model.quotesReady
-        ? (qRows ? '<table class="pm-qt">' + qRows + "</table>" : '<div class="pm-sub">No quote requests yet.</div>')
-        : '<div class="pm-sub">Quote tracking isn\'t enabled yet.</div>') +
-      addForm +
+
+      section("fin", "Financial overview", "", moneyRow, true) +
+
+      section("scope", "Scope", "", scopeSec + tkRow, false) +
+
+      section("quotes", "Quotes", l.quotes.length || "",
+        (state.model.quotesReady
+          ? (qRows ? '<table class="pm-qt">' + qRows + "</table>" : '<div class="pm-sub">No quote requests yet.</div>')
+          : '<div class="pm-sub">Quote tracking isn\'t enabled yet.</div>') + addForm,
+        true) +
+
       // Costs and invoices against this item — as many as it takes.
-      '<div class="pm-h">Costs &amp; invoices' + (costRows.length ? " · " + costRows.length : "") +
-        (hidden || !costRows.length ? "" : ' <span class="pm-sub">' + C.money(costs) + " total</span>") + "</div>" +
-      '<div id="pmCostList">' + costRowsHtml(costRows, can.estimate, hidden) + "</div>" +
-      (can.estimate
-        ? '<div style="margin-top:6px"><button class="btn btn-ghost btn-sm" id="icAdd">＋ Add a cost or invoice</button></div>' +
-          costFormHtml("ic", true)
-        : "") +
-      (costRows.length ? '<a class="pm-sub" href="project.html?id=' + esc(PID) + '&tab=expenses">Open the Expenses tab →</a>' : "") +
+      section("costs", "Invoices, payments & expenses",
+        (costRows.length ? costRows.length + (hidden ? "" : " · " + C.money(costs)) : ""),
+        '<div id="pmCostList">' + costRowsHtml(costRows, can.estimate, hidden) + "</div>" +
+        (can.estimate
+          ? '<div style="margin-top:6px"><button class="btn btn-ghost btn-sm" id="icAdd">＋ Add a cost or invoice</button></div>' +
+            costFormHtml("ic", true)
+          : "") +
+        (costRows.length ? '<a class="pm-sub" href="project.html?id=' + esc(PID) + '&tab=expenses">Open the Expenses tab →</a>' : ""),
+        costRows.length > 0) +
 
       // Tasks raised against this item.
-      '<div class="pm-h">Tasks' + (itemTasks.length ? " · " + itemTasks.length : "") + "</div>" +
-      '<div id="pmItemTasks">' + itemTasksHtml(itemTasks) + "</div>" +
-      (can.status
-        ? '<div style="margin-top:6px"><button class="btn btn-ghost btn-sm" id="itAdd">＋ Add a task</button></div>' +
-          '<div class="pm-form" id="itForm" style="display:none">' +
-          '<label>Task</label><input id="itName" placeholder="e.g. order the pump for Friday">' +
-          '<label>Details</label><textarea id="itDesc" rows="2"></textarea>' +
-          '<div style="display:flex;gap:8px"><div style="flex:1"><label>Who</label><input id="itWho" value="' +
-            esc((l.assignees[0] && (l.assignees[0].name || l.assignees[0].email)) || "") + '"></div>' +
-          '<div style="flex:1"><label>Priority</label><select id="itPri"><option value="">Normal</option><option>Urgent</option></select></div></div>' +
-          '<div style="display:flex;gap:8px;margin-top:10px">' +
-          '<button class="btn btn-sm" id="itSave">＋ Add task</button>' +
-          '<button class="btn btn-ghost btn-sm" id="itCancel">Cancel</button></div>' +
-          '<div class="pm-msg" id="itMsg"></div></div>'
-        : "") +
+      section("tasks", "Tasks", itemTasks.length || "",
+        '<div id="pmItemTasks">' + itemTasksHtml(itemTasks) + "</div>" +
+        (can.status
+          ? '<div style="margin-top:6px"><button class="btn btn-ghost btn-sm" id="itAdd">＋ Add a task</button></div>' +
+            '<div class="pm-form" id="itForm" style="display:none">' +
+            '<label>Task</label><input id="itName" placeholder="e.g. order the pump for Friday">' +
+            '<label>Details</label><textarea id="itDesc" rows="2"></textarea>' +
+            '<div style="display:flex;gap:8px"><div style="flex:1"><label>Who</label><input id="itWho" value="' +
+              esc((l.assignees[0] && (l.assignees[0].name || l.assignees[0].email)) || "") + '"></div>' +
+            '<div style="flex:1"><label>Priority</label><select id="itPri"><option value="">Normal</option><option>Urgent</option></select></div></div>' +
+            '<div style="display:flex;gap:8px;margin-top:10px">' +
+            '<button class="btn btn-sm" id="itSave">＋ Add task</button>' +
+            '<button class="btn btn-ghost btn-sm" id="itCancel">Cancel</button></div>' +
+            '<div class="pm-msg" id="itMsg"></div></div>'
+          : ""),
+        itemTasks.length > 0) +
 
-      tkRow + filesSec + flagRow + noteBox +
+      section("docs", "Documents", "", filesSec, false) +
+
+      section("flag", "Flags & notes", "", flagRow + noteBox, false) +
+
       "</div>";
+
+    // Folding is a class flip, never a re-render — anything mid-edit survives.
+    d.querySelectorAll(".pm-sec-hd").forEach(function (h) {
+      h.onclick = function () {
+        var sec = h.parentNode;
+        sec.classList.toggle("open");
+        secSet(sec.dataset.sec, sec.classList.contains("open"));
+      };
+    });
 
     el("pmDrawerX").onclick = closeDrawer;
     el("pmCopyLink").onclick = function () {
@@ -854,14 +901,14 @@
     return n + " B";
   }
   async function loadTaskFiles(l) {
-    var box = el("pmFiles"), cnt = el("pmFCount");
+    var box = el("pmFiles"), cnt = el("secN-docs");
     if (!box) return;
     try {
       var r = await DCR.api("/api/portal?action=drive&taskDocs=" + encodeURIComponent(PID) +
         "&task=" + encodeURIComponent(l.rowIds.slice(0, 12).join(",")));
       if (state.drawerKey !== l.key || !el("pmFiles")) return;
       var fs = r.files || [];
-      if (cnt) cnt.textContent = fs.length ? "· " + fs.length : "";
+      if (cnt) cnt.textContent = fs.length ? String(fs.length) : "";
       if (!fs.length) { el("pmFiles").textContent = "No documents for this item yet."; return; }
       el("pmFiles").innerHTML = fs.map(function (f) {
         return '<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px solid var(--border);font-size:12px;align-items:center">' +
