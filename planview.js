@@ -823,7 +823,11 @@
       state.info = await DCR.api("/api/portal?action=drive&fileInfo=" + encodeURIComponent(FILE_ID));
       el("pvName").textContent = state.info.name;
       document.title = "DCR — " + state.info.name;
-      if (PROJ_ID) el("pvBack").href = "plans.html";
+      // back to wherever this was opened from: the project's Files tab, or the
+      // Floor Plans finder
+      if (new URLSearchParams(location.search).get("from") === "files" && PROJ_ID) {
+        el("pvBack").href = "project.html?id=" + encodeURIComponent(PROJ_ID) + "&tab=files";
+      } else if (PROJ_ID) el("pvBack").href = "plans.html";
       var resp = await fetch(state.info.downloadUrl);
       if (!resp.ok) throw new Error("Could not download the PDF (" + resp.status + ")");
       var buf = await resp.arrayBuffer();

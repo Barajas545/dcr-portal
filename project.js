@@ -673,13 +673,16 @@
       var items = d.items||[];
       box.innerHTML = (d.folderUrl ? '<div style="margin-bottom:8px"><a class="pj-btn pj-btn-sm" target="_blank" href="'+esc(d.folderUrl)+'">Open project folder in SharePoint ↗</a></div>' : "") +
         (items.map(function(f){
-          return '<div class="ie-contact-hit" data-ief="'+esc(f.id)+'" data-folder="'+(f.isFolder?1:0)+'" data-link="'+esc(f.webViewLink||"")+'">'+fileIcon(f)+' '+esc(f.name)+'</div>';
+          return '<div class="ie-contact-hit" data-ief="'+esc(f.id)+'" data-folder="'+(f.isFolder?1:0)+'" data-name="'+esc(f.name)+'" data-link="'+esc(f.webViewLink||"")+'">'+fileIcon(f)+' '+esc(f.name)+'</div>';
         }).join("") || '<div class="pj-empty">Empty folder.</div>');
       box.querySelectorAll("[data-ief]").forEach(function(row){
         row.onclick = function(){
           if (row.getAttribute("data-folder")==="1") {
             var link = row.getAttribute("data-link");
             if (link) window.open(link, "_blank");
+          } else if (/\.pdf$/i.test(row.getAttribute("data-name") || "")) {
+            location.href = "planview.html?file=" + encodeURIComponent(row.getAttribute("data-ief")) +
+              "&project=" + encodeURIComponent(PID) + "&from=files";
           } else openFile(row.getAttribute("data-ief"), row.getAttribute("data-link"));
         };
       });
@@ -1281,6 +1284,12 @@
         if (row.getAttribute("data-folder")==="1") {
           state.files.stack.push({ id: row.getAttribute("data-fid"), name: row.getAttribute("data-name"), url: row.getAttribute("data-link") || "" });
           loadFiles(row.getAttribute("data-fid"));
+        } else if (/\.pdf$/i.test(row.getAttribute("data-name") || "")) {
+          // PDFs open in our own viewer — it measures, marks up and saves
+          // notes, and it streams the file straight from SharePoint, so the
+          // 56 MB plan sets that used to bounce out to the browser open here.
+          location.href = "planview.html?file=" + encodeURIComponent(row.getAttribute("data-fid")) +
+            "&project=" + encodeURIComponent(PID) + "&from=files";
         } else openFile(row.getAttribute("data-fid"), row.getAttribute("data-link"));
       };
     });
