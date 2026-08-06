@@ -320,15 +320,18 @@
     return (n / 1073741824).toFixed(2) + " GB";
   }
 
-  function addFiles(files) {
-    if (!files || !files.length) return;
-    var now = new Date();
+  // Returns the jobs it queued, so the camera can tie each thumbnail to the
+  // upload it belongs to. `when` is the moment the shutter fired — the camera
+  // encodes after the fact, so it can't be read off the clock here.
+  function addFiles(files, when) {
+    if (!files || !files.length) return [];
+    var now = when || new Date(), added = [];
     for (var i = 0; i < files.length; i++) {
       var f = files[i];
       if (!f || !f.size) continue;
       var isVid = String(f.type || "").indexOf("video/") === 0 || /\.(mov|mp4|m4v|avi|3gp)$/i.test(f.name || "");
       state.seq++;
-      state.jobs.push({
+      var job = {
         id: state.seq,
         file: f,
         // Sorts chronologically in SharePoint and never collides within a second.
@@ -338,15 +341,24 @@
         status: "queued",
         error: "",
         attempts: 0,
-      });
+      };
+      state.jobs.push(job);
+      added.push(job);
     }
     renderJobs();
     pump();
+    return added;
   }
 
   function renderJobs() {
     var host = el("shootList");
-    if (!state.jobs.length) { host.innerHTML = ""; el("shootRetryRow").classList.add("cp-hide"); return; }
+    camPaintStrip();
+    if (!state.jobs.length) {
+      host.innerHTML = "";
+      el("shootRetryRow").classList.add("cp-hide");
+      msg("shootMsg", "", "");
+      return;
+    }
     host.innerHTML = state.jobs.map(function (j) {
       var shown = j.live != null ? j.live : j.sent;
       var pct = j.status === "done" ? 100 : (j.size ? Math.round((shown / j.size) * 100) : 0);
@@ -495,6 +507,228 @@
     });
   }
 
+  /* ── in-app camera ─────────────────────────────────────────────────────
+     The phone's own camera makes you approve every frame ("Retake / Use
+     Photo"). Standing on a roof with gloves on that is one tap too many, so
+     we shoot here instead: the shutter queues the photo and the upload starts
+     immediately. A bad shot gets deleted later from the project's Files tab.
+
+     What that costs, deliberately: a canvas frame is not the camera's own
+     file, so the original EXIF (camera GPS, capture time) does not survive,
+     and the frame is the preview stream's resolution rather than the full
+     sensor. The capture time is in the filename and the project is the
+     folder, and "Choose from gallery" still uploads untouched originals when
+     something needs the real thing. */
+  var cam = { stream: null, track: null, facing: "environment", torch: false, shots: 0, open: false,
+    pending: [], draining: false };
+
+  function camSupported() {
+    return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.File);
+  }
+
+  function camWhy(e) {
+    var n = e && e.name;
+    if (n === "NotAllowedError" || n === "SecurityError")
+      return "Camera access is blocked for this site. Allow the camera in your browser settings, then try again.";
+    if (n === "NotFoundError" || n === "OverconstrainedError")
+      return "No camera was found on this device.";
+    if (n === "NotReadableError")
+      return "The camera is busy — close any other app using it and try again.";
+    return (e && e.message) || "The camera could not be opened.";
+  }
+
+  async function camStart(facing) {
+    camStop();
+    cam.facing = facing || cam.facing;
+    // Ask for far more than the preview needs — the browser hands back the
+    // closest mode the camera actually has, which is the best we can get.
+    cam.stream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { facingMode: { ideal: cam.facing }, width: { ideal: 4096 }, height: { ideal: 3072 } },
+    });
+    cam.track = cam.stream.getVideoTracks()[0] || null;
+    var v = el("camVideo");
+    v.muted = true;              // Safari checks the property, not just the attribute
+    v.srcObject = cam.stream;
+    try { await v.play(); } catch (e) { /* autoplay attrs cover this on iOS */ }
+
+    // Torch exists on some rear cameras only; flipping is pointless with one.
+    var caps = {};
+    try { caps = cam.track && cam.track.getCapabilities ? cam.track.getCapabilities() : {}; } catch (e) {}
+    cam.torch = false;
+    el("camTorch").hidden = !caps.torch;
+    el("camTorch").classList.remove("on");
+    try {
+      var devs = await navigator.mediaDevices.enumerateDevices();
+      el("camFlip").hidden = devs.filter(function (d) { return d.kind === "videoinput"; }).length < 2;
+    } catch (e) { el("camFlip").hidden = true; }
+  }
+
+  function camStop() {
+    if (cam.stream) cam.stream.getTracks().forEach(function (t) { try { t.stop(); } catch (e) {} });
+    cam.stream = null;
+    cam.track = null;
+    el("camVideo").srcObject = null;
+  }
+
+  // `kind` lets a transient notice retract itself — the "still saving" warning
+  // is a lie the moment the queue drains, and a stale warning on a camera
+  // screen reads as "your photos didn't go".
+  function camErr(text, kind) {
+    var box = el("camErr");
+    box.textContent = text || "";
+    box.hidden = !text;
+    box.dataset.kind = text ? kind || "" : "";
+  }
+
+  // Shots taken here, and how many SharePoint has actually got.
+  function camCount() {
+    if (!cam.open) return;
+    var done = state.jobs.filter(function (j) { return j.status === "done"; }).length;
+    var failed = state.jobs.filter(function (j) { return j.status === "failed"; }).length;
+    el("camCount").textContent = !cam.shots
+      ? "Tap the button — each photo uploads on its own"
+      : cam.shots + " taken · " + done + " saved" + (failed ? " · " + failed + " failed" : "");
+  }
+
+  // Green ring once it is safely in SharePoint, red if it gave up.
+  function camPaintStrip() {
+    if (!cam.open) return;
+    state.jobs.forEach(function (j) {
+      var im = el("camStrip").querySelector('img[data-jid="' + j.id + '"]');
+      if (im) im.className = j.status === "done" ? "done" : j.status === "failed" ? "err" : "";
+    });
+    camCount();
+  }
+
+  function camThumb(src) {
+    var s = 96, t = document.createElement("canvas");
+    t.width = t.height = s;
+    var k = Math.max(s / src.width, s / src.height), w = src.width * k, h = src.height * k;
+    t.getContext("2d").drawImage(src, (s - w) / 2, (s - h) / 2, w, h);
+    var img = new Image();
+    img.src = t.toDataURL("image/jpeg", 0.6);
+    var strip = el("camStrip");
+    strip.appendChild(img);
+    strip.scrollLeft = strip.scrollWidth;
+    return img;
+  }
+
+  /* The shutter must never wait on the JPEG encoder. Grabbing the frame is a
+     millisecond; encoding it was measured at a full second, and a shutter that
+     sits dead that long silently eats the next tap — you think you took six
+     photos and came home with two. So the tap grabs the pixels and re-arms
+     straight away, and the encode happens behind it.
+
+     Encodes run one at a time, in the order the shutter fired, so filenames
+     stay in the order the shots were actually taken. Each queued frame holds a
+     full-size canvas, so the queue is capped rather than allowed to eat the
+     phone's memory. */
+  var CAM_QUEUE_MAX = 6;
+
+  function camShoot() {
+    if (!cam.open) return;
+    var v = el("camVideo"), w = v.videoWidth, h = v.videoHeight;
+    if (!w || !h) { camErr("The camera is still warming up — try again in a moment."); return; }
+    if (cam.pending.length >= CAM_QUEUE_MAX) {
+      camErr("Still saving the last few — give it a second.", "cap");
+      return;
+    }
+
+    var c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    c.getContext("2d").drawImage(v, 0, 0, w, h);
+
+    var flash = el("camFlash");
+    flash.classList.remove("go");
+    void flash.offsetWidth;            // restart the animation on every shot
+    flash.classList.add("go");
+
+    cam.shots++;
+    cam.pending.push({ canvas: c, when: new Date(), img: camThumb(c) });
+    camErr("");
+    camCount();
+    camDrain();
+  }
+
+  async function camDrain() {
+    if (cam.draining) return;
+    cam.draining = true;
+    while (cam.pending.length) {
+      var shot = cam.pending.shift();
+      try {
+        var blob = await new Promise(function (res) { shot.canvas.toBlob(res, "image/jpeg", 0.92); });
+        if (!blob || !blob.size) throw new Error("empty frame");
+        // addFiles names the file from its extension, so the placeholder is .jpg
+        var job = addFiles(
+          [new File([blob], "photo.jpg", { type: "image/jpeg", lastModified: shot.when.getTime() })],
+          shot.when
+        )[0];
+        if (job && shot.img) shot.img.setAttribute("data-jid", job.id);
+      } catch (e) {
+        if (shot.img) shot.img.className = "err";
+        camErr("One photo could not be saved — take it again.");
+      }
+      shot.canvas.width = shot.canvas.height = 0;   // release it now, not at GC's leisure
+      camCount();
+      // The queue has room again, so retract the "give it a second" notice.
+      if (el("camErr").dataset.kind === "cap" && cam.pending.length < CAM_QUEUE_MAX) camErr("");
+    }
+    cam.draining = false;
+  }
+
+  async function camOpen() {
+    if (!camSupported()) { camFallback("This browser can't open the camera inside the app."); return; }
+    cam.shots = 0;
+    cam.open = true;
+    el("camStrip").innerHTML = "";
+    el("camJob").textContent = label(state.project);
+    el("shootNativeRow").classList.add("cp-hide");
+    camErr("");
+    camCount();
+    el("camWrap").hidden = false;
+    holdScreen(true);
+    try {
+      await camStart("environment");
+      camCount();
+    } catch (e) {
+      camClose();
+      camFallback(camWhy(e));
+    }
+  }
+
+  function camClose() {
+    cam.open = false;
+    camStop();
+    el("camWrap").hidden = true;
+    renderJobs();          // back to the full upload list
+  }
+
+  // The rejection lands after the tap that opened the camera, so the gesture is
+  // spent and a file input can't be clicked from here — offer the button.
+  function camFallback(why) {
+    msg("shootMsg", "err", why);
+    el("shootNativeRow").classList.remove("cp-hide");
+  }
+
+  async function camToggleTorch() {
+    if (!cam.track) return;
+    cam.torch = !cam.torch;
+    try {
+      await cam.track.applyConstraints({ advanced: [{ torch: cam.torch }] });
+      el("camTorch").classList.toggle("on", cam.torch);
+    } catch (e) {
+      cam.torch = false;
+      el("camTorch").classList.remove("on");
+      camErr("This camera's light can't be controlled from the browser.");
+    }
+  }
+
+  async function camSwitch() {
+    try { await camStart(cam.facing === "environment" ? "user" : "environment"); camErr(""); }
+    catch (e) { camErr(camWhy(e)); }
+  }
+
   function startShooting() {
     var p = state.project;
     state.week = DCR.weekFolder();   // a crew can be on site across midnight
@@ -504,7 +738,8 @@
       '<span class="cp-ad">' + esc(addressOf(p)) + "</span></span>";
     wireCards(el("shootBanner"));
     el("shootWhere").innerHTML = "Saving to <b>Pictures → " + esc(state.week) +
-      "</b><br>Files upload as they are taken. Keep this screen open until each one says ✓ Saved.";
+      "</b><br>Photos upload the moment you take them — nothing to confirm. Delete any you don't " +
+      "want later from the project's Files tab. Keep this screen open until each one says ✓ Saved.";
     show("stepShoot");
 
     // Standing on the job with a good fix is the best pin we will ever get.
@@ -532,7 +767,13 @@
       if (busy && !(await DCR.confirm("Some files are still uploading.", { title: "Leave anyway?", danger: true, okText: "Leave" }))) return;
       state.jobs = []; renderJobs(); show("stepPick");
     };
-    el("shootPhoto").onclick = function () { el("inPhoto").value = ""; el("inPhoto").click(); };
+    el("shootPhoto").onclick = camOpen;
+    el("camClose").onclick = camClose;
+    el("camDone").onclick = camClose;
+    el("camShot").onclick = camShoot;
+    el("camTorch").onclick = camToggleTorch;
+    el("camFlip").onclick = camSwitch;
+    el("shootNative").onclick = function () { el("inPhoto").value = ""; el("inPhoto").click(); };
     el("shootVideo").onclick = function () { el("inVideo").value = ""; el("inVideo").click(); };
     el("shootPick").onclick = function () { el("inPick").value = ""; el("inPick").click(); };
     ["inPhoto", "inVideo", "inPick"].forEach(function (id) {
@@ -550,9 +791,13 @@
         e.preventDefault(); e.returnValue = "";
       }
     });
-    // Coming back from the camera / another app: resume anything left hanging.
+    // Coming back from another app: resume anything left hanging. iOS also
+    // freezes the camera stream while away, so nudge it back.
     document.addEventListener("visibilitychange", function () {
-      if (!document.hidden) { holdScreen(true); pump(); }
+      if (document.hidden) return;
+      holdScreen(true);
+      pump();
+      if (cam.open) el("camVideo").play().catch(function () {});
     });
 
     try {

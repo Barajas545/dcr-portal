@@ -76,6 +76,59 @@
       .cp-spin{display:inline-block; width:13px; height:13px; border:2px solid var(--border);
         border-top-color:#2f80d8; border-radius:50%; animation:cpspin .8s linear infinite; vertical-align:-2px;}
       @keyframes cpspin{to{transform:rotate(360deg);}}
+
+      /* ── in-app camera ──────────────────────────────────────────────────
+         The phone's own camera makes you approve every frame ("Retake / Use
+         Photo"). Shooting here skips that: one tap is one photo, straight
+         into the upload queue. Sits above the page but below DCR.modal, so
+         the "still uploading" confirm can still appear over it. */
+      .cam{position:fixed; inset:0; z-index:60; background:#000; display:flex; flex-direction:column;
+        overflow:hidden;}
+      .cam[hidden]{display:none;}
+      /* contain, not cover: the saved photo is the whole video frame, so the
+         preview has to show the whole frame too or you lose what you framed.
+         Black bars are what every camera app does at a mismatched aspect. */
+      .cam video{position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#000;}
+
+      .cam-top{position:relative; z-index:2; display:flex; gap:9px; align-items:center;
+        padding:calc(env(safe-area-inset-top) + 10px) 12px 22px; color:#fff;
+        background:linear-gradient(rgba(0,0,0,.62), rgba(0,0,0,0));}
+      .cam-job{flex:1; min-width:0; font-size:13.5px; font-weight:700; line-height:1.3;
+        text-shadow:0 1px 3px rgba(0,0,0,.75); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+      .cam-x{width:40px; height:40px; flex-shrink:0; border-radius:50%; border:none; padding:0;
+        background:rgba(0,0,0,.45); color:#fff; font-size:17px; line-height:1; cursor:pointer;
+        -webkit-tap-highlight-color:transparent;}
+      .cam-x.on{background:#f0c040; color:#1a1a1a;}
+
+      .cam-err{position:relative; z-index:2; margin:0 14px; padding:12px 14px; border-radius:11px;
+        background:rgba(217,97,79,.95); color:#fff; font-size:13.5px; line-height:1.5;}
+
+      .cam-bot{position:relative; z-index:2; margin-top:auto;
+        padding:14px 12px calc(env(safe-area-inset-bottom) + 14px);
+        background:linear-gradient(rgba(0,0,0,0), rgba(0,0,0,.68));}
+      /* every shot so far, newest last — proof it was taken, and a green ring
+         once SharePoint has it */
+      .cam-strip{display:flex; gap:6px; overflow-x:auto; padding-bottom:9px;}
+      .cam-strip img{width:46px; height:46px; flex-shrink:0; object-fit:cover; border-radius:7px;
+        border:2px solid rgba(255,255,255,.5);}
+      .cam-strip img.done{border-color:#2fa679;}
+      .cam-strip img.err{border-color:#d9614f;}
+
+      .cam-ctl{display:flex; align-items:center; gap:10px;}
+      .cam-count{flex:1; min-width:0; color:#fff; font-size:12.5px; font-weight:700; line-height:1.35;
+        text-shadow:0 1px 3px rgba(0,0,0,.75);}
+      .cam-done{flex:1; text-align:right; background:none; border:none; padding:0; color:#fff;
+        font-size:16px; font-weight:700; cursor:pointer; text-shadow:0 1px 3px rgba(0,0,0,.75);
+        -webkit-tap-highlight-color:transparent;}
+      .cam-shot{width:74px; height:74px; flex-shrink:0; border-radius:50%; padding:0; cursor:pointer;
+        background:#fff; background-clip:padding-box; border:5px solid rgba(255,255,255,.45);
+        -webkit-tap-highlight-color:transparent;}
+      .cam-shot:active{transform:scale(.93);}
+      .cam-shot:disabled{opacity:.55;}
+
+      .cam-flash{position:absolute; inset:0; z-index:3; background:#fff; opacity:0; pointer-events:none;}
+      .cam-flash.go{animation:camflash .3s ease-out;}
+      @keyframes camflash{from{opacity:.8;} to{opacity:0;}}
     </style>
     <link rel="manifest" href="manifest.json" />
     <link rel="icon" type="image/png" href="icon-192.png" />
@@ -136,6 +189,12 @@
         <button class="cp-btn cp-btn-ghost" id="shootPick">🖼 Choose from gallery</button>
 
         <div class="cp-msg" id="shootMsg"></div>
+
+        <!-- only if the in-app camera can't run (blocked permission, old browser) -->
+        <div class="cp-row cp-hide" id="shootNativeRow">
+          <button class="cp-btn cp-btn-sm" id="shootNative">📷 Use the phone camera instead</button>
+        </div>
+
         <div id="shootList"></div>
 
         <div class="cp-row cp-hide" id="shootRetryRow">
@@ -150,6 +209,32 @@
         <input type="file" id="inVideo" accept="video/*" capture="environment" class="cp-hide" />
         <input type="file" id="inPick" accept="image/*,video/*" multiple class="cp-hide" />
       </div>
+    </div>
+
+    <!-- Shoots in the app so there is no "Retake / Use Photo" to answer:
+         every shutter tap queues the photo and starts uploading it. -->
+    <div class="cam" id="camWrap" hidden>
+      <video id="camVideo" playsinline autoplay muted></video>
+
+      <div class="cam-top">
+        <button class="cam-x" id="camClose" type="button" aria-label="Close camera">✕</button>
+        <div class="cam-job" id="camJob"></div>
+        <button class="cam-x" id="camTorch" type="button" hidden aria-label="Toggle light">🔦</button>
+        <button class="cam-x" id="camFlip" type="button" hidden aria-label="Switch camera">⇄</button>
+      </div>
+
+      <div class="cam-err" id="camErr" hidden></div>
+
+      <div class="cam-bot">
+        <div class="cam-strip" id="camStrip"></div>
+        <div class="cam-ctl">
+          <div class="cam-count" id="camCount"></div>
+          <button class="cam-shot" id="camShot" type="button" aria-label="Take photo"></button>
+          <button class="cam-done" id="camDone" type="button">Done</button>
+        </div>
+      </div>
+
+      <div class="cam-flash" id="camFlash"></div>
     </div>
 
     <script src="config.js"></script>
