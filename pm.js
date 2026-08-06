@@ -751,12 +751,20 @@
       // The agreed amount has to be editable here. It is the figure every other
       // number is measured against — Committed to subs, and whether an invoice
       // is over or under — and awarding without one is easy to do.
+      // Labels above the boxes, not placeholders inside them: a placeholder
+      // disappears the moment a figure is typed, which leaves three unlabelled
+      // amounts sitting next to each other.
+      var qf = function (cls, label, val, tip) {
+        var id = "qf" + cls + q.id;
+        return '<div class="qtF"><label for="' + id + '">' + esc(label) + "</label>" +
+          '<input id="' + id + '" type="number" step="0.01" class="' + cls + '" value="' +
+          (hidden ? "" : (val || "")) + '"' + (tip ? ' title="' + esc(tip) + '"' : "") + "></div>";
+      };
       var money3 = awarded && can.quotes
-        ? '<div style="display:flex;gap:6px;margin-top:5px;align-items:center;font-size:11.5px;flex-wrap:wrap" class="qtInvRow" data-q="' + esc(q.id) + '">' +
-          '<input type="number" step="0.01" placeholder="Awarded $" class="qtAmt2" style="width:92px;padding:4px 6px" value="' +
-            (hidden ? "" : (q.quoteAmount || "")) + '" title="What you agreed to pay">' +
-          '<input type="number" step="0.01" placeholder="Invoice $" class="qtInv" style="width:86px;padding:4px 6px" value="' + (hidden ? "" : (q.invoiceAmount || "")) + '">' +
-          '<input type="number" step="0.01" placeholder="Paid $" class="qtPaid" style="width:86px;padding:4px 6px" value="' + (hidden ? "" : (q.paidAmount || "")) + '">' +
+        ? '<div class="qtInvRow" data-q="' + esc(q.id) + '">' +
+          qf("qtAmt2", "Awarded $", q.quoteAmount, "What you agreed to pay this vendor") +
+          qf("qtInv", "Invoiced $", q.invoiceAmount, "What they have billed you so far") +
+          qf("qtPaid", "Paid $", q.paidAmount, "What you have paid them so far") +
           '<span class="dcr-live qtLive"></span>' +
           (!hidden && !(Number(q.quoteAmount) > 0)
             ? '<div style="flex-basis:100%;color:var(--gold)" class="qtNoAmt">No agreed amount yet — enter it so invoices can be checked against it.</div>' : "") +
