@@ -1124,7 +1124,7 @@
       ? '<div class="pj-tblwrap"><table class="pj-tbl"><thead><tr><th></th><th>Task</th><th>Category</th><th>Assigned</th><th>Requested</th></tr></thead><tbody>'+body+'</tbody></table></div>'
       : '<div class="pj-empty">No '+f+' tasks.</div>');
     pane.querySelectorAll("[data-tf]").forEach(function(c){ c.onclick=function(){ state.taskFilter=c.getAttribute("data-tf"); renderTasks(); }; });
-    var add = el("tkAddBtn"); if (add) add.onclick = function(){ el("taskModal").classList.add("open"); el("tkMsg").textContent=""; };
+    var add = el("tkAddBtn"); if (add) add.onclick = openTaskModal;
     pane.querySelectorAll("[data-tk]").forEach(function(cb){
       cb.onchange = async function(){
         try {
@@ -1137,20 +1137,111 @@
     });
   }
 
+  /* ── task request ──────────────────────────────────────────────────────
+     The web version of the Access "Project Task Request" form. Project detail
+     autofills from the open project, the employee list fills the notification
+     address, and submitting both creates the record and notifies the assignee.
+
+     This is deliberately NOT a DCR.live auto-save form. It creates a record
+     and sends a message — both are one-way — so it stays one deliberate
+     click, exactly as the auto-save engine's own contract says. */
+  function tkPerson(name) {
+    var want = String(name || "").trim().toLowerCase();
+    return (state.assignees || []).find(function (p) { return p.name.toLowerCase() === want; }) || null;
+  }
+
+  // Addresses live behind the same gate as creating the task, so this only
+  // resolves for someone who could assign the work anyway.
+  async function loadAssignees() {
+    if (state.assignees) return state.assignees;
+    try {
+      var d = await DCR.api("/api/portal?action=project&id=" + encodeURIComponent(PID) + "&part=assignees");
+      state.assignees = d.people || [];
+    } catch (e) {
+      state.assignees = [];        // typing a name by hand still works
+    }
+    el("tkPeople").innerHTML = state.assignees
+      .map(function (p) { return '<option value="' + esc(p.name) + '"></option>'; }).join("");
+    return state.assignees;
+  }
+
+  function openTaskModal() {
+    var p = state.project || {};
+    el("tkProject").innerHTML =
+      [["Internal ID", p.internalIDNumber], ["Project ID", PID], ["Name", p.projectName],
+       ["Address", p.projectAddress], ["City", p.projectCity]]
+      .map(function (r) {
+        return "<div><b>" + esc(r[0]) + "</b><span>" + esc(r[1] || "—") + "</span></div>";
+      }).join("");
+    el("tkMsg").className = "pj-msg";
+    el("tkMsg").textContent = "";
+    el("taskModal").classList.add("open");
+    loadAssignees();
+    setTimeout(function () { el("tkAssigned").focus(); }, 30);
+  }
+
+  // Opening a mailto: must never be done with location.href — it can take the
+  // app window with it and abort an in-flight save. A detached anchor cannot.
+  function openDraft(to, cc, subject, body) {
+    var url = "mailto:" + encodeURIComponent(to) +
+      "?subject=" + encodeURIComponent(subject) +
+      (cc ? "&cc=" + encodeURIComponent(cc) : "") +
+      "&body=" + encodeURIComponent(body);
+    var a = document.createElement("a");
+    a.href = url;
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () { a.remove(); }, 0);
+  }
+
   async function saveTask() {
     var name = el("tkName").value.trim();
-    if (!name) { el("tkMsg").textContent = "Task name is required."; return; }
+    if (!name) { el("tkMsg").className = "pj-msg err"; el("tkMsg").textContent = "Task name is required."; return; }
+
+    var who = el("tkAssigned").value.trim();
+    var hit = tkPerson(who);
+    var to = el("tkToEmail").value.trim() || (hit ? hit.email : "");
+
     el("tkSave").disabled = true;
+    el("tkMsg").className = "pj-msg";
+    el("tkMsg").textContent = "Submitting…";
     try {
-      await DCR.api("/api/portal?action=project", { method:"POST", body:{
-        op:"taskAdd", projectId: PID, taskName: name,
-        priority: el("tkPriority").value, assignedPerson: el("tkAssigned").value.trim(),
+      var r = await DCR.api("/api/portal?action=project", { method: "POST", body: {
+        op: "taskAdd", projectId: PID, taskName: name,
+        priority: el("tkPriority").value,
+        category: el("tkCategory").value,
+        subCategory: el("tkSubCategory").value,
+        assignedPerson: who,
+        assignedEmail: to,
+        toName: who,
+        cc: el("tkCc").value.trim(),
+        mapLink: el("tkMapLink").value.trim(),
         description: el("tkDesc").value.trim(),
+        portalLink: location.origin + location.pathname + "?id=" + encodeURIComponent(PID) + "&tab=tasks",
       }});
+
       el("taskModal").classList.remove("open");
-      ["tkName","tkAssigned","tkDesc"].forEach(function(i){ el(i).value=""; });
+      ["tkName", "tkDesc", "tkCc", "tkMapLink"].forEach(function (i) { el(i).value = ""; });
       loadTasks();
-    } catch (e) { el("tkMsg").textContent = e.message || "Create failed"; }
+
+      // The record is saved either way; all that varies is how the assignee
+      // hears about it. Say which happened rather than implying an email went
+      // out when it didn't.
+      var n = r.notify || {};
+      if (n.sent) msg("ok", "Task created — " + (who || "assignee") + " has been emailed.");
+      else if (n.to) {
+        openDraft(n.to, n.cc, n.subject, n.body);
+        msg("ok", "Task created — the notification is open in your email, ready to send.");
+      } else if (who) {
+        msg("ok", "Task created and assigned to " + who + ". No email address on file for them, so nothing was sent.");
+      } else {
+        msg("ok", "Task created. Nobody was assigned, so nobody was notified.");
+      }
+    } catch (e) {
+      el("tkMsg").className = "pj-msg err";
+      el("tkMsg").textContent = e.message || "Create failed";
+    }
     el("tkSave").disabled = false;
   }
 
@@ -1638,6 +1729,27 @@
     if (pmBtn) pmBtn.href = "pm.html?id=" + encodeURIComponent(PID);
     el("tkCancel").onclick = function(){ el("taskModal").classList.remove("open"); };
     el("tkSave").onclick = saveTask;
+    // Picking an employee fills their address, the way the Access combo does.
+    //
+    // An address WE filled must be replaced when the assignee changes — even
+    // with a blank. Keeping it "because the box wasn't empty" is how a task
+    // assigned to one person gets emailed to the last one: reassigning left
+    // the previous address sitting there under a hint that said the new person
+    // had none. A hand-typed address is different — that is a deliberate
+    // choice and survives, which is what data-auto distinguishes.
+    el("tkAssigned").addEventListener("input", function () {
+      var hit = tkPerson(this.value);
+      if (!hit) return;
+      var box = el("tkToEmail");
+      if (!box.value.trim() || box.dataset.auto === "1") {
+        box.value = hit.email || "";
+        box.dataset.auto = "1";
+      }
+      el("tkMsg").className = "pj-msg";
+      el("tkMsg").textContent = hit.email || box.value.trim()
+        ? "" : "No email on file for " + hit.name + " — the task will still be created, but nothing will be sent.";
+    });
+    el("tkToEmail").addEventListener("input", function () { this.dataset.auto = ""; });
     el("subCancel").onclick = function(){ el("subModal").classList.remove("open"); };
     el("subSave").onclick = saveSubModal;
     el("subDelete").onclick = deleteSubModal;

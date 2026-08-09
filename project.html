@@ -383,6 +383,14 @@
       .pj-modal{background:var(--surface); color:var(--text); border:1px solid var(--border);
         border-radius:14px; width:100%; max-width:640px; max-height:90vh; overflow-y:auto;
         padding:20px; box-shadow:0 8px 32px rgba(0,0,0,.4);}
+      /* the read-only project block at the top of the task request */
+      .pj-tkhead{background:var(--surface-2); border:1px solid var(--border); border-radius:9px;
+        padding:10px 12px; display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr));
+        gap:7px 14px;}
+      .pj-tkhead div{min-width:0;}
+      .pj-tkhead b{display:block; font-size:11px; font-weight:600; text-transform:uppercase;
+        letter-spacing:.04em; opacity:.65; margin-bottom:1px;}
+      .pj-tkhead span{font-size:13px; word-break:break-word;}
       .pj-modal h3{margin:0 0 14px; font-size:16px;}
       .pj-modal-actions{display:flex; align-items:center; justify-content:flex-end; gap:8px; margin-top:14px;}
 
@@ -757,21 +765,64 @@
       </div>
     </div>
 
-    <!-- task modal -->
+    <!-- Task request — the web version of the Access "Project Task Request"
+         form. Project details autofill from the open project and are shown
+         read-only; picking the employee fills the To name/address. -->
     <div class="pj-overlay" id="taskModal">
-      <div class="pj-modal" style="max-width:460px">
-        <h3>New task request</h3>
-        <div class="pj-f" style="margin-bottom:10px"><label>Task name *</label><input id="tkName" /></div>
-        <div class="pj-grid" style="grid-template-columns:1fr 1fr">
-          <div class="pj-f"><label>Priority</label>
-            <select id="tkPriority"><option value="">—</option><option>Urgent</option><option>Medium</option><option>Low</option></select></div>
-          <div class="pj-f"><label>Assigned person</label><input id="tkAssigned" /></div>
+      <div class="pj-modal" style="max-width:720px">
+        <h3>Project task request</h3>
+        <div class="pj-sub" style="margin:-6px 0 12px">
+          Creates the task and notifies the employee it is assigned to.
         </div>
-        <div class="pj-f" style="margin-top:10px"><label>Description</label><textarea id="tkDesc" rows="3"></textarea></div>
-        <div class="pj-msg err" id="tkMsg"></div>
+
+        <div class="pj-tkhead" id="tkProject"></div>
+
+        <div class="pj-grid" style="margin-top:12px">
+          <div class="pj-f">
+            <label for="tkAssigned">Assign to</label>
+            <input id="tkAssigned" list="tkPeople" placeholder="Employee name" autocomplete="off" />
+            <datalist id="tkPeople"></datalist>
+          </div>
+          <div class="pj-f"><label for="tkCategory">Category</label>
+            <select id="tkCategory">
+              <option value="">—</option>
+              <option>Photos &amp; Video</option><option>Sales</option><option>Customer Relations</option>
+              <option>General Task</option><option>Electrical</option><option>Plumbing</option>
+              <option>Estimate</option><option>Drafting</option><option>Change Order</option>
+              <option>Office Work</option><option>Marketing</option>
+            </select></div>
+          <div class="pj-f"><label for="tkSubCategory">Sub-category</label>
+            <select id="tkSubCategory">
+              <option value="">—</option>
+              <option>Photos &amp; Video</option><option>Camera Setup</option><option>Sales</option>
+              <option>General Task</option><option>Website</option><option>Content Creation</option>
+              <option>Social Media</option><option>Marketing</option><option>Follow up</option>
+              <option>Review</option>
+            </select></div>
+          <div class="pj-f"><label for="tkPriority">Priority</label>
+            <select id="tkPriority"><option value="">—</option><option>Urgent</option><option>Medium</option><option>Low</option></select></div>
+        </div>
+
+        <div class="pj-f full" style="margin-top:10px">
+          <label for="tkName">Task name *</label>
+          <input id="tkName" placeholder="What needs doing" />
+        </div>
+        <div class="pj-f full" style="margin-top:10px">
+          <label for="tkDesc">Description</label>
+          <textarea id="tkDesc" rows="5" placeholder="Details about this task"></textarea>
+        </div>
+
+        <div class="pj-grid" style="margin-top:12px">
+          <div class="pj-f"><label for="tkToEmail">Notify (email)</label>
+            <input id="tkToEmail" type="email" placeholder="Filled in from the employee" /></div>
+          <div class="pj-f"><label for="tkCc">CC</label><input id="tkCc" type="email" placeholder="Optional" /></div>
+          <div class="pj-f"><label for="tkMapLink">Map link</label><input id="tkMapLink" placeholder="Optional" /></div>
+        </div>
+
+        <div class="pj-msg" id="tkMsg"></div>
         <div class="pj-modal-actions">
           <button class="pj-btn" id="tkCancel">Cancel</button>
-          <button class="pj-btn pj-btn-primary" id="tkSave">✓ Create task</button>
+          <button class="pj-btn pj-btn-primary" id="tkSave">✓ Submit request</button>
         </div>
       </div>
     </div>
