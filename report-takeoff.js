@@ -140,8 +140,8 @@
           esc("#" + (p.internalIDNumber || "") + (p.projectName ? " - " + p.projectName : "")) + "<br>" +
           "<b>Address:</b> " + esc([p.projectAddress, p.projectCity].filter(Boolean).join(" - ") || "—") +
         "</div></div>" +
-        '<div class="ml-logo"><img src="' + LOGO + '" alt="' + esc(CO.name) + '" />' +
-        '<div class="ml-co">' + coBlock() + "</div></div>" +
+        '<div class="ml-logo"><div class="ml-co">' + coBlock() + "</div>" +
+        '<img src="' + LOGO + '" alt="' + esc(CO.name) + '" /></div>' +
       "</div>" +
       '<div class="ml-tkl">Takeoff Name:</div>' +
       '<div class="ml-band ml-tk">' + esc("#" + (p.internalIDNumber || "") + " - " + name) + "</div>" +

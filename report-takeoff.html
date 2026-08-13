@@ -32,9 +32,11 @@
       .ml-h1{text-align:center; font-size:23px; font-weight:700; margin:0 0 10px;}
       .ml-meta{font-size:12.5px; line-height:1.6;}
       .ml-meta b{font-weight:700;}
-      .ml-logo{width:96px; flex-shrink:0; text-align:right;}
-      .ml-logo img{width:88px; height:auto;}
-      .ml-co{font-size:8.5px; color:#444; line-height:1.45; text-align:right; margin-top:4px;}
+      /* company block sits to the LEFT of the mark, reading in toward it, the
+         way it does on the letterhead */
+      .ml-logo{flex-shrink:0; display:flex; align-items:center; gap:11px;}
+      .ml-logo img{width:88px; height:auto; flex-shrink:0;}
+      .ml-co{font-size:8.5px; color:#444; line-height:1.5; text-align:right;}
 
       .ml-tkl{text-align:center; font-size:11px; margin:14px 0 2px;}
       /* the black takeoff-name bar, then Level, then Category — the same
