@@ -104,6 +104,29 @@
     return (num(a.itemSortingNumber) - num(b.itemSortingNumber)) || (num(a.id) - num(b.id));
   }
 
+  /* Group colours, shared for the same reason the ordering is: the grid tints a
+     group's connector lines and the printed sheet has to tint the same group the
+     same way, or the two stop being the same document.
+
+     Colours are handed out in the order groups first appear, so neighbours never
+     collide, and the same data always yields the same colours. Keyed on the
+     DEEPEST named group — a Level is a container for other groups, and giving it
+     one of their hues reads as a group that isn't there. */
+  var TG_COLORS = 8;
+  function deepestOf(keys) {
+    var d = keys.length - 1;
+    while (d > 0 && keys[d] === "") d--;
+    return d;
+  }
+  function colorer() {
+    var seen = {}, next = 0;
+    return function (keys) {
+      var p = keys.slice(0, deepestOf(keys) + 1).join(SEP);
+      if (seen[p] == null) seen[p] = next++ % TG_COLORS;
+      return seen[p];
+    };
+  }
+
   /* Flatten into print order: every row followed by its components, depth-first.
      Each node carries what the connector lines need — `depth`, `last` (is this
      the final child of its parent) and `cont[]` (which ancestor levels still
@@ -151,5 +174,6 @@
     parseLayout: parseLayout, maps: maps,
     levelPosOf: levelPosOf, catPosOf: catPosOf, subPosOf: subPosOf,
     topCompare: topCompare, bySort: bySort, tree: tree,
+    TG_COLORS: TG_COLORS, deepestOf: deepestOf, colorer: colorer,
   };
 })();

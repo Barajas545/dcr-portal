@@ -72,6 +72,11 @@
 
     var nodes = TKO.tree(rows, header);
     var SEP = TKO.SEP;
+    // A component is printed under whatever band its PARENT opened, and its own
+    // group fields are often blank — so the colour follows the band on the page,
+    // not the row's fields, or an assembly's parts would change colour mid-tree.
+    var gcolor = TKO.colorer();
+    var curGC = null;
     // Built, not written as a literal: an invisible control byte in source reads
     // as an empty string in every diff and review tool, and "" is exactly what
     // gkey() returns for a blank Level — so the two look identical on the page
@@ -109,6 +114,7 @@
           for (var k = d; k < 3; k++) prev[k] = FORCE;
         }
         prev = keys;
+        curGC = gcolor(keys);
       }
       openTable();
       ln++;
@@ -116,10 +122,12 @@
         '<tr><td class="c-ln">' + ln + "</td>" +
         '<td class="c-qty">' + esc(qtyDisp(r.itemQty)) + "</td>" +
         '<td class="c-un">' + esc(r.itemType || "") + "</td>" +
-        '<td class="c-it">' + railsHtml(n) +
-          '<span style="display:inline-block;padding-left:' + (n.depth ? n.depth * 13 + 10 : 0) + 'px">' +
-          esc(r.itemName || "") + "</span></td>" +
-        '<td class="c-pu">' + esc(r.itemPurpose || "") + "</td></tr>");
+        '<td class="c-it">' + esc(r.itemName || "") + "</td>" +
+        // the tree lives here: the purpose is what states the relationship
+        '<td class="c-pu"' + (curGC == null ? "" : ' style="--gc:var(--tg' + curGC + ')"') + ">" +
+          railsHtml(n) +
+          '<span style="display:inline-block;padding-left:' + (n.depth ? n.depth * 13 + 12 : 0) + 'px">' +
+          esc(r.itemPurpose || "") + "</span></td></tr>");
     });
     closeTable();
     var table = out.join("");

@@ -65,13 +65,23 @@
       /* ── connector lines ──────────────────────────────────────────────
          Components hang off their parent item. Same idea as the grid: one
          vertical rule per ancestor level that still has rows below, plus this
-         row's own elbow. Real elements, so they print. */
-      .ml td.c-it{position:relative;}
-      .ml-rl{position:absolute; top:0; bottom:0; width:1px; background:#999;
-        left:calc(3px + var(--k,0) * 13px);}
+         row's own elbow. Real elements, so they print.
+
+         They live in the PURPOSE column: the purpose is what says how the parts
+         relate ("Hardware" over its hangers and nails), so the tree belongs
+         beside that rather than beside the item numbers. */
+      .ml td.c-pu{position:relative;}
+      .ml-rl{position:absolute; top:0; bottom:0; width:1.5px;
+        background:var(--gc,#999); left:calc(4px + var(--k,0) * 13px);}
       .ml-rl.last{bottom:auto; height:50%;}
-      .ml-rl.own::after{content:""; position:absolute; left:0; top:50%; width:9px; height:1px;
-        margin-top:-1px; background:#999;}
+      .ml-rl.own::after{content:""; position:absolute; left:0; top:50%; width:9px; height:1.5px;
+        margin-top:-1px; background:var(--gc,#999);}
+
+      /* One hue per group, so which rows belong together survives the printer.
+         Same palette as the grid — deeper and a touch more saturated, because a
+         1.5px line on white paper has none of a screen's help. */
+      .ml{--tg0:#c2410c; --tg1:#1d4ed8; --tg2:#15803d; --tg3:#7e22ce;
+          --tg4:#a16207; --tg5:#0f766e; --tg6:#be123c; --tg7:#4338ca;}
 
       /* a band stranded at the foot of a page, or a header with no rows under
          it, is worse than a slightly short page */

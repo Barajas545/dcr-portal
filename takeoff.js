@@ -1106,24 +1106,11 @@
   }
 
   /* ── screen B ── */
-  // Groups take colours in the order they appear, so neighbours never collide.
-  // Same data renders in the same order, so a group keeps its colour across
-  // renders — the map is rebuilt each pass rather than kept, so deleting a
-  // group doesn't strand its slot.
-  var TG_COLORS = 8;
-  function deepestOf(keys) {
-    var d = keys.length - 1;
-    while (d > 0 && keys[d] === "") d--;
-    return d;
-  }
-  function groupColorer() {
-    var seen = {}, next = 0;
-    return function (keys) {
-      var p = keys.slice(0, deepestOf(keys) + 1).join(SEP);
-      if (seen[p] == null) seen[p] = next++ % TG_COLORS;
-      return seen[p];
-    };
-  }
+  // Delegated to takeoff-order.js — the printed Material List tints the same
+  // groups the same way, and two copies would drift. The rules (colours in
+  // order of appearance, keyed on the deepest named group) live there.
+  function deepestOf(keys) { return TKO.deepestOf(keys); }
+  function groupColorer() { return TKO.colorer(); }
 
   function renderOne() {
     var canEdit = canEditView();
