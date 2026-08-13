@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DCR — Material List</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      .rp-controls{
+        display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+        padding:10px 16px; background:var(--surface); border-bottom:1px solid var(--border);
+        position:sticky; top:0; z-index:10;
+      }
+      .rp-btn{padding:8px 14px; font-size:13px; font-weight:600; border-radius:8px; cursor:pointer;
+        border:1px solid var(--border); background:var(--surface); color:var(--text); text-decoration:none;}
+      .rp-btn:hover{background:var(--surface-2);}
+      .rp-btn-primary{background:#2f80d8; border-color:#2f80d8; color:#fff;}
+      .rp-loading{text-align:center; color:var(--text-muted); padding:60px 0;}
+
+      .sheet{
+        max-width:8.5in; margin:18px auto; background:#fff; color:#111;
+        padding:0.5in 0.55in; box-shadow:0 3px 20px rgba(0,0,0,.25);
+        font-family:Arial,Helvetica,sans-serif; font-size:11.5px; line-height:1.35;
+        /* a sheet of paper doesn't reflow — scroll it on a phone rather than
+           squeezing the columns */
+        min-width:8.5in; box-sizing:border-box;
+      }
+
+      /* ── letterhead ── */
+      .ml-top{display:flex; align-items:flex-start; gap:16px;}
+      .ml-topl{flex:1; min-width:0;}
+      .ml-h1{text-align:center; font-size:23px; font-weight:700; margin:0 0 10px;}
+      .ml-meta{font-size:12.5px; line-height:1.6;}
+      .ml-meta b{font-weight:700;}
+      .ml-logo{width:96px; flex-shrink:0; text-align:right;}
+      .ml-logo img{width:88px; height:auto;}
+      .ml-co{font-size:8.5px; color:#444; line-height:1.45; text-align:right; margin-top:4px;}
+
+      .ml-tkl{text-align:center; font-size:11px; margin:14px 0 2px;}
+      /* the black takeoff-name bar, then Level, then Category — the same
+         hierarchy the grid shows, printed as bands */
+      .ml-band{text-align:center; font-weight:700; padding:5px 8px;}
+      .ml-tk{background:#000; color:#fff; font-size:16px;}
+      .ml-lvl{background:#595959; color:#fff; font-size:13px;}
+      .ml-cat{background:#d9d9d9; color:#111; font-size:13px;}
+      .ml-sub{background:#efefef; color:#111; font-size:12px; font-style:italic;}
+
+      table.ml{width:100%; border-collapse:collapse; table-layout:fixed;}
+      /* styles.css clips every cell and paints th dark in OS dark mode — undo
+         both inside the white sheet */
+      .ml th,.ml td{white-space:normal; max-width:none; overflow:visible; text-overflow:clip;
+        overflow-wrap:break-word; background:none; position:static; color:#111;}
+      .ml thead{display:table-header-group;}
+      .ml th{font-size:10.5px; font-weight:700; padding:3px 5px; border-bottom:1px solid #111;}
+      .ml td{padding:3px 5px; border-bottom:1px solid #e2e2e2; vertical-align:top;}
+
+      .ml .c-ln{width:34px; text-align:left; font-style:italic; font-size:9.5px; color:#777;}
+      .ml .c-qty{width:46px; text-align:right; font-weight:700; color:#c0281c; font-size:12px;}
+      .ml .c-un{width:40px; font-style:italic; font-size:9.5px; color:#333; padding-left:3px;}
+      .ml .c-it{font-weight:700;}
+      .ml .c-pu{width:40%; font-style:italic; border-left:1px solid #bbb;}
+      .ml th.c-it,.ml th.c-pu{text-align:center;}
+      .ml th.c-qty{text-align:right; color:#111;}
+
+      /* ── connector lines ──────────────────────────────────────────────
+         Components hang off their parent item. Same idea as the grid: one
+         vertical rule per ancestor level that still has rows below, plus this
+         row's own elbow. Real elements, so they print. */
+      .ml td.c-it{position:relative;}
+      .ml-rl{position:absolute; top:0; bottom:0; width:1px; background:#999;
+        left:calc(3px + var(--k,0) * 13px);}
+      .ml-rl.last{bottom:auto; height:50%;}
+      .ml-rl.own::after{content:""; position:absolute; left:0; top:50%; width:9px; height:1px;
+        margin-top:-1px; background:#999;}
+
+      /* a band stranded at the foot of a page, or a header with no rows under
+         it, is worse than a slightly short page */
+      .ml-band{break-after:avoid;}
+      .ml thead{break-after:avoid;}
+      .ml-none{padding:10px 4px; font-style:italic; color:#666;}
+      .foot{display:flex; justify-content:space-between; margin-top:18px; padding-top:6px;
+        border-top:1px solid #bbb; font-size:10px; color:#555;}
+
+      @media print{
+        .rp-controls{display:none !important;}
+        body{background:#fff !important;}
+        .sheet{box-shadow:none; margin:0; max-width:none; min-width:0; padding:0;}
+        /* the bands and the red quantities are the document — without this most
+           browsers drop every background and print them white */
+        *{-webkit-print-color-adjust:exact !important; print-color-adjust:exact !important;}
+        @page{margin:0.5in 0.5in 0.55in;}
+        thead{display:table-header-group;}
+        tr{break-inside:avoid;}
+      }
+    </style>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/png" href="icon-192.png" />
+  <link rel="apple-touch-icon" href="icon-180.png" />
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#171d25" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="DCR Portal" />
+  </head>
+  <body>
+    <div class="rp-controls">
+      <a class="rp-btn" id="rpBack" href="board.html">← Back</a>
+      <button class="rp-btn rp-btn-primary" style="margin-left:auto" onclick="window.print()">🖨 Print / Save PDF</button>
+    </div>
+
+    <div id="rpSheet" class="sheet"><div class="rp-loading">Loading material list…</div></div>
+
+    <script src="config.js"></script>
+    <script src="common.js"></script>
+    <script src="takeoff-order.js"></script>
+    <script src="report-takeoff.js"></script>
+  </body>
+</html>
