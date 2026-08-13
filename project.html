@@ -125,10 +125,24 @@
         white-space:normal; max-width:none; overflow:visible; text-overflow:clip; overflow-wrap:break-word;}
       /* the item name is the column that matters — the money columns don't need
          the 130px the shared rule gives every .num cell */
-      .pj-totbl{table-layout:auto;}
+      /* Fixed layout, because under auto a width is only a minimum: Qty and
+         Unit soaked up every spare pixel and stayed fat whatever they were set
+         to. Fixed honours these exactly and hands the remainder to Item, which
+         wraps long lumber names rather than clipping them (see the rule above).
+         Purpose takes the room Unit no longer needs; Unit is a third of the
+         width it used to render at. */
+      .pj-totbl{table-layout:fixed;}
+      .pj-totbl .to-purpose{width:26.4%;}
       .pj-totbl td.num,.pj-totbl th.num{width:88px;}
-      .pj-totbl .to-name{width:38%;}
-      .pj-totbl .to-purpose{width:22%;}
+      .pj-totbl .to-unit{width:70px;}
+
+      /* Group colours. Every item in a group draws its rails in the group's
+         hue, so which lines belong together is readable at a glance instead of
+         traced by eye. Mid-tone values chosen to hold up on both the light and
+         the dark background; --gc is stamped per row by takeoff.js. */
+      .pj-totbl{--tg0:#e08a4f; --tg1:#4fa3d9; --tg2:#5fbf7c; --tg3:#c07fd0;
+        --tg4:#d9a441; --tg5:#46bfae; --tg6:#e0736e; --tg7:#8f9bd4;}
+      .pj-totbl .pj-grp td:first-child{box-shadow:inset 3px 0 0 var(--gc,transparent);}
       .to-bar{position:sticky; top:0; z-index:6; background:var(--bg,var(--surface));
         padding:6px 0; margin-bottom:8px;}
       .to-bar .pj-search{width:auto; flex:0 1 220px;}
@@ -170,11 +184,11 @@
          an elbow when it's the last (half-height line) */
       .to-rl{position:absolute; left:calc(var(--bx) + var(--k,0)*var(--rgap)); top:0; bottom:0;
         width:2px; pointer-events:none;
-        background-image:linear-gradient(var(--border),var(--border));
+        background-image:linear-gradient(var(--gc,var(--border)),var(--gc,var(--border)));
         background-repeat:no-repeat; background-size:2px 100%;}
       .to-rl.to-rlast{background-size:2px 50%;}
       .to-rlown::after{content:""; position:absolute; left:0; top:50%; width:11px; height:2px;
-        margin-top:-1px; background:var(--border);}
+        margin-top:-1px; background:var(--gc,var(--border));}
       /* portrait tablets: tighter steps so the purpose text keeps room */
       @media (max-width:900px){
         tr.to-row, tr.to-addrow{--rgap:18px;}
