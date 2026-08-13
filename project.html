@@ -121,7 +121,7 @@
 
       /* ── takeoffs ── */
       /* styles.css clips every cell at 320px; lumber names need the room */
-      .pj-totbl td:not(.num):not(.to-grip):not(.to-actc), .pj-totbl th:not(.num){
+      .pj-totbl td:not(.num):not(.to-grip), .pj-totbl th:not(.num){
         white-space:normal; max-width:none; overflow:visible; text-overflow:clip; overflow-wrap:break-word;}
       /* the item name is the column that matters — the money columns don't need
          the 130px the shared rule gives every .num cell */
@@ -154,8 +154,8 @@
       .pj-grp .to-grip:hover{opacity:1;}
       #toAllGrip{cursor:pointer;}
       @media (pointer:coarse){ .to-grip{width:26px; font-size:15px;} }
-      .to-actc{width:44px; text-align:right; white-space:nowrap;}
-      .to-menu-btn{min-width:38px; min-height:32px;}
+      /* the row actions used to be a ⋯ button in a column of its own; they hang
+         off the grip now (right-click, or hold on a tablet) */
       /* iOS: rows scroll vertically but never text-select or callout on hold */
       .pj-totbl .to-row td{touch-action:pan-y; -webkit-touch-callout:none; user-select:none;}
       .pj-totbl td[data-edit], .pj-btn, .pj-tag{touch-action:manipulation;}
