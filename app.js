@@ -70,10 +70,47 @@
     if (q.length >= 2) location.href = "search.html?q=" + encodeURIComponent(q);
   }
 
+  /* Change your own password. The server asks for the current one as well —
+     a signed-in browser is not proof of who is holding it. */
+  async function changePassword() {
+    var v = await DCR.modal({
+      title: "Change your password",
+      message: "You'll need your current password. Anyone signed in on another device stays " +
+        "signed in until that session expires.",
+      okText: "Change password",
+      fields: [
+        { name: "cur", label: "Current password", type: "password" },
+        { name: "a", label: "New password", type: "password", placeholder: "at least 8 characters" },
+        { name: "b", label: "New password again", type: "password" },
+      ],
+      // catch the obvious mistakes here so a typo doesn't cost a round trip;
+      // the server checks all of it again regardless
+      validate: function (x) {
+        if (!String(x.cur || "")) return "Enter your current password.";
+        if (String(x.a || "").length < 8) return "The new password must be at least 8 characters.";
+        if (x.a !== x.b) return "The two new passwords don't match.";
+        if (x.a === x.cur) return "That's already your password — pick a different one.";
+        return "";
+      },
+    });
+    if (!v) return;
+    try {
+      await DCR.api("/api/portal?action=password", {
+        method: "POST",
+        body: { currentPassword: v.cur, newPassword: v.a },
+      });
+      await DCR.alert("Your password has been changed. Use it next time you sign in.",
+        { title: "Password changed" });
+    } catch (e) {
+      await DCR.alert(e.message || "Could not change your password.", { title: "Not changed" });
+    }
+  }
+
   document.addEventListener("DOMContentLoaded", async function () {
     var profile = await DCR.requireAuth();
     el("companyName").textContent = DCR.company + " Portal";
     el("userPill").textContent = (profile.displayName || profile.email) + " · " + profile.role;
+    el("pwBtn").onclick = changePassword;
     el("logoutBtn").onclick = function () { DCR.logout(); };
     var name = (profile.displayName || profile.email || "").split(" ")[0].split("@")[0];
     el("hmGreeting").textContent = "Welcome, " + name;
