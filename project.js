@@ -1450,6 +1450,19 @@
     var pane = el("pane-journal");
     var rows = state.jrnRows || [];
     var draft = jrnReadDraft() || {};
+    // The app was closed part-way through an entry. Pick that entry back up
+    // rather than starting a second one: without this the next keystroke wrote
+    // a brand-new row and the day ended up with the same entry twice.
+    if (state.jrnDraftId == null && draft.id &&
+        rows.some(function (r) { return String(r.id) === String(draft.id); })) {
+      state.jrnDraftId = String(draft.id);
+    }
+    // Auto-save means the entry being typed is already a real row. Keep it out
+    // of the list below, or it reads as a finished entry sitting under the
+    // half-written copy of itself.
+    if (state.jrnDraftId) {
+      rows = rows.filter(function (r) { return String(r.id) !== String(state.jrnDraftId); });
+    }
     var form = state.jrnCanWrite
       ? '<div class="pj-sec"><h3>Today\'s entry <span class="pj-jrn-auto" id="jrAuto">saved automatically</span></h3>' +
         '<div class="pj-grid">' +
@@ -1488,9 +1501,8 @@
 
     wireJrnDelete();
     if (!state.jrnCanWrite) return;
-    // The app was closed with photos on the entry. Put them back on screen —
-    // without this the next keystroke would push an empty media list and the
-    // pictures would drop off the entry they belong to.
+    // Its photos come back too — without this the next keystroke would push an
+    // empty media list and the pictures would drop off the entry they belong to.
     if (!state.jrnPending && (draft.media || []).length) {
       state.jrnPending = draft.media.map(function (m) {
         return { name: m.name, desc: m.desc || "", thumb: m.thumb || "",
@@ -1744,14 +1756,19 @@
     state.jrnPending = [];
     jrnWriteDraft(null);
     delete state.parts.journal;
-    loadJournal();
+    // awaited: it rebuilds the pane, so anything written to jrMsg before it
+    // finishes is thrown away with the old node
+    await loadJournal();
     if (still) {
       var m2 = el("jrMsg");
       if (m2) {
         m2.className = "pj-msg";
-        m2.textContent = still + (still === 1 ? " file is" : " files are") +
-          (DCR.uploadQueue.online() ? " still uploading — it will finish on its own."
-                                    : " saved on this device — they upload when you have signal.");
+        var one = still === 1;
+        m2.textContent = still + (one ? " file is " : " files are ") +
+          (DCR.uploadQueue.online()
+            ? "still uploading — " + (one ? "it finishes" : "they finish") + " on its own."
+            : "saved on this device — " + (one ? "it uploads" : "they upload") +
+              " as soon as you have signal.");
       }
     }
   }
