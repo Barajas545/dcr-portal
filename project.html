@@ -83,6 +83,18 @@
       .pj-tag.on{background:var(--tint-2); border-color:var(--acc); color:var(--acc);}
       .pj-tag.disabled{cursor:default; opacity:.7;}
 
+      /* project journal: one card per entry, newest first */
+      .pj-jrn{background:var(--surface); border:1px solid var(--border); border-radius:12px;
+        padding:13px 15px; margin-bottom:10px;}
+      .pj-jrn-top{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;}
+      .pj-jrn-who{margin-left:auto;}
+      .pj-jrn-flag{border-color:var(--gold); color:var(--gold);}
+      .pj-jrn-h{font-size:14.5px; font-weight:700; color:var(--text); margin-bottom:4px;}
+      /* the entry is typed with line breaks that carry meaning — keep them */
+      .pj-jrn-body{font-size:13.5px; color:var(--text); line-height:1.55; white-space:pre-wrap;}
+      .pj-jrn-meta{margin-top:6px;}
+      .pj-jrn-row{margin-top:10px;}
+
       /* tables */
       .pj-tblwrap{overflow-x:auto; border:1px solid var(--border); border-radius:10px; background:var(--surface);}
       table.pj-tbl{border-collapse:collapse; width:100%; font-size:12.5px;}
@@ -536,6 +548,7 @@
         <button class="pj-tab" data-tab="expenses">Expenses</button>
         <button class="pj-tab" data-tab="payments">Payments</button>
         <button class="pj-tab" data-tab="tasks">Tasks</button>
+        <button class="pj-tab" data-tab="journal">Journal</button>
         <button class="pj-tab" data-tab="logs">Logs</button>
         <button class="pj-tab" data-tab="mailing">Mailing</button>
         <button class="pj-tab" data-tab="files">Files</button>
@@ -547,6 +560,7 @@
       <div class="pj-pane" id="pane-expenses"><div class="pj-empty">Loading…</div></div>
       <div class="pj-pane" id="pane-payments"><div class="pj-empty">Loading…</div></div>
       <div class="pj-pane" id="pane-tasks"><div class="pj-empty">Loading…</div></div>
+      <div class="pj-pane" id="pane-journal"><div class="pj-empty">Loading…</div></div>
       <div class="pj-pane" id="pane-logs"><div class="pj-empty">Loading…</div></div>
       <div class="pj-pane" id="pane-mailing"><div class="pj-empty">Loading…</div></div>
       <div class="pj-pane" id="pane-files"><div class="pj-empty">Loading…</div></div>

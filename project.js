@@ -271,6 +271,7 @@
     else if (name==="expenses") loadExpenses();
     else if (name==="payments") loadPayments();
     else if (name==="tasks") loadTasks();
+    else if (name==="journal") loadJournal();
     else if (name==="logs") loadLogs();
     else if (name==="mailing") renderMailing();
     else if (name==="files") loadFiles();
@@ -1246,6 +1247,198 @@
   }
 
   /* ── logs ── */
+  /* ── project journal ──────────────────────────────────────────────────
+     The PM's running diary of the job: what happened, who was there, what got
+     in the way. ProjectLog is the terse status trail (status changed, quote
+     sent); this is the daily report.
+
+     Photos and video go to the project's Pictures / Project Jurnal folder,
+     named "<date> <time> IMG.jpg" — leading with the date means the folder
+     sorts itself chronologically whatever the media is. The entry keeps the
+     file names, which is what ties a picture back to the day it belongs to. */
+  var JRN_CATS = ["Progress", "Delay", "Issue", "Safety", "Inspection",
+                  "Delivery", "Visitor", "Weather", "Change order", "Other"];
+
+  // The LOCAL date, not the UTC one. new Date().toISOString() rolls over at 4pm
+  // Pacific, so a PM writing up the day's work in the evening would have got
+  // tomorrow's date on the entry while the photos beside it were stamped today.
+  function jrnToday() {
+    var d = new Date(), p2 = function (n) { return String(n).padStart(2, "0"); };
+    return d.getFullYear() + "-" + p2(d.getMonth() + 1) + "-" + p2(d.getDate());
+  }
+
+  // "2026-08-13 15.30.15" — sorts as text exactly as it sorts in time
+  function jrnStamp(d) {
+    var p2 = function (n) { return String(n).padStart(2, "0"); };
+    return d.getFullYear() + "-" + p2(d.getMonth() + 1) + "-" + p2(d.getDate()) + " " +
+      p2(d.getHours()) + "." + p2(d.getMinutes()) + "." + p2(d.getSeconds());
+  }
+  // keep the camera's own extension — an iPhone HEIC must not be stored as .jpg
+  function jrnExt(file) {
+    var m = /\.([A-Za-z0-9]{2,5})$/.exec(file.name || "");
+    if (m) return "." + m[1].toLowerCase();
+    var t = String(file.type || "");
+    return "." + ((t.split("/")[1] || "bin").split(";")[0]);
+  }
+
+  async function loadJournal() {
+    var pane = el("pane-journal");
+    pane.innerHTML = '<div class="pj-empty">Loading journal…</div>';
+    try {
+      var d = await DCR.api("/api/portal?action=project&id=" + PID + "&part=journal");
+      state.jrnRows = d.rows || [];
+      state.jrnCanWrite = !!d.canWrite;
+      renderJournal();
+    } catch (e) {
+      pane.innerHTML = '<div class="pj-empty">' + esc(e.message || "Could not load the journal.") + "</div>";
+    }
+  }
+
+  function jrnEntryHtml(r) {
+    var media = String(r.journalMedia || "").split("\n")
+      .map(function (x) { return x.trim(); }).filter(Boolean);
+    var meta = [];
+    if (r.journalWeather) meta.push(esc(r.journalWeather));
+    if (num(r.journalCrewSize)) meta.push(num(r.journalCrewSize) + " on site");
+    if (num(r.journalHours)) meta.push(num(r.journalHours) + " hrs");
+    return '<div class="pj-jrn">' +
+      '<div class="pj-jrn-top">' +
+        "<b>" + fmtDate(r.journalDate) + "</b>" +
+        (r.journalCategory ? '<span class="pj-tag on">' + esc(r.journalCategory) + "</span>" : "") +
+        (r.journalFollowUp ? '<span class="pj-tag pj-jrn-flag">&#9873; Follow up</span>' : "") +
+        '<span class="pj-sub pj-jrn-who">' + esc(r.journalAuthor || "") + "</span>" +
+        (state.jrnCanWrite
+          ? ' <button class="pj-btn pj-btn-sm" data-jrn-del="' + esc(r.id) + '" title="Delete this entry">&#128465;</button>'
+          : "") +
+      "</div>" +
+      (r.title ? '<div class="pj-jrn-h">' + esc(r.title) + "</div>" : "") +
+      '<div class="pj-jrn-body">' + esc(r.journalEntry || "") + "</div>" +
+      (meta.length ? '<div class="pj-sub pj-jrn-meta">' + meta.join(" &middot; ") + "</div>" : "") +
+      (media.length
+        ? '<div class="pj-sub pj-jrn-meta">&#128206; ' + media.length + " file" +
+          (media.length === 1 ? "" : "s") + ": " + media.map(esc).join(", ") + "</div>"
+        : "") +
+      "</div>";
+  }
+
+  function renderJournal() {
+    var pane = el("pane-journal");
+    var rows = state.jrnRows || [];
+    var form = state.jrnCanWrite
+      ? '<div class="pj-sec"><h3>New journal entry</h3>' +
+        '<div class="pj-grid">' +
+          '<div class="pj-f"><label>Date</label><input type="date" id="jrDate" value="' + esc(jrnToday()) + '"></div>' +
+          '<div class="pj-f"><label>What kind of entry</label><select id="jrCat">' +
+            JRN_CATS.map(function (c) { return "<option>" + esc(c) + "</option>"; }).join("") +
+          "</select></div>" +
+          '<div class="pj-f"><label>Weather</label><input id="jrWx" placeholder="Clear, 78F"></div>' +
+          '<div class="pj-f"><label>People on site</label><input id="jrCrew" type="number" min="0" step="1"></div>' +
+          '<div class="pj-f"><label>Hours worked</label><input id="jrHrs" type="number" min="0" step="any"></div>' +
+        "</div>" +
+        '<div class="pj-f full pj-jrn-row"><label>Headline</label>' +
+          '<input id="jrTitle" placeholder="One line — what today was about"></div>' +
+        '<div class="pj-f full pj-jrn-row"><label>What happened</label>' +
+          '<textarea id="jrBody" rows="5" placeholder="What got done, who was on site, what got in the way…"></textarea></div>' +
+        '<div class="pj-links pj-jrn-row" style="align-items:center">' +
+          '<label class="pj-check"><input type="checkbox" id="jrFollow"> Needs follow-up</label>' +
+          '<button class="pj-btn pj-btn-sm" id="jrPick">&#128247; Add photos / video</button>' +
+          '<span class="pj-sub" id="jrFiles"></span>' +
+        "</div>" +
+        '<input type="file" id="jrInput" accept="image/*,video/*" multiple style="display:none">' +
+        '<div class="pj-links pj-jrn-row">' +
+          '<button class="pj-btn pj-btn-primary pj-btn-sm" id="jrSave">&#10003; Save entry</button>' +
+          '<span class="pj-msg" id="jrMsg"></span>' +
+        "</div></div>"
+      : "";
+    pane.innerHTML = form +
+      (rows.length ? rows.map(jrnEntryHtml).join("")
+        : '<div class="pj-empty">Nothing in the journal yet.</div>');
+
+    wireJrnDelete();
+    if (!state.jrnCanWrite) return;
+    state.jrnQueue = [];
+    el("jrPick").onclick = function () { el("jrInput").value = ""; el("jrInput").click(); };
+    el("jrInput").onchange = function () {
+      state.jrnQueue = Array.prototype.slice.call(this.files || []);
+      el("jrFiles").textContent = state.jrnQueue.length
+        ? state.jrnQueue.length + " file" + (state.jrnQueue.length === 1 ? "" : "s") +
+          " ready — they upload when you save"
+        : "";
+    };
+    el("jrSave").onclick = saveJournal;
+  }
+
+  function wireJrnDelete() {
+    el("pane-journal").querySelectorAll("[data-jrn-del]").forEach(function (b) {
+      b.onclick = async function () {
+        var ok = await DCR.confirm(
+          "This cannot be undone. Any photos stay in the Project Jurnal folder.",
+          { title: "Delete this journal entry?", danger: true, okText: "Delete" });
+        if (!ok) return;
+        try {
+          await DCR.api("/api/portal?action=project", { method: "POST",
+            body: { op: "jrnDelete", itemId: b.getAttribute("data-jrn-del") } });
+          delete state.parts.journal;
+          loadJournal();
+        } catch (e) { await DCR.alert(e.message || "Could not delete the entry."); }
+      };
+    });
+  }
+
+  async function saveJournal() {
+    var body = el("jrBody").value.trim();
+    var title = el("jrTitle").value.trim();
+    var msg = el("jrMsg");
+    if (!body && !title) {
+      msg.className = "pj-msg err";
+      msg.textContent = "Write something before saving.";
+      return;
+    }
+    el("jrSave").disabled = true;
+    msg.className = "pj-msg";
+    msg.textContent = "Saving…";
+    try {
+      // Media first. If an upload fails the entry is not written at all, so the
+      // crew retries the whole thing — better than an entry whose photos
+      // quietly went missing.
+      var names = [];
+      var queue = state.jrnQueue || [];
+      var when = new Date();
+      for (var i = 0; i < queue.length; i++) {
+        var f = queue[i];
+        var kind = String(f.type || "").indexOf("video/") === 0 ? "VID" : "IMG";
+        // +1s per file so two photos picked in the same second keep their order
+        var nm = jrnStamp(new Date(when.getTime() + i * 1000)) + " " + kind + jrnExt(f);
+        msg.textContent = "Uploading " + (i + 1) + " of " + queue.length + "…";
+        await uploadToDrive(f, "journal", nm, f.type || "");
+        names.push(nm);
+      }
+      var dateVal = el("jrDate").value;
+      await DCR.api("/api/portal?action=project", { method: "POST", body: {
+        op: "jrnAdd", projectId: PID,
+        fields: {
+          title: title || (body.split("\n")[0] || "").slice(0, 80),
+          // noon UTC, the convention the rest of the app uses for date-only
+          // values, so a timezone never rolls the day backwards
+          journalDate: dateVal ? dateVal + "T12:00:00Z" : "",
+          journalCategory: el("jrCat").value,
+          journalEntry: body,
+          journalWeather: el("jrWx").value.trim(),
+          journalCrewSize: el("jrCrew").value,
+          journalHours: el("jrHrs").value,
+          journalFollowUp: el("jrFollow").checked,
+          journalMedia: names.join("\n"),
+        },
+      }});
+      delete state.parts.journal;
+      loadJournal();
+    } catch (e) {
+      msg.className = "pj-msg err";
+      msg.textContent = e.message || "Could not save the entry.";
+      el("jrSave").disabled = false;
+    }
+  }
+
   async function loadLogs() {
     var pane = el("pane-logs");
     pane.innerHTML = '<div class="pj-empty">Loading logs…</div>';
@@ -1440,9 +1633,12 @@
     if (!blob.size) throw new Error("Nothing to upload (empty file).");
     // Photos/videos are filed by company week (Sat–Fri), same as the Site Photos
     // screen; notes stay flat in "Site Notes".
+    // Journal media has its own folder and notes stay flat, so neither takes a
+    // week folder — only the site-photo stream is filed by company week.
+    var byWeek = target !== "notes" && target !== "journal";
     var s = await DCR.api("/api/portal?action=drive", { method:"POST",
       body:{ op:"uploadSession", projectId: PID, target: target, name: name, mimeType: mime,
-             weekFolder: target === "notes" ? "" : DCR.weekFolder() } });
+             weekFolder: byWeek ? DCR.weekFolder() : "" } });
     var CHUNK = 320 * 1024 * 24; // 7.5 MiB, 320KiB-aligned
     var pos = 0, total = blob.size;
     while (pos < total) {
