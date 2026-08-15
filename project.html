@@ -94,6 +94,27 @@
       .pj-jrn-body{font-size:13.5px; color:var(--text); line-height:1.55; white-space:pre-wrap;}
       .pj-jrn-meta{margin-top:6px;}
       .pj-jrn-row{margin-top:10px;}
+      /* "saved automatically" sits in the section heading so the absence of a
+         Save button reads as deliberate rather than missing */
+      .pj-jrn-auto{float:right; font-size:10.5px; font-weight:600; text-transform:none;
+        letter-spacing:0; color:var(--ok);}
+      .pj-jrn-auto.err{color:var(--err);}
+      .pj-jrn-media{display:flex; flex-wrap:wrap; gap:10px; margin-top:9px;}
+      .pj-jrn-fig{margin:0; width:132px; display:flex; flex-direction:column; gap:4px;}
+      .pj-jrn-thumb{position:relative; width:132px; height:99px; border-radius:8px;
+        overflow:hidden; background:var(--surface-2); border:1px solid var(--border);
+        display:flex; align-items:center; justify-content:center;}
+      .pj-jrn-thumb img{width:100%; height:100%; object-fit:cover; display:block;}
+      .pj-jrn-play{position:absolute; color:#fff; font-size:19px;
+        text-shadow:0 1px 6px rgba(0,0,0,.75); pointer-events:none;}
+      .pj-jrn-up{position:absolute; bottom:0; left:0; right:0; font-size:9.5px;
+        text-align:center; padding:2px 0; background:rgba(0,0,0,.62); color:#fff;}
+      .pj-jrn-up.err{background:var(--err); cursor:pointer;}
+      .pj-jrn-fig figcaption{font-size:11.5px; color:var(--text-muted); line-height:1.35;
+        word-break:break-word;}
+      .pj-jrn-cap{width:100%; box-sizing:border-box; padding:4px 6px; font-size:11.5px;
+        border:1px solid var(--border); border-radius:6px; background:var(--surface);
+        color:var(--text);}
 
       /* tables */
       .pj-tblwrap{overflow-x:auto; border:1px solid var(--border); border-radius:10px; background:var(--surface);}

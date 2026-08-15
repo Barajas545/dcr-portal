@@ -1249,24 +1249,32 @@
   /* ── logs ── */
   /* ── project journal ──────────────────────────────────────────────────
      The PM's running diary of the job: what happened, who was there, what got
-     in the way. ProjectLog is the terse status trail (status changed, quote
-     sent); this is the daily report.
+     in the way. ProjectLog is the terse status trail; this is the daily report.
 
-     Photos and video go to the project's Pictures / Project Jurnal folder,
-     named "<date> <time> IMG.jpg" — leading with the date means the folder
-     sorts itself chronologically whatever the media is. The entry keeps the
-     file names, which is what ties a picture back to the day it belongs to. */
+     NOTHING HERE HAS A SAVE BUTTON. A journal is written on a phone, on a
+     truck seat, between other things — the app will get closed mid-sentence,
+     and losing the day's write-up to that is the one failure this feature
+     cannot have. So: every keystroke goes to localStorage immediately, and
+     once there is something worth keeping the row is created on the server and
+     kept up to date from then on. Closing the tab mid-word costs nothing.
+
+     Photos and video go to Pictures / Project Jurnal, named "<date> <time>
+     IMG.jpg" so the folder sorts itself chronologically. Each upload also
+     writes a small .thumb.jpg beside it, because a month of daily reports is
+     a lot of full-size pictures to pull just to draw a list. Media can stand
+     on its own — a photo with a caption and no write-up is a valid entry. */
   var JRN_CATS = ["Progress", "Delay", "Issue", "Safety", "Inspection",
                   "Delivery", "Visitor", "Weather", "Change order", "Other"];
+  var JRN_THUMB_PX = 320;          // long edge of the stored thumbnail
+  var JRN_DRAFT_KEY = "dcrJrnDraft:";
 
-  // The LOCAL date, not the UTC one. new Date().toISOString() rolls over at 4pm
-  // Pacific, so a PM writing up the day's work in the evening would have got
-  // tomorrow's date on the entry while the photos beside it were stamped today.
+  // The LOCAL date. new Date().toISOString() rolls over at 4pm Pacific, so a
+  // PM writing up the day in the evening would get tomorrow's date while the
+  // photos beside it were stamped today.
   function jrnToday() {
     var d = new Date(), p2 = function (n) { return String(n).padStart(2, "0"); };
     return d.getFullYear() + "-" + p2(d.getMonth() + 1) + "-" + p2(d.getDate());
   }
-
   // "2026-08-13 15.30.15" — sorts as text exactly as it sorts in time
   function jrnStamp(d) {
     var p2 = function (n) { return String(n).padStart(2, "0"); };
@@ -1280,6 +1288,88 @@
     var t = String(file.type || "");
     return "." + ((t.split("/")[1] || "bin").split(";")[0]);
   }
+  function jrnIsVideo(f) { return String(f.type || "").indexOf("video/") === 0; }
+
+  /* Media is stored as JSON so each file can carry its own caption, but a
+     plain newline list is still read — that is what the column held first, and
+     a journal must never lose a picture to a format change. */
+  function jrnMedia(row) {
+    var raw = String((row && row.journalMedia) || "").trim();
+    if (!raw) return [];
+    if (raw.charAt(0) === "[") {
+      try {
+        var arr = JSON.parse(raw);
+        if (Object.prototype.toString.call(arr) === "[object Array]") {
+          return arr.filter(Boolean).map(function (m) {
+            return typeof m === "string" ? { name: m, desc: "", thumb: "" } : {
+              name: String(m.name || ""), desc: String(m.desc || ""),
+              thumb: String(m.thumb || ""), video: !!m.video,
+            };
+          }).filter(function (m) { return m.name; });
+        }
+      } catch (e) { /* fall through to the old format */ }
+    }
+    return raw.split("\n").map(function (x) { return x.trim(); }).filter(Boolean)
+      .map(function (n) { return { name: n, desc: "", thumb: "", video: /\.(mp4|mov|m4v|avi|3gp|webm)$/i.test(n) }; });
+  }
+
+  /* ---- thumbnails -----------------------------------------------------
+     Built in the browser, before upload. A video's poster comes from seeking
+     a little way in — frame zero is very often black. Failing to make one is
+     not an error: the picture still uploads, the list just shows a placeholder
+     for it. */
+  function jrnShrink(source, w, h) {
+    var scale = Math.min(1, JRN_THUMB_PX / Math.max(w || 1, h || 1));
+    var c = document.createElement("canvas");
+    c.width = Math.max(1, Math.round(w * scale));
+    c.height = Math.max(1, Math.round(h * scale));
+    c.getContext("2d").drawImage(source, 0, 0, c.width, c.height);
+    return new Promise(function (res) { c.toBlob(res, "image/jpeg", 0.62); });
+  }
+  function jrnThumbFor(file) {
+    return new Promise(function (resolve) {
+      var url = URL.createObjectURL(file);
+      var done = function (blob) { try { URL.revokeObjectURL(url); } catch (e) {} resolve(blob || null); };
+      var bail = setTimeout(function () { done(null); }, 8000);
+      if (jrnIsVideo(file)) {
+        var v = document.createElement("video");
+        v.preload = "metadata"; v.muted = true; v.playsInline = true;
+        v.onloadeddata = function () {
+          // a second in, so the poster is not the black frame at the very start
+          try { v.currentTime = Math.min(1, (v.duration || 2) / 4); } catch (e) {}
+        };
+        v.onseeked = function () {
+          clearTimeout(bail);
+          jrnShrink(v, v.videoWidth, v.videoHeight).then(done, function () { done(null); });
+        };
+        v.onerror = function () { clearTimeout(bail); done(null); };
+        v.src = url;
+      } else {
+        var im = new Image();
+        im.onload = function () {
+          clearTimeout(bail);
+          jrnShrink(im, im.naturalWidth, im.naturalHeight).then(done, function () { done(null); });
+        };
+        im.onerror = function () { clearTimeout(bail); done(null); };
+        im.src = url;
+      }
+    });
+  }
+
+  /* ---- the draft ------------------------------------------------------
+     Local first, server second. The local copy is what makes closing the app
+     safe; the server row is what makes it visible to everyone else. */
+  function jrnDraftKey() { return JRN_DRAFT_KEY + PID; }
+  function jrnReadDraft() {
+    try { return JSON.parse(localStorage.getItem(jrnDraftKey()) || "null") || null; }
+    catch (e) { return null; }
+  }
+  function jrnWriteDraft(d) {
+    try {
+      if (d) localStorage.setItem(jrnDraftKey(), JSON.stringify(d));
+      else localStorage.removeItem(jrnDraftKey());
+    } catch (e) { /* private mode / full quota — the server copy still runs */ }
+  }
 
   async function loadJournal() {
     var pane = el("pane-journal");
@@ -1289,19 +1379,57 @@
       state.jrnRows = d.rows || [];
       state.jrnCanWrite = !!d.canWrite;
       renderJournal();
+      // thumbnails come after the text: the entries are readable immediately
+      // and the pictures fill in, rather than the whole tab waiting on Graph
+      jrnLoadMedia();
     } catch (e) {
       pane.innerHTML = '<div class="pj-empty">' + esc(e.message || "Could not load the journal.") + "</div>";
     }
   }
 
+  async function jrnLoadMedia() {
+    try {
+      var d = await DCR.api("/api/portal?action=drive&journalFor=" + encodeURIComponent(PID));
+      state.jrnFiles = d.files || {};
+    } catch (e) {
+      state.jrnFiles = {};
+      return;
+    }
+    el("pane-journal").querySelectorAll("[data-jrn-thumb]").forEach(function (box) {
+      var f = state.jrnFiles[box.getAttribute("data-jrn-thumb")];
+      var full = state.jrnFiles[box.getAttribute("data-jrn-full")];
+      if (f && f.url) {
+        box.innerHTML = '<img src="' + esc(f.url) + '" alt="">' +
+          (box.getAttribute("data-jrn-video") === "1" ? '<span class="pj-jrn-play">▶</span>' : "");
+      }
+      if (full && full.url) {
+        box.style.cursor = "pointer";
+        box.onclick = function () { window.open(full.url, "_blank", "noopener"); };
+        box.title = "Open the full size";
+      }
+    });
+  }
+
+  function jrnMediaHtml(list) {
+    if (!list.length) return "";
+    return '<div class="pj-jrn-media">' + list.map(function (m) {
+      return '<figure class="pj-jrn-fig">' +
+        '<div class="pj-jrn-thumb" data-jrn-thumb="' + esc(m.thumb || m.name) + '"' +
+          ' data-jrn-full="' + esc(m.name) + '"' +
+          ' data-jrn-video="' + (m.video ? "1" : "0") + '">' +
+          (m.video ? '<span class="pj-jrn-play">▶</span>' : "") + "</div>" +
+        (m.desc ? "<figcaption>" + esc(m.desc) + "</figcaption>" : "") +
+        "</figure>";
+    }).join("") + "</div>";
+  }
+
   function jrnEntryHtml(r) {
-    var media = String(r.journalMedia || "").split("\n")
-      .map(function (x) { return x.trim(); }).filter(Boolean);
+    var media = jrnMedia(r);
     var meta = [];
     if (r.journalWeather) meta.push(esc(r.journalWeather));
     if (num(r.journalCrewSize)) meta.push(num(r.journalCrewSize) + " on site");
     if (num(r.journalHours)) meta.push(num(r.journalHours) + " hrs");
-    return '<div class="pj-jrn">' +
+    return '<div class="pj-jrn" data-jrn-row="' + esc(r.id) + '">' +
       '<div class="pj-jrn-top">' +
         "<b>" + fmtDate(r.journalDate) + "</b>" +
         (r.journalCategory ? '<span class="pj-tag on">' + esc(r.journalCategory) + "</span>" : "") +
@@ -1312,60 +1440,255 @@
           : "") +
       "</div>" +
       (r.title ? '<div class="pj-jrn-h">' + esc(r.title) + "</div>" : "") +
-      '<div class="pj-jrn-body">' + esc(r.journalEntry || "") + "</div>" +
+      (r.journalEntry ? '<div class="pj-jrn-body">' + esc(r.journalEntry) + "</div>" : "") +
       (meta.length ? '<div class="pj-sub pj-jrn-meta">' + meta.join(" &middot; ") + "</div>" : "") +
-      (media.length
-        ? '<div class="pj-sub pj-jrn-meta">&#128206; ' + media.length + " file" +
-          (media.length === 1 ? "" : "s") + ": " + media.map(esc).join(", ") + "</div>"
-        : "") +
+      jrnMediaHtml(media) +
       "</div>";
   }
 
   function renderJournal() {
     var pane = el("pane-journal");
     var rows = state.jrnRows || [];
+    var draft = jrnReadDraft() || {};
     var form = state.jrnCanWrite
-      ? '<div class="pj-sec"><h3>New journal entry</h3>' +
+      ? '<div class="pj-sec"><h3>Today\'s entry <span class="pj-jrn-auto" id="jrAuto">saved automatically</span></h3>' +
         '<div class="pj-grid">' +
-          '<div class="pj-f"><label>Date</label><input type="date" id="jrDate" value="' + esc(jrnToday()) + '"></div>' +
+          '<div class="pj-f"><label>Date</label><input type="date" id="jrDate" value="' +
+            esc(draft.date || jrnToday()) + '"></div>' +
           '<div class="pj-f"><label>What kind of entry</label><select id="jrCat">' +
-            JRN_CATS.map(function (c) { return "<option>" + esc(c) + "</option>"; }).join("") +
-          "</select></div>" +
-          '<div class="pj-f"><label>Weather</label><input id="jrWx" placeholder="Clear, 78F"></div>' +
-          '<div class="pj-f"><label>People on site</label><input id="jrCrew" type="number" min="0" step="1"></div>' +
-          '<div class="pj-f"><label>Hours worked</label><input id="jrHrs" type="number" min="0" step="any"></div>' +
+            JRN_CATS.map(function (c) {
+              return '<option' + (draft.cat === c ? " selected" : "") + ">" + esc(c) + "</option>";
+            }).join("") + "</select></div>" +
+          '<div class="pj-f"><label>Weather</label><input id="jrWx" placeholder="Clear, 78F" value="' + esc(draft.wx || "") + '"></div>' +
+          '<div class="pj-f"><label>People on site</label><input id="jrCrew" type="number" min="0" step="1" value="' + esc(draft.crew || "") + '"></div>' +
+          '<div class="pj-f"><label>Hours worked</label><input id="jrHrs" type="number" min="0" step="any" value="' + esc(draft.hrs || "") + '"></div>' +
         "</div>" +
         '<div class="pj-f full pj-jrn-row"><label>Headline</label>' +
-          '<input id="jrTitle" placeholder="One line — what today was about"></div>' +
+          '<input id="jrTitle" placeholder="One line — what today was about" value="' + esc(draft.title || "") + '"></div>' +
         '<div class="pj-f full pj-jrn-row"><label>What happened</label>' +
-          '<textarea id="jrBody" rows="5" placeholder="What got done, who was on site, what got in the way…"></textarea></div>' +
+          '<textarea id="jrBody" rows="5" placeholder="What got done, who was on site, what got in the way…">' +
+          esc(draft.body || "") + "</textarea></div>" +
         '<div class="pj-links pj-jrn-row" style="align-items:center">' +
-          '<label class="pj-check"><input type="checkbox" id="jrFollow"> Needs follow-up</label>' +
+          '<label class="pj-check"><input type="checkbox" id="jrFollow"' + (draft.follow ? " checked" : "") + "> Needs follow-up</label>" +
           '<button class="pj-btn pj-btn-sm" id="jrPick">&#128247; Add photos / video</button>' +
-          '<span class="pj-sub" id="jrFiles"></span>' +
+          '<button class="pj-btn pj-btn-sm" id="jrDone">&#10003; Finish this entry</button>' +
+          '<span class="pj-msg" id="jrMsg"></span>' +
         "</div>" +
         '<input type="file" id="jrInput" accept="image/*,video/*" multiple style="display:none">' +
-        '<div class="pj-links pj-jrn-row">' +
-          '<button class="pj-btn pj-btn-primary pj-btn-sm" id="jrSave">&#10003; Save entry</button>' +
-          '<span class="pj-msg" id="jrMsg"></span>' +
-        "</div></div>"
+        '<div id="jrPending"></div>' +
+        "</div>"
       : "";
-    pane.innerHTML = form +
+    pane.innerHTML =
+      '<div class="pj-links" style="margin-bottom:10px">' +
+        '<a class="pj-btn pj-btn-sm" id="jrReport" href="report-journal.html?id=' + encodeURIComponent(PID) +
+          '&from=' + encodeURIComponent(jrnToday()) + '">&#128196; Day report (PDF / email)</a>' +
+      "</div>" + form +
       (rows.length ? rows.map(jrnEntryHtml).join("")
         : '<div class="pj-empty">Nothing in the journal yet.</div>');
 
     wireJrnDelete();
     if (!state.jrnCanWrite) return;
-    state.jrnQueue = [];
+    jrnRenderPending();
+    ["jrDate", "jrCat", "jrWx", "jrCrew", "jrHrs", "jrTitle", "jrBody", "jrFollow"]
+      .forEach(function (id) {
+        var n = el(id);
+        if (!n) return;
+        n.addEventListener("input", jrnTouched);
+        n.addEventListener("change", jrnTouched);
+      });
     el("jrPick").onclick = function () { el("jrInput").value = ""; el("jrInput").click(); };
-    el("jrInput").onchange = function () {
-      state.jrnQueue = Array.prototype.slice.call(this.files || []);
-      el("jrFiles").textContent = state.jrnQueue.length
-        ? state.jrnQueue.length + " file" + (state.jrnQueue.length === 1 ? "" : "s") +
-          " ready — they upload when you save"
-        : "";
+    el("jrInput").onchange = function () { jrnQueueFiles(this.files); };
+    el("jrDone").onclick = jrnFinish;
+  }
+
+  /* Every keystroke: keep the local copy now, push to the server shortly.
+     The local write is synchronous and cannot fail on a bad connection —
+     that is what makes closing the app safe. */
+  var _jrnPush = null;
+  function jrnDraftFromForm() {
+    return {
+      date: el("jrDate") ? el("jrDate").value : "",
+      cat: el("jrCat") ? el("jrCat").value : "",
+      wx: el("jrWx") ? el("jrWx").value : "",
+      crew: el("jrCrew") ? el("jrCrew").value : "",
+      hrs: el("jrHrs") ? el("jrHrs").value : "",
+      title: el("jrTitle") ? el("jrTitle").value : "",
+      body: el("jrBody") ? el("jrBody").value : "",
+      follow: el("jrFollow") ? el("jrFollow").checked : false,
+      media: (state.jrnPending || []).filter(function (m) { return m.name; })
+        .map(function (m) { return { name: m.name, desc: m.desc || "", thumb: m.thumb || "", video: !!m.video }; }),
+      id: state.jrnDraftId || null,
     };
-    el("jrSave").onclick = saveJournal;
+  }
+  function jrnTouched() {
+    var d = jrnDraftFromForm();
+    jrnWriteDraft(d);
+    jrnStatus("saving");
+    clearTimeout(_jrnPush);
+    _jrnPush = setTimeout(jrnPushDraft, 900);
+  }
+  function jrnStatus(kind) {
+    var n = el("jrAuto");
+    if (!n) return;
+    n.textContent = kind === "saving" ? "saving…"
+      : kind === "saved" ? "saved" : kind === "error" ? "not saved — will retry"
+      : "saved automatically";
+    n.className = "pj-jrn-auto" + (kind === "error" ? " err" : "");
+  }
+
+  // Worth a row on the server? Only once there is something a person would be
+  // upset to lose — otherwise every tab that ever opened the tab leaves junk.
+  function jrnWorthKeeping(d) {
+    return String(d.body || "").trim().length >= 3 ||
+      String(d.title || "").trim().length >= 3 ||
+      (d.media || []).length > 0;
+  }
+
+  async function jrnPushDraft() {
+    var d = jrnDraftFromForm();
+    if (!jrnWorthKeeping(d)) { jrnStatus(""); return; }
+    var fields = {
+      title: d.title || (String(d.body || "").split("\n")[0] || "").slice(0, 80),
+      // noon UTC — the app's date-only convention, so a timezone never rolls
+      // the day backwards
+      journalDate: d.date ? d.date + "T12:00:00Z" : "",
+      journalCategory: d.cat,
+      journalEntry: d.body,
+      journalWeather: d.wx,
+      journalCrewSize: d.crew,
+      journalHours: d.hrs,
+      journalFollowUp: !!d.follow,
+      journalMedia: JSON.stringify(d.media || []),
+    };
+    try {
+      if (state.jrnDraftId) {
+        await DCR.api("/api/portal?action=project", { method: "POST",
+          body: { op: "jrnUpdate", itemId: state.jrnDraftId, fields: fields } });
+      } else {
+        var r = await DCR.api("/api/portal?action=project", { method: "POST",
+          body: { op: "jrnAdd", projectId: PID, fields: fields } });
+        state.jrnDraftId = r && r.id ? String(r.id) : null;
+        d.id = state.jrnDraftId;
+        jrnWriteDraft(d);
+      }
+      jrnStatus("saved");
+    } catch (e) {
+      // The local copy still holds it; try again on the next keystroke rather
+      // than nagging someone who is mid-sentence.
+      jrnStatus("error");
+    }
+  }
+
+  /* ---- media ---------------------------------------------------------- */
+  function jrnRenderPending() {
+    var host = el("jrPending");
+    if (!host) return;
+    var list = state.jrnPending || [];
+    host.innerHTML = list.length
+      ? '<div class="pj-jrn-media">' + list.map(function (m, i) {
+          return '<figure class="pj-jrn-fig">' +
+            '<div class="pj-jrn-thumb">' +
+              (m.preview ? '<img src="' + esc(m.preview) + '" alt="">' : "") +
+              (m.video ? '<span class="pj-jrn-play">▶</span>' : "") +
+              (m.state === "up" ? '<span class="pj-jrn-up">uploading…</span>' : "") +
+              (m.state === "err" ? '<span class="pj-jrn-up err">failed — tap to retry</span>' : "") +
+            "</div>" +
+            '<input class="pj-jrn-cap" data-jrn-cap="' + i + '" placeholder="Describe this photo…" value="' +
+              esc(m.desc || "") + '">' +
+            '<button class="pj-btn pj-btn-sm" data-jrn-rm="' + i + '" title="Remove">&#10005;</button>' +
+            "</figure>";
+        }).join("") + "</div>"
+      : "";
+    host.querySelectorAll("[data-jrn-cap]").forEach(function (inp) {
+      inp.addEventListener("input", function () {
+        var m = state.jrnPending[+inp.getAttribute("data-jrn-cap")];
+        if (m) { m.desc = inp.value; jrnTouched(); }
+      });
+    });
+    host.querySelectorAll("[data-jrn-rm]").forEach(function (b) {
+      b.onclick = function () {
+        state.jrnPending.splice(+b.getAttribute("data-jrn-rm"), 1);
+        jrnRenderPending(); jrnTouched();
+      };
+    });
+    host.querySelectorAll(".pj-jrn-up.err").forEach(function (n) {
+      n.onclick = function () { jrnUploadPending(); };
+    });
+  }
+
+  function jrnQueueFiles(files) {
+    var arr = Array.prototype.slice.call(files || []);
+    if (!arr.length) return;
+    state.jrnPending = state.jrnPending || [];
+    var when = new Date();
+    arr.forEach(function (f, i) {
+      var kind = jrnIsVideo(f) ? "VID" : "IMG";
+      // +1s each so files picked in the same second keep the order they were
+      // chosen in
+      var base = jrnStamp(new Date(when.getTime() + (state.jrnPending.length + i) * 1000));
+      state.jrnPending.push({
+        file: f, video: jrnIsVideo(f), desc: "", state: "new",
+        name: base + " " + kind + jrnExt(f),
+        thumb: base + " " + kind + ".thumb.jpg",
+        preview: URL.createObjectURL(f),
+      });
+    });
+    jrnRenderPending();
+    jrnUploadPending();
+  }
+
+  async function jrnUploadPending() {
+    if (state._jrnUploading) return;
+    state._jrnUploading = true;
+    try {
+      var list = state.jrnPending || [];
+      for (var i = 0; i < list.length; i++) {
+        var m = list[i];
+        if (m.state === "done" || !m.file) continue;
+        m.state = "up"; jrnRenderPending();
+        try {
+          await uploadToDrive(m.file, "journal", m.name, m.file.type || "");
+          // Best effort: a picture without a thumbnail still shows, it just
+          // pulls the full size. A failed thumbnail must not fail the upload.
+          try {
+            var t = await jrnThumbFor(m.file);
+            if (t && t.size) await uploadToDrive(t, "journal", m.thumb, "image/jpeg");
+            else m.thumb = "";
+          } catch (e) { m.thumb = ""; }
+          m.state = "done";
+          m.file = null;
+          jrnTouched();          // the entry now owns a file — worth a row
+        } catch (e) {
+          m.state = "err";
+        }
+        jrnRenderPending();
+      }
+    } finally {
+      state._jrnUploading = false;
+    }
+  }
+
+  /* "Finish" is not a save — everything is already saved. It closes the
+     current entry off so the next one starts clean. */
+  async function jrnFinish() {
+    clearTimeout(_jrnPush);
+    var d = jrnDraftFromForm();
+    if (!jrnWorthKeeping(d)) {
+      var msg = el("jrMsg");
+      msg.className = "pj-msg err";
+      msg.textContent = "Write something, or add a photo, first.";
+      return;
+    }
+    if ((state.jrnPending || []).some(function (m) { return m.state === "up"; })) {
+      await DCR.alert("Give the pictures a moment to finish uploading.", { title: "Still uploading" });
+      return;
+    }
+    await jrnPushDraft();
+    state.jrnDraftId = null;
+    state.jrnPending = [];
+    jrnWriteDraft(null);
+    delete state.parts.journal;
+    loadJournal();
   }
 
   function wireJrnDelete() {
@@ -1378,65 +1701,14 @@
         try {
           await DCR.api("/api/portal?action=project", { method: "POST",
             body: { op: "jrnDelete", itemId: b.getAttribute("data-jrn-del") } });
+          if (String(state.jrnDraftId) === b.getAttribute("data-jrn-del")) {
+            state.jrnDraftId = null; jrnWriteDraft(null);
+          }
           delete state.parts.journal;
           loadJournal();
         } catch (e) { await DCR.alert(e.message || "Could not delete the entry."); }
       };
     });
-  }
-
-  async function saveJournal() {
-    var body = el("jrBody").value.trim();
-    var title = el("jrTitle").value.trim();
-    var msg = el("jrMsg");
-    if (!body && !title) {
-      msg.className = "pj-msg err";
-      msg.textContent = "Write something before saving.";
-      return;
-    }
-    el("jrSave").disabled = true;
-    msg.className = "pj-msg";
-    msg.textContent = "Saving…";
-    try {
-      // Media first. If an upload fails the entry is not written at all, so the
-      // crew retries the whole thing — better than an entry whose photos
-      // quietly went missing.
-      var names = [];
-      var queue = state.jrnQueue || [];
-      var when = new Date();
-      for (var i = 0; i < queue.length; i++) {
-        var f = queue[i];
-        var kind = String(f.type || "").indexOf("video/") === 0 ? "VID" : "IMG";
-        // +1s per file so two photos picked in the same second keep their order
-        var nm = jrnStamp(new Date(when.getTime() + i * 1000)) + " " + kind + jrnExt(f);
-        msg.textContent = "Uploading " + (i + 1) + " of " + queue.length + "…";
-        await uploadToDrive(f, "journal", nm, f.type || "");
-        names.push(nm);
-      }
-      var dateVal = el("jrDate").value;
-      await DCR.api("/api/portal?action=project", { method: "POST", body: {
-        op: "jrnAdd", projectId: PID,
-        fields: {
-          title: title || (body.split("\n")[0] || "").slice(0, 80),
-          // noon UTC, the convention the rest of the app uses for date-only
-          // values, so a timezone never rolls the day backwards
-          journalDate: dateVal ? dateVal + "T12:00:00Z" : "",
-          journalCategory: el("jrCat").value,
-          journalEntry: body,
-          journalWeather: el("jrWx").value.trim(),
-          journalCrewSize: el("jrCrew").value,
-          journalHours: el("jrHrs").value,
-          journalFollowUp: el("jrFollow").checked,
-          journalMedia: names.join("\n"),
-        },
-      }});
-      delete state.parts.journal;
-      loadJournal();
-    } catch (e) {
-      msg.className = "pj-msg err";
-      msg.textContent = e.message || "Could not save the entry.";
-      el("jrSave").disabled = false;
-    }
   }
 
   async function loadLogs() {
