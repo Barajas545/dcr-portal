@@ -71,6 +71,12 @@
       .cp-bar i{display:block; height:100%; width:0; background:#2f80d8; transition:width .2s;}
       .cp-up.done .cp-bar i{background:#2fa679;}
       .cp-up.err .cp-bar i{background:#d9614f;}
+      /* "don't upload this one" — far right of its own row, nothing else near
+         it, and it always asks before it drops a file */
+      .cp-upx{flex-shrink:0; width:26px; height:26px; margin:-4px -4px -4px 2px;
+        border-radius:50%; border:1px solid var(--border); background:var(--surface-2);
+        color:var(--text-muted); font-size:12px; line-height:1; padding:0; cursor:pointer;}
+      .cp-upx:hover{background:#d9614f; border-color:#d9614f; color:#fff;}
 
       .cp-hide{display:none;}
       .cp-spin{display:inline-block; width:13px; height:13px; border:2px solid var(--border);
@@ -239,6 +245,7 @@
 
     <script src="config.js"></script>
     <script src="common.js"></script>
+    <script src="upload-queue.js"></script>
     <script src="capture.js"></script>
   </body>
 </html>

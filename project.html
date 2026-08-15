@@ -110,6 +110,18 @@
       .pj-jrn-up{position:absolute; bottom:0; left:0; right:0; font-size:9.5px;
         text-align:center; padding:2px 0; background:rgba(0,0,0,.62); color:#fff;}
       .pj-jrn-up.err{background:var(--err); cursor:pointer;}
+      /* Remove sits in the far corner OF THE PICTURE, not under the caption
+         box — a thumb reaching for the text used to land on it. Small target,
+         well away from anything else, and it always asks first. */
+      .pj-jrn-x{position:absolute; top:3px; right:3px; width:22px; height:22px;
+        border-radius:50%; border:none; padding:0; line-height:22px; font-size:11px;
+        background:rgba(0,0,0,.55); color:#fff; cursor:pointer; opacity:.75;}
+      .pj-jrn-x:hover{opacity:1; background:var(--err);}
+      /* upload progress — a thin bar across the bottom of the thumbnail */
+      .pj-jrn-bar{position:absolute; left:0; right:0; bottom:14px; height:3px;
+        background:rgba(255,255,255,.28);}
+      .pj-jrn-bar i{display:block; height:100%; background:var(--ok);
+        transition:width .18s linear;}
       .pj-jrn-fig figcaption{font-size:11.5px; color:var(--text-muted); line-height:1.35;
         word-break:break-word;}
       .pj-jrn-cap{width:100%; box-sizing:border-box; padding:4px 6px; font-size:11.5px;
@@ -878,6 +890,7 @@
 
     <script src="config.js"></script>
     <script src="common.js"></script>
+    <script src="upload-queue.js"></script>
     <script src="expense-filter.js"></script>
     <script src="takeoff-order.js"></script>
     <script src="takeoff.js"></script>

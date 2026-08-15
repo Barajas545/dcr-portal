@@ -1488,7 +1488,17 @@
 
     wireJrnDelete();
     if (!state.jrnCanWrite) return;
+    // The app was closed with photos on the entry. Put them back on screen —
+    // without this the next keystroke would push an empty media list and the
+    // pictures would drop off the entry they belong to.
+    if (!state.jrnPending && (draft.media || []).length) {
+      state.jrnPending = draft.media.map(function (m) {
+        return { name: m.name, desc: m.desc || "", thumb: m.thumb || "",
+                 video: !!m.video, preview: "", qid: null };
+      });
+    }
     jrnRenderPending();
+    jrnWatchQueue();
     ["jrDate", "jrCat", "jrWx", "jrCrew", "jrHrs", "jrTitle", "jrBody", "jrFollow"]
       .forEach(function (id) {
         var n = el(id);
@@ -1579,23 +1589,48 @@
     }
   }
 
-  /* ---- media ---------------------------------------------------------- */
+  /* ---- media ----------------------------------------------------------
+     Files are handed to DCR.uploadQueue the moment they are picked. That call
+     resolves once the bytes are on the device, not once they reach SharePoint
+     — so a photo taken with no signal is already safe, and goes up by itself
+     when the phone finds a connection. The entry records the file name right
+     away; the picture catches up. */
   function jrnRenderPending() {
     var host = el("jrPending");
     if (!host) return;
     var list = state.jrnPending || [];
+    var q = state.jrnQ || {};
     host.innerHTML = list.length
       ? '<div class="pj-jrn-media">' + list.map(function (m, i) {
+          // keyed by file name, not queue id, so a reload mid-upload still
+          // finds its own bytes and keeps drawing the bar
+          var up = q[m.name] || null;
+          var pct = up ? up.pct : 100;
+          var failed = up && up.state === "failed";
+          var waiting = up && up.state === "waiting";
+          var label = !up ? "saved"
+            : failed ? (up.error || "failed") + " — retry"
+            : waiting ? (!DCR.uploadQueue.durable() ? "keep this page open"
+                        : DCR.uploadQueue.online() ? "waiting…" : "held on this device")
+            : pct + "%";
+          // after a reload the blob URL is dead; the copy already on SharePoint
+          // stands in for it
+          var srv = state.jrnFiles && (state.jrnFiles[m.thumb] || state.jrnFiles[m.name]);
+          var src = m.preview || (srv && srv.url) || "";
           return '<figure class="pj-jrn-fig">' +
             '<div class="pj-jrn-thumb">' +
-              (m.preview ? '<img src="' + esc(m.preview) + '" alt="">' : "") +
+              (src ? '<img src="' + esc(src) + '" alt="">' : "") +
               (m.video ? '<span class="pj-jrn-play">▶</span>' : "") +
-              (m.state === "up" ? '<span class="pj-jrn-up">uploading…</span>' : "") +
-              (m.state === "err" ? '<span class="pj-jrn-up err">failed — tap to retry</span>' : "") +
+              // The remove control sits in the CORNER OF THE PICTURE. It used to
+              // be a full-width button directly under the caption box, which is
+              // exactly where a thumb reaching for the text lands.
+              '<button class="pj-jrn-x" data-jrn-rm="' + i + '" title="Remove this file">✕</button>' +
+              (up && !failed ? '<span class="pj-jrn-bar"><i style="width:' + pct + '%"></i></span>' : "") +
+              (up ? '<span class="pj-jrn-up' + (failed ? " err" : "") + '"' +
+                    (failed ? ' data-jrn-retry="1"' : "") + ">" + esc(label) + "</span>" : "") +
             "</div>" +
             '<input class="pj-jrn-cap" data-jrn-cap="' + i + '" placeholder="Describe this photo…" value="' +
               esc(m.desc || "") + '">' +
-            '<button class="pj-btn pj-btn-sm" data-jrn-rm="' + i + '" title="Remove">&#10005;</button>' +
             "</figure>";
         }).join("") + "</div>"
       : "";
@@ -1606,66 +1641,87 @@
       });
     });
     host.querySelectorAll("[data-jrn-rm]").forEach(function (b) {
-      b.onclick = function () {
-        state.jrnPending.splice(+b.getAttribute("data-jrn-rm"), 1);
-        jrnRenderPending(); jrnTouched();
+      b.onclick = async function () {
+        var i = +b.getAttribute("data-jrn-rm");
+        var m = (state.jrnPending || [])[i];
+        if (!m) return;
+        // Always ask. A photo of something now buried behind drywall cannot be
+        // taken again, and this control sits on top of the picture.
+        var noun = m.video ? "video" : "photo";
+        var ok = await DCR.confirm(
+          "This " + noun + " will be taken off the entry" +
+          (m.qid ? " and will not be uploaded." : "."),
+          { title: "Remove this " + noun + "?", danger: true, okText: "Remove" });
+        if (!ok) return;
+        if (m.qid) { try { await DCR.uploadQueue.remove(m.qid); } catch (e) {} }
+        state.jrnPending.splice(i, 1);
+        jrnRenderPending();
+        jrnTouched();
       };
     });
-    host.querySelectorAll(".pj-jrn-up.err").forEach(function (n) {
-      n.onclick = function () { jrnUploadPending(); };
+    host.querySelectorAll("[data-jrn-retry]").forEach(function (n) {
+      n.onclick = function () { DCR.uploadQueue.retryAll(); };
     });
   }
 
-  function jrnQueueFiles(files) {
+  /* Watch the queue so the bars move and "held on this device" flips to a
+     percentage the moment signal returns. */
+  function jrnWatchQueue() {
+    if (state._jrnQOff) return;
+    var refresh = function () {
+      DCR.uploadQueue.listFor(PID).then(function (items) {
+        var map = {};
+        items.forEach(function (it) { map[it.name] = it; });
+        state.jrnQ = map;
+        // a file that has left the queue has landed
+        (state.jrnPending || []).forEach(function (m) {
+          m.qid = map[m.name] ? map[m.name].id : null;
+        });
+        jrnRenderPending();
+      });
+    };
+    state._jrnQOff = DCR.uploadQueue.on(refresh);
+    refresh();
+  }
+
+  async function jrnQueueFiles(files) {
     var arr = Array.prototype.slice.call(files || []);
     if (!arr.length) return;
     state.jrnPending = state.jrnPending || [];
     var when = new Date();
-    arr.forEach(function (f, i) {
+    for (var i = 0; i < arr.length; i++) {
+      var f = arr[i];
       var kind = jrnIsVideo(f) ? "VID" : "IMG";
-      // +1s each so files picked in the same second keep the order they were
-      // chosen in
-      var base = jrnStamp(new Date(when.getTime() + (state.jrnPending.length + i) * 1000));
-      state.jrnPending.push({
-        file: f, video: jrnIsVideo(f), desc: "", state: "new",
-        name: base + " " + kind + jrnExt(f),
+      // +1s each so files picked in the same second keep the order chosen
+      var base = jrnStamp(new Date(when.getTime() + (state.jrnPending.length) * 1000));
+      var m = {
+        video: jrnIsVideo(f), desc: "", name: base + " " + kind + jrnExt(f),
         thumb: base + " " + kind + ".thumb.jpg",
-        preview: URL.createObjectURL(f),
-      });
-    });
-    jrnRenderPending();
-    jrnUploadPending();
-  }
+        preview: URL.createObjectURL(f), qid: null,
+      };
+      state.jrnPending.push(m);
+      jrnRenderPending();
 
-  async function jrnUploadPending() {
-    if (state._jrnUploading) return;
-    state._jrnUploading = true;
-    try {
-      var list = state.jrnPending || [];
-      for (var i = 0; i < list.length; i++) {
-        var m = list[i];
-        if (m.state === "done" || !m.file) continue;
-        m.state = "up"; jrnRenderPending();
-        try {
-          await uploadToDrive(m.file, "journal", m.name, m.file.type || "");
-          // Best effort: a picture without a thumbnail still shows, it just
-          // pulls the full size. A failed thumbnail must not fail the upload.
-          try {
-            var t = await jrnThumbFor(m.file);
-            if (t && t.size) await uploadToDrive(t, "journal", m.thumb, "image/jpeg");
-            else m.thumb = "";
-          } catch (e) { m.thumb = ""; }
-          m.state = "done";
-          m.file = null;
-          jrnTouched();          // the entry now owns a file — worth a row
-        } catch (e) {
-          m.state = "err";
-        }
-        jrnRenderPending();
-      }
-    } finally {
-      state._jrnUploading = false;
+      // Custody first: on the device before anything touches the network.
+      m.qid = await DCR.uploadQueue.add({
+        pid: PID, target: "journal", name: m.name, mime: f.type || "", blob: f,
+        tag: "journal",
+      });
+      // The thumbnail is a nicety — if it cannot be built the picture still
+      // uploads and the list falls back to the full size.
+      try {
+        var t = await jrnThumbFor(f);
+        if (t && t.size) {
+          await DCR.uploadQueue.add({
+            pid: PID, target: "journal", name: m.thumb, mime: "image/jpeg", blob: t,
+            tag: "journal-thumb",
+          });
+        } else m.thumb = "";
+      } catch (e) { m.thumb = ""; }
+      jrnTouched();          // the entry owns a file now — worth a row
     }
+    jrnWatchQueue();
+    jrnRenderPending();
   }
 
   /* "Finish" is not a save — everything is already saved. It closes the
@@ -1679,16 +1735,25 @@
       msg.textContent = "Write something, or add a photo, first.";
       return;
     }
-    if ((state.jrnPending || []).some(function (m) { return m.state === "up"; })) {
-      await DCR.alert("Give the pictures a moment to finish uploading.", { title: "Still uploading" });
-      return;
-    }
+    // Pictures still going up are NOT a reason to stop. The entry already
+    // holds their file names and the bytes are on the device; the queue keeps
+    // working across pages and across a closed app.
+    var still = (state.jrnPending || []).filter(function (m) { return m.qid; }).length;
     await jrnPushDraft();
     state.jrnDraftId = null;
     state.jrnPending = [];
     jrnWriteDraft(null);
     delete state.parts.journal;
     loadJournal();
+    if (still) {
+      var m2 = el("jrMsg");
+      if (m2) {
+        m2.className = "pj-msg";
+        m2.textContent = still + (still === 1 ? " file is" : " files are") +
+          (DCR.uploadQueue.online() ? " still uploading — it will finish on its own."
+                                    : " saved on this device — they upload when you have signal.");
+      }
+    }
   }
 
   function wireJrnDelete() {

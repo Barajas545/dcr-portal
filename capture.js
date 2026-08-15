@@ -23,7 +23,6 @@
   // photos end up filed against the wrong project.
   var HIDDEN_STATUS = { "closed": 1, "completed": 1 };
 
-  var CHUNK = 320 * 1024 * 24;          // 7.5 MiB, 320KiB-aligned (Graph requirement)
   var GEO_MAX_PER_VISIT = 40;           // Nominatim politeness: ~1 req/sec
   var GEO_GAP_MS = 1150;
   var NEAR_MI = 0.19;                   // ~1000 ft: close enough to call it "you're here"
@@ -35,9 +34,9 @@
     pos: null,         // {lat,lng,accuracy}
     project: null,
     week: DCR.weekFolder(),
-    jobs: [],          // upload jobs
+    jobs: [],          // what is on screen; DCR.uploadQueue holds the bytes
+    q: {},             // file name -> live queue record
     seq: 0,
-    busy: false,
     geoRun: 0,         // bumped to cancel an in-flight background geocode pass
     wakeLock: null,
   };
@@ -320,9 +319,12 @@
     return (n / 1073741824).toFixed(2) + " GB";
   }
 
-  // Returns the jobs it queued, so the camera can tie each thumbnail to the
-  // upload it belongs to. `when` is the moment the shutter fired — the camera
-  // encodes after the fact, so it can't be read off the clock here.
+  /* Every file is handed to DCR.uploadQueue, which writes the bytes to the
+     device before it tries the network. That is what makes a photo taken with
+     no bars safe: the tab can be closed, the phone can be rebooted, the van can
+     drive out of range — the file is still there and still goes up the moment
+     there is a connection. This list is only the display; the queue is the
+     truth, and it is shared with the project Journal. */
   function addFiles(files, when) {
     if (!files || !files.length) return [];
     var now = when || new Date(), added = [];
@@ -333,21 +335,68 @@
       state.seq++;
       var job = {
         id: state.seq,
-        file: f,
         // Sorts chronologically in SharePoint and never collides within a second.
         name: (isVid ? "VID " : "IMG ") + stamp(now) + (state.seq > 1 ? "-" + state.seq : "") + extOf(f),
         size: f.size,
-        sent: 0,
-        status: "queued",
-        error: "",
-        attempts: 0,
+        qid: null,
+        armed: false,          // true once the queue has been read back at least once
+        video: isVid,
       };
       state.jobs.push(job);
       added.push(job);
+      takeCustody(job, f);
     }
     renderJobs();
-    pump();
     return added;
+  }
+
+  // Kept apart from addFiles so the camera never waits on a disk write.
+  async function takeCustody(job, file) {
+    try {
+      job.qid = await DCR.uploadQueue.add({
+        pid: state.project.id, target: "pictures", weekFolder: state.week,
+        name: job.name, mime: file.type || "", blob: file, tag: "site-photo",
+      });
+      await refreshQ();        // read back before trusting "it's gone, so it's done"
+      job.armed = true;
+    } catch (e) {
+      job.diskError = e && e.message ? e.message : "Could not save it on this device";
+    }
+    renderJobs();
+  }
+
+  function statusOf_(j) {
+    if (j.diskError) return "failed";
+    var up = state.q[j.name];
+    if (up) return up.state === "failed" ? "failed" : up.state === "uploading" ? "uploading" : "queued";
+    return j.armed ? "done" : "queued";
+  }
+
+  var _qOff = null;
+  function refreshQ() {
+    return DCR.uploadQueue.listFor(state.project ? state.project.id : "").then(function (items) {
+      var map = {};
+      items.forEach(function (it) { map[it.name] = it; });
+      state.q = map;
+      renderJobs();
+    }).catch(function () {});
+  }
+  function watchQ() {
+    if (_qOff) return;
+    _qOff = DCR.uploadQueue.on(function () { refreshQ(); });
+    refreshQ();
+  }
+
+  // Anything this project still owes from a previous visit, back on the screen.
+  async function adoptQueued() {
+    var items = await DCR.uploadQueue.listFor(state.project.id).catch(function () { return []; });
+    items.forEach(function (it) {
+      if (state.jobs.some(function (j) { return j.name === it.name; })) return;
+      state.seq++;
+      state.jobs.push({ id: state.seq, name: it.name, size: it.size, qid: it.id,
+        armed: true, video: /^VID /.test(it.name), earlier: true });
+    });
+    if (items.length) renderJobs();
   }
 
   function renderJobs() {
@@ -357,32 +406,76 @@
       host.innerHTML = "";
       el("shootRetryRow").classList.add("cp-hide");
       msg("shootMsg", "", "");
+      holdScreen(false);
       return;
     }
     host.innerHTML = state.jobs.map(function (j) {
-      var shown = j.live != null ? j.live : j.sent;
-      var pct = j.status === "done" ? 100 : (j.size ? Math.round((shown / j.size) * 100) : 0);
-      var cls = j.status === "done" ? " done" : (j.status === "failed" ? " err" : "");
-      var txt = j.status === "done" ? "✓ Saved"
-        : j.status === "failed" ? "✕ " + (j.error || "Failed")
-        : j.status === "uploading" ? pct + "%"
-        : j.status === "retrying" ? "No signal — retrying"
-        : "Waiting";
+      var st = statusOf_(j);
+      var up = state.q[j.name];
+      var pct = st === "done" ? 100 : (up ? up.pct : 0);
+      var cls = st === "done" ? " done" : (st === "failed" ? " err" : "");
+      var txt = st === "done" ? "✓ Saved"
+        : st === "failed" ? "✕ " + (j.diskError || (up && up.error) || "Failed")
+        : st === "uploading" ? pct + "%"
+        : !DCR.uploadQueue.online() ? "Saved on this device"
+        : j.armed ? "Waiting to upload" : "Saving on this device…";
       return '<div class="cp-up' + cls + '"><div class="cp-upt">' +
         '<span class="cp-upn">' + esc(j.name) + "</span>" +
-        '<span class="cp-ups' + cls + '">' + esc(txt) + " · " + fmtSize(j.size) + "</span></div>" +
+        '<span class="cp-ups' + cls + '">' + esc(txt) + " · " + fmtSize(j.size) + "</span>" +
+        // Remove sits at the far right of the row, on its own, away from every
+        // other control — and it always asks first.
+        (st === "done" ? "" : '<button class="cp-upx" data-drop="' + j.id + '" title="Don\'t upload this one">✕</button>') +
+        "</div>" +
         '<div class="cp-bar"><i style="width:' + pct + '%"></i></div></div>';
     }).join("");
 
-    var failed = state.jobs.filter(function (j) { return j.status === "failed"; }).length;
-    el("shootRetryRow").classList.toggle("cp-hide", !failed);
+    host.querySelectorAll("[data-drop]").forEach(function (b) {
+      b.onclick = async function () {
+        var id = +b.getAttribute("data-drop");
+        var j = null;
+        state.jobs.forEach(function (x) { if (x.id === id) j = x; });
+        if (!j) return;
+        var noun = j.video ? "video" : "photo";
+        var ok = await DCR.confirm(
+          "This " + noun + " has not been uploaded yet. If you remove it now it is gone — " +
+          "it is not saved anywhere else.",
+          { title: "Don't upload this " + noun + "?", danger: true, okText: "Remove" });
+        if (!ok) return;
+        if (j.qid) { try { await DCR.uploadQueue.remove(j.qid); } catch (e) {} }
+        state.jobs = state.jobs.filter(function (x) { return x !== j; });
+        var im = el("camStrip") && el("camStrip").querySelector('img[data-jid="' + j.id + '"]');
+        if (im) im.remove();
+        renderJobs();
+      };
+    });
 
-    var doneN = state.jobs.filter(function (j) { return j.status === "done"; }).length;
+    var statuses = state.jobs.map(statusOf_);
+    var failed = statuses.filter(function (s) { return s === "failed"; }).length;
+    var doneN = statuses.filter(function (s) { return s === "done"; }).length;
     var pending = state.jobs.length - doneN - failed;
-    if (pending) msg("shootMsg", "", "Uploading " + pending + " file" + (pending === 1 ? "" : "s") + " — keep this screen open.");
-    else if (failed) msg("shootMsg", "err", doneN + " saved, " + failed + " failed.");
-    else if (doneN) msg("shootMsg", "ok", "✓ All " + doneN + " file" + (doneN === 1 ? "" : "s") + " saved to " + state.week + ".");
-    else msg("shootMsg", "", "");
+    el("shootRetryRow").classList.toggle("cp-hide", !failed);
+    holdScreen(pending > 0 && DCR.uploadQueue.online());
+
+    // The browser refused to store the files. They are only in memory, so the
+    // usual reassurance would be a lie — say what is actually true.
+    if (pending && !DCR.uploadQueue.durable()) {
+      msg("shootMsg", "err", "This browser will not let the app keep files on the device — " +
+        pending + " file" + (pending === 1 ? " is" : "s are") + " only held while this screen is " +
+        "open. Stay here until each one says ✓ Saved.");
+    } else if (pending && !DCR.uploadQueue.online()) {
+      msg("shootMsg", "", "No signal — " + pending + " file" + (pending === 1 ? " is" : "s are") +
+        " saved on this device. They upload by themselves as soon as you have a connection, " +
+        "even if you close the app.");
+    } else if (pending) {
+      msg("shootMsg", "", "Uploading " + pending + " file" + (pending === 1 ? "" : "s") +
+        " — you can carry on, they finish on their own.");
+    } else if (failed) {
+      msg("shootMsg", "err", doneN + " saved, " + failed + " still on this device — tap retry.");
+    } else if (doneN) {
+      msg("shootMsg", "ok", "✓ All " + doneN + " file" + (doneN === 1 ? "" : "s") + " saved to " + state.week + ".");
+    } else {
+      msg("shootMsg", "", "");
+    }
   }
 
   // The screen going dark suspends the upload on most phones; ask to keep it on
@@ -396,115 +489,7 @@
         state.wakeLock.release();
         state.wakeLock = null;
       }
-    } catch (e) { /* not supported / not allowed — the beforeunload warning still applies */ }
-  }
-
-  function nextJob() {
-    for (var i = 0; i < state.jobs.length; i++) {
-      var s = state.jobs[i].status;
-      if (s === "queued" || s === "retrying") return state.jobs[i];
-    }
-    return null;
-  }
-
-  async function pump() {
-    if (state.busy) return;
-    var job = nextJob();
-    if (!job) { holdScreen(false); return; }
-    state.busy = true;
-    holdScreen(true);
-    try {
-      await uploadJob(job);
-      job.status = "done";
-      job.sent = job.size;
-      job.live = null;
-    } catch (e) {
-      // Anything network-shaped keeps trying: a van driving out of signal must
-      // not turn into a lost photo. Only a refusal from the API is terminal.
-      if (e && e.fatal) {
-        job.status = "failed";
-        job.error = e.message || "Upload failed";
-      } else {
-        job.attempts++;
-        job.status = "retrying";
-        job.error = "";
-        var wait = Math.min(30000, 2000 * Math.pow(2, Math.min(4, job.attempts)));
-        setTimeout(function () { state.busy = false; pump(); }, wait);
-        renderJobs();
-        return;
-      }
-    }
-    state.busy = false;
-    renderJobs();
-    pump();
-  }
-
-  async function uploadJob(job) {
-    if (!job.session) {
-      var s;
-      try {
-        s = await DCR.api("/api/portal?action=drive", {
-          method: "POST",
-          body: {
-            op: "uploadSession", projectId: state.project.id, target: "pictures",
-            name: job.name, mimeType: job.file.type || "", weekFolder: state.week,
-          },
-        });
-      } catch (e) {
-        // A 4xx here is a real refusal (no access, bad name) — retrying won't help.
-        var fatal = new Error(e.message || "Could not start the upload");
-        fatal.fatal = /\b(400|401|403|404|409)\b/.test(String(e.message || ""));
-        throw fatal;
-      }
-      job.session = s.uploadUrl;
-      job.folder = s.folderName;
-      job.sent = 0;
-    }
-    job.status = "uploading";
-    renderJobs();
-
-    var total = job.size;
-    while (job.sent < total) {
-      var start = job.sent, end = Math.min(start + CHUNK, total);
-      await putChunk(job, start, end, total);
-      job.sent = end;
-      renderJobs();
-    }
-  }
-
-  function putChunk(job, start, end, total) {
-    return new Promise(function (resolve, reject) {
-      var x = new XMLHttpRequest();
-      x.open("PUT", job.session);
-      x.setRequestHeader("Content-Range", "bytes " + start + "-" + (end - 1) + "/" + total);
-      x.timeout = 180000;
-      // job.sent is committed bytes; job.live is what the bar shows mid-chunk.
-      // Only repaint when the whole-number percentage actually moves.
-      var lastPct = -1;
-      x.upload.onprogress = function (e) {
-        if (!e.lengthComputable) return;
-        job.live = start + e.loaded;
-        var pct = total ? Math.round((job.live / total) * 100) : 0;
-        if (pct !== lastPct) { lastPct = pct; renderJobs(); }
-      };
-      x.onload = function () {
-        if (x.status === 200 || x.status === 201 || x.status === 202) return resolve();
-        if (x.status === 404 || x.status === 410) {
-          // The session expired — start it over on the next attempt.
-          job.session = null; job.sent = 0; job.live = null;
-          return reject(new Error("Upload session expired"));
-        }
-        if (x.status >= 400 && x.status < 500 && x.status !== 408 && x.status !== 429) {
-          var f = new Error("Upload rejected (" + x.status + ")");
-          f.fatal = true;
-          return reject(f);
-        }
-        reject(new Error("Upload failed (" + x.status + ")"));
-      };
-      x.onerror = function () { reject(new Error("No connection")); };
-      x.ontimeout = function () { reject(new Error("Timed out")); };
-      x.send(job.file.slice(start, end));
-    });
+    } catch (e) { /* not supported / not allowed — the queue survives either way */ }
   }
 
   /* ── in-app camera ─────────────────────────────────────────────────────
@@ -584,8 +569,9 @@
   // Shots taken here, and how many SharePoint has actually got.
   function camCount() {
     if (!cam.open) return;
-    var done = state.jobs.filter(function (j) { return j.status === "done"; }).length;
-    var failed = state.jobs.filter(function (j) { return j.status === "failed"; }).length;
+    var st = state.jobs.map(statusOf_);
+    var done = st.filter(function (s) { return s === "done"; }).length;
+    var failed = st.filter(function (s) { return s === "failed"; }).length;
     el("camCount").textContent = !cam.shots
       ? "Tap the button — each photo uploads on its own"
       : cam.shots + " taken · " + done + " saved" + (failed ? " · " + failed + " failed" : "");
@@ -596,7 +582,9 @@
     if (!cam.open) return;
     state.jobs.forEach(function (j) {
       var im = el("camStrip").querySelector('img[data-jid="' + j.id + '"]');
-      if (im) im.className = j.status === "done" ? "done" : j.status === "failed" ? "err" : "";
+      if (!im) return;
+      var st = statusOf_(j);
+      im.className = st === "done" ? "done" : st === "failed" ? "err" : "";
     });
     camCount();
   }
@@ -738,9 +726,12 @@
       '<span class="cp-ad">' + esc(addressOf(p)) + "</span></span>";
     wireCards(el("shootBanner"));
     el("shootWhere").innerHTML = "Saving to <b>Pictures → " + esc(state.week) +
-      "</b><br>Photos upload the moment you take them — nothing to confirm. Delete any you don't " +
-      "want later from the project's Files tab. Keep this screen open until each one says ✓ Saved.";
+      "</b><br>Photos are kept on this device the instant you take them and upload by themselves — " +
+      "nothing to confirm, and nothing is lost if you have no signal or close the app. Delete any you " +
+      "don't want later from the project's Files tab.";
     show("stepShoot");
+    watchQ();
+    adoptQueued();
 
     // Standing on the job with a good fix is the best pin we will ever get.
     if (state.pos && state.pos.accuracy && state.pos.accuracy <= 100) {
@@ -763,8 +754,16 @@
     el("confirmNo").onclick = function () { show("stepPick"); };
     el("confirmYes").onclick = startShooting;
     el("shootDone").onclick = async function () {
-      var busy = state.jobs.some(function (j) { return j.status !== "done" && j.status !== "failed"; });
-      if (busy && !(await DCR.confirm("Some files are still uploading.", { title: "Leave anyway?", danger: true, okText: "Leave" }))) return;
+      // Leaving is safe: whatever is left is on the device and the queue keeps
+      // going. Say so rather than warning about something that cannot be lost.
+      var left = state.jobs.filter(function (j) { return statusOf_(j) !== "done"; }).length;
+      if (left) {
+        var ok = await DCR.confirm(
+          left + " file" + (left === 1 ? " is" : "s are") + " saved on this device and will " +
+          "keep uploading on their own" + (DCR.uploadQueue.online() ? "" : " as soon as you have signal") + ".",
+          { title: "Finish here?", okText: "Finish" });
+        if (!ok) return;
+      }
       state.jobs = []; renderJobs(); show("stepPick");
     };
     el("shootPhoto").onclick = camOpen;
@@ -780,23 +779,14 @@
       el(id).onchange = function () { addFiles(this.files); };
     });
     el("shootRetry").onclick = function () {
-      state.jobs.forEach(function (j) {
-        if (j.status === "failed") { j.status = "queued"; j.attempts = 0; j.error = ""; j.session = null; j.sent = 0; }
-      });
-      renderJobs(); pump();
+      DCR.uploadQueue.retryAll();
     };
 
-    window.addEventListener("beforeunload", function (e) {
-      if (state.jobs.some(function (j) { return j.status !== "done" && j.status !== "failed"; })) {
-        e.preventDefault(); e.returnValue = "";
-      }
-    });
     // Coming back from another app: resume anything left hanging. iOS also
     // freezes the camera stream while away, so nudge it back.
     document.addEventListener("visibilitychange", function () {
       if (document.hidden) return;
-      holdScreen(true);
-      pump();
+      DCR.uploadQueue.start();
       if (cam.open) el("camVideo").play().catch(function () {});
     });
 
