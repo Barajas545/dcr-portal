@@ -132,6 +132,7 @@
     // capability flags ride in the same overrides JSON under reserved keys
     if (el("uEstPrices").value) out["flag:estimatePrices"] = el("uEstPrices").value;
     if (el("uSalesEst").value) out["flag:salesEstimates"] = el("uSalesEst").value;
+    if (el("uApprovePay").value) out["flag:approvePayments"] = el("uApprovePay").value;
     return out;
   }
 
@@ -159,6 +160,8 @@
       ? overrides["flag:estimatePrices"] : "";
     el("uSalesEst").value = ["on", "off"].includes(overrides["flag:salesEstimates"])
       ? overrides["flag:salesEstimates"] : "";
+    el("uApprovePay").value = ["on", "off"].includes(overrides["flag:approvePayments"])
+      ? overrides["flag:approvePayments"] : "";
     buildPermGrid(overrides);
     buildRosterControls(user);
     el("modal").classList.add("show");

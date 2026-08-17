@@ -32,11 +32,69 @@
       .pm-head .sp{flex:1;}
       .pm-progress{height:10px; border-radius:6px; overflow:hidden; display:flex; gap:2px; margin:4px 0 8px;}
       .pm-progress span{height:100%;}
+      /* ── the money band ────────────────────────────────────────────────
+         Money in on the left, money out on the right. State is carried by a
+         colour dot AND a word, never colour alone. */
+      .pm-money-band{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:14px 0 4px;}
+      @media (max-width:900px){ .pm-money-band{grid-template-columns:1fr;} }
+      .mn-col{background:var(--surface); border:1px solid var(--border); border-radius:12px;
+        display:flex; flex-direction:column; overflow:hidden;}
+      .mn-col header{display:flex; align-items:center; gap:10px; padding:10px 13px;
+        border-bottom:1px solid var(--border); background:var(--surface-2);}
+      .mn-col h3{margin:0; font-size:13px; font-weight:800; letter-spacing:.02em; flex:1;}
+      .mn-col h3 span{display:block; font-size:11px; font-weight:500; color:var(--text-muted);
+        letter-spacing:0; margin-top:1px;}
+      .mn-list{max-height:320px; overflow-y:auto;}
+      .mn-row{display:flex; align-items:center; gap:10px; padding:9px 13px;
+        border-bottom:1px solid var(--border); cursor:pointer;}
+      .mn-row:last-child{border-bottom:none;}
+      .mn-row:hover{background:var(--surface-2);}
+      .mn-dot{width:9px; height:9px; border-radius:50%; flex-shrink:0; background:var(--border);}
+      .mn-dot.ok{background:var(--ok);} .mn-dot.due{background:var(--acc);}
+      .mn-dot.wait{background:var(--gold);} .mn-dot.bad{background:var(--err);}
+      .mn-dot.draft{background:var(--border);}
+      .mn-main{flex:1; min-width:0;}
+      .mn-main b{display:block; font-size:13px; font-weight:700; white-space:nowrap;
+        overflow:hidden; text-overflow:ellipsis;}
+      .mn-sub{display:block; font-size:11px; color:var(--text-muted); white-space:nowrap;
+        overflow:hidden; text-overflow:ellipsis;}
+      .mn-amt{font-size:13px; font-weight:800; font-variant-numeric:tabular-nums;
+        text-align:right; white-space:nowrap;}
+      .mn-amt .mn-sub{font-weight:500;}
+      .mn-st{font-size:11px; width:118px; flex-shrink:0; text-align:right; color:var(--text-muted);}
+      .mn-st.ok{color:var(--ok);} .mn-st.due{color:var(--acc);}
+      .mn-st.wait{color:var(--gold); font-weight:700;} .mn-st.bad{color:var(--err); font-weight:700;}
+      .mn-by{display:block; font-size:10px; color:var(--text-muted); font-weight:500;}
+      .mn-acts{display:flex; gap:4px; flex-shrink:0;}
+      .mn-b{border:1px solid var(--border); background:var(--surface); color:var(--text);
+        border-radius:7px; padding:4px 8px; font-size:11px; font-weight:700; cursor:pointer;}
+      .mn-b:hover{background:var(--surface-2);}
+      .mn-b.go{border-color:var(--acc); color:var(--acc);}
+      .mn-b.go:hover{background:var(--tint);}
+      .mn-b.warn{border-color:var(--gold); color:var(--gold);}
+      /* Approve stays visible but inert until the paperwork is attached — a
+         hidden button reads as "not allowed", a disabled one asks a question. */
+      .mn-b[disabled]{opacity:.45; cursor:not-allowed;}
+      .mn-none{padding:18px 13px; text-align:center; color:var(--text-muted); font-size:12.5px;}
+      .mn-col footer{display:flex; gap:14px; padding:9px 13px; border-top:1px solid var(--border);
+        background:var(--surface-2); font-size:11.5px; color:var(--text-muted); flex-wrap:wrap;}
+      .mn-col footer b{display:block; font-size:13px; color:var(--text);
+        font-variant-numeric:tabular-nums;}
+      .mn-col footer .mn-gap{margin-left:auto; text-align:right;}
+      .mn-col footer .warn b{color:var(--gold);}
       .pm-cards{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px;}
       .pm-card{background:var(--surface); border:1px solid var(--border); border-radius:10px;
         padding:8px 14px; min-width:120px;}
       .pm-card .k{font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted);}
       .pm-card .v{font-size:16px; font-weight:800; font-variant-numeric:tabular-nums;}
+      /* the sub-line under a money tile: how many bills, how much is overdue */
+      .pm-card .n{font-size:10.5px; margin-top:1px; color:var(--text-muted);}
+      /* Money waiting on somebody, and money already late, are the two things
+         worth colouring in a row of otherwise neutral totals. */
+      .pm-card.warn{border-color:var(--gold);}
+      .pm-card.warn .v,.pm-card.warn .n{color:var(--gold);}
+      .pm-card.bad{border-color:var(--err);}
+      .pm-card.bad .v,.pm-card.bad .n{color:var(--err);}
       .pm-bar{display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;}
       .pm-bar input[type=search]{padding:7px 10px; border:1px solid var(--border); border-radius:8px;
         background:var(--surface); color:var(--text); min-width:190px;}
@@ -177,6 +235,7 @@
 
     <script src="config.js"></script>
     <script src="common.js"></script>
+    <script src="upload-queue.js"></script>
     <script src="pm-chart.js"></script>
     <script src="pm.js"></script>
   </body>

@@ -99,6 +99,14 @@
             </select>
           </div>
           <div class="full">
+            <label for="uApprovePay">Approve payments <span class="muted">(Admin/Manager by default — authority to release money to a subcontractor or supplier. This one takes effect immediately, not at next login.)</span></label>
+            <select id="uApprovePay">
+              <option value="">Role default</option>
+              <option value="on">Allow</option>
+              <option value="off">Block</option>
+            </select>
+          </div>
+          <div class="full">
             <label>Per-table overrides <span class="muted">(optional — blank = role default; applied at next login)</span></label>
             <div class="perm-grid" id="permGrid"></div>
           </div>

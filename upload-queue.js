@@ -119,6 +119,12 @@
         blob: opts.blob,
         size: (opts.blob && opts.blob.size) || 0,
         tag: opts.tag || "",
+        /* What to do once the bytes have landed. Declarative on purpose: a
+           callback cannot survive a reload, and the whole point of this queue
+           is that a file uploaded an hour later still gets wired to the row it
+           belongs to. Shape: {op, itemId, field, nameField} -> POSTs that op
+           with the created drive item's id. */
+        after: opts.after || null,
         added: Date.now(),
         tries: 0, sent: 0, state: "waiting", error: "",
       };
@@ -188,7 +194,8 @@
       emit();
 
       try {
-        await sendOne(next);
+        var landed = await sendOne(next);
+        if (next.after) await runAfter(next, landed);
         await api.remove(next.id);
       } catch (err) {
         delete _live[next.id];
@@ -240,9 +247,10 @@
     }
     var total = rec.blob.size;
     var pos = rec.sent || 0;
+    var landed = null;
     while (pos < total) {
       var end = Math.min(pos + CHUNK, total);
-      await putChunk(rec, session, pos, end, total);
+      landed = await putChunk(rec, session, pos, end, total);
       pos = end;
       rec.sent = pos;
       _live[rec.id] = pos;
@@ -250,6 +258,24 @@
       emit();
     }
     delete _live[rec.id];
+    return landed;                 // the created driveItem, from the last chunk
+  }
+
+  /* Tie the uploaded file back to the row that needed it. Runs before the queue
+     entry is dropped, so a failure here leaves the item queued and it is tried
+     again rather than the row being left pointing at nothing. */
+  async function runAfter(rec, landed) {
+    var a = rec.after || {};
+    if (!a.op || !a.itemId) return;
+    var itemId = landed && (landed.id || (landed.driveItem && landed.driveItem.id));
+    if (!itemId) throw new Error("The upload finished but returned no file id");
+    var fields = {};
+    if (a.field) fields[a.field] = String(itemId);
+    if (a.nameField) fields[a.nameField] = rec.name;
+    await DCR.api("/api/portal?action=" + (a.action || "project"), {
+      method: "POST",
+      body: { op: a.op, itemId: a.itemId, fields: fields },
+    });
   }
 
   function putChunk(rec, session, start, end, total) {
@@ -266,7 +292,13 @@
         if (pct !== lastPct) { lastPct = pct; emit(); }
       };
       x.onload = function () {
-        if (x.status === 200 || x.status === 201 || x.status === 202) return resolve();
+        if (x.status === 200 || x.status === 201 || x.status === 202) {
+          // The final chunk answers with the created driveItem; the earlier
+          // ones answer 202 with a range list. Either way, never throw here.
+          var body = null;
+          try { body = x.responseText ? JSON.parse(x.responseText) : null; } catch (e) {}
+          return resolve(body);
+        }
         if (x.status === 404 || x.status === 410) {
           // the session expired — start it over on the next attempt
           rec.session = null; rec.sent = 0;

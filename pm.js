@@ -134,6 +134,332 @@
      so they never roll into a lane — which is exactly why they need somewhere
      visible to live, instead of quietly widening the gap between estimated
      and actual. */
+  /* ── the money band ────────────────────────────────────────────────────
+     Two columns, one per direction of travel. Left is what the client owes us;
+     right is what we owe everybody else. The question a project manager asks on
+     a Friday — "what have we billed, and what do I have to pay?" — should be
+     answerable without opening anything.
+
+     Actions sit on the rows rather than behind a menu: approving a bill is the
+     single most common thing done here, and it should be one deliberate click,
+     never two casual ones. */
+  var MONEY_KINDS = ["Subcontractor", "Material supplier", "Equipment", "Other"];
+
+  function invState(iv) {
+    if (iv.invoicePaid) return { cls: "ok", text: "Paid" + (iv.invoicePaidDate ? " " + C.fmtDay(iv.invoicePaidDate) : "") };
+    if (iv.invoiceSent) {
+      var over = iv.invoiceDueDate && String(iv.invoiceDueDate) < todayISO();
+      return { cls: over ? "bad" : "due",
+        text: over ? "Overdue since " + C.fmtDay(iv.invoiceDueDate)
+                   : "Sent" + (iv.invoiceSentDate ? " " + C.fmtDay(iv.invoiceSentDate) : "") };
+    }
+    return { cls: "draft", text: "Not sent yet" };
+  }
+
+  function billState(b) {
+    var owed = Number(b.owedAmount) || 0;
+    if (!String(b.approvedDate || "").trim()) return { cls: "wait", text: "Waiting for approval" };
+    if (owed <= 0) return { cls: "ok", text: "Paid" };
+    if (b.expenseDueDate && String(b.expenseDueDate) < todayISO()) {
+      return { cls: "bad", text: "Overdue since " + C.fmtDay(b.expenseDueDate) };
+    }
+    return { cls: "due", text: b.expenseDueDate ? "Due " + C.fmtDay(b.expenseDueDate) : "Approved" };
+  }
+
+  function moneyPanel() {
+    var p = state.payload || {};
+    if (p.pricesHidden || (!p.invoices && !p.bills)) return "";
+    var invs = p.invoices || [], bills = p.bills || [], can = p.can || {};
+
+    var inRows = invs.length
+      ? invs.map(function (iv) {
+          var st = invState(iv);
+          return '<div class="mn-row" data-inv="' + esc(iv.id) + '" tabindex="0">' +
+            '<span class="mn-dot ' + st.cls + '"></span>' +
+            '<span class="mn-main"><b>' + esc(iv.invoiceNumber ? "#" + iv.invoiceNumber : (iv.title || "Invoice")) + "</b>" +
+              '<span class="mn-sub">' + esc(iv.invoiceClientName || "") + "</span></span>" +
+            '<span class="mn-amt">' + C.money(iv.invoiceAmount) + "</span>" +
+            '<span class="mn-st ' + st.cls + '">' + esc(st.text) + "</span></div>";
+        }).join("")
+      : '<div class="mn-none">Nothing invoiced to the client yet.</div>';
+
+    var outRows = bills.length
+      ? bills.map(function (b) {
+          var st = billState(b);
+          var who = b.expenseVendorCompany || b.expenseVendorName || "(no vendor)";
+          var approved = !!String(b.approvedDate || "").trim();
+          var hasDoc = !!String(b.documentItemId || "").trim();
+          var owed = Number(b.owedAmount) || 0;
+          var acts = "";
+          if (hasDoc) acts += '<button class="mn-b" data-doc="' + esc(b.documentItemId) + '" title="Open the invoice">📄</button>';
+          else if (can.bills) acts += '<button class="mn-b warn" data-attach="' + esc(b.id) + '" title="No document attached — add one">📎</button>';
+          if (can.approve && !approved) {
+            acts += '<button class="mn-b go" data-approve="' + esc(b.id) + '"' +
+              (hasDoc ? "" : ' disabled title="Attach the invoice before approving"') + ">Approve</button>";
+          }
+          if (can.pay && approved && owed > 0) acts += '<button class="mn-b go" data-pay="' + esc(b.id) + '">Pay</button>';
+          return '<div class="mn-row" data-bill="' + esc(b.id) + '">' +
+            '<span class="mn-dot ' + st.cls + '"></span>' +
+            '<span class="mn-main"><b>' + esc(who) + "</b>" +
+              '<span class="mn-sub">' + esc([b.expenseInvoiceNumber ? "#" + b.expenseInvoiceNumber : "",
+                b.expenseKind, b.expenseDescription].filter(Boolean).join(" · ")) + "</span></span>" +
+            '<span class="mn-amt">' + C.money(b.expenseAmount) +
+              ((Number(b.paidAmount) || 0) > 0 && owed > 0
+                ? '<span class="mn-sub">' + C.money(b.paidAmount) + " paid</span>" : "") + "</span>" +
+            '<span class="mn-st ' + st.cls + '">' + esc(st.text) +
+              (approved ? '<span class="mn-by">' + esc(b.approvedByName || "?") + "</span>" : "") + "</span>" +
+            '<span class="mn-acts">' + acts + "</span></div>";
+        }).join("")
+      : '<div class="mn-none">No bills recorded yet.</div>';
+
+    var sum = function (rows, fn) { return rows.reduce(function (t, r) { return t + (Number(fn(r)) || 0); }, 0); };
+    var inSent = sum(invs, function (i) { return i.invoiceSent ? i.invoiceAmount : 0; });
+    var inPaid = sum(invs, function (i) { return i.invoicePaid ? i.invoiceAmount : 0; });
+    var outAll = sum(bills, function (b) { return b.expenseAmount; });
+    var outWait = sum(bills, function (b) { return String(b.approvedDate || "").trim() ? 0 : b.expenseAmount; });
+    var outOwed = sum(bills, function (b) { return String(b.approvedDate || "").trim() ? b.owedAmount : 0; });
+
+    return '<div class="pm-money-band">' +
+      '<section class="mn-col">' +
+        "<header><h3>Money in <span>invoices we sent the client</span></h3>" +
+        (can.invoices ? '<button class="btn btn-sm" id="mnAddInv">+ Invoice</button>' : "") + "</header>" +
+        '<div class="mn-list">' + inRows + "</div>" +
+        "<footer><span>Invoiced <b>" + C.money(inSent) + "</b></span>" +
+          "<span>Collected <b>" + C.money(inPaid) + "</b></span>" +
+          '<span class="mn-gap">Outstanding <b>' + C.money(inSent - inPaid) + "</b></span></footer>" +
+      "</section>" +
+      '<section class="mn-col">' +
+        "<header><h3>Money out <span>bills from subs &amp; suppliers</span></h3>" +
+        (can.bills ? '<button class="btn btn-sm" id="mnAddBill">+ Bill</button>' : "") + "</header>" +
+        '<div class="mn-list">' + outRows + "</div>" +
+        "<footer><span>Billed to us <b>" + C.money(outAll) + "</b></span>" +
+          '<span class="' + (outWait > 0 ? "warn" : "") + '">Awaiting approval <b>' + C.money(outWait) + "</b></span>" +
+          '<span class="mn-gap ' + (outOwed > 0 ? "warn" : "") + '">Still to pay <b>' + C.money(outOwed) + "</b></span></footer>" +
+      "</section></div>";
+  }
+
+  /* ── money actions ──────────────────────────────────────────────────────
+     None of these are auto-saved. DCR.live is for typing into a field that
+     already exists; creating, approving and paying are decisions. */
+  function mnPost(op, body) {
+    return DCR.api("/api/portal?action=project", { method: "POST", body: Object.assign({ op: op }, body) });
+  }
+  function billById(id) {
+    var found = null;
+    ((state.payload || {}).bills || []).forEach(function (b) { if (String(b.id) === String(id)) found = b; });
+    return found;
+  }
+  var YESNO = [{ value: "no", label: "No" }, { value: "yes", label: "Yes" }];
+
+  async function mnAddInvoice() {
+    var v = await DCR.modal({
+      title: "Invoice the client", okText: "Create",
+      fields: [
+        { name: "invoiceNumber", label: "Invoice number" },
+        { name: "invoiceAmount", label: "Amount", type: "number", step: "0.01" },
+        { name: "invoiceClientName", label: "Client",
+          value: (state.payload.project || {}).projectClientName || "" },
+        { name: "invoiceDueDate", label: "Due date", type: "date" },
+        { name: "sent", label: "Already sent to the client?", type: "select", options: YESNO, value: "yes" },
+      ],
+      validate: function (x) { return Number(x.invoiceAmount) > 0 ? null : "Put in the invoice amount."; },
+    });
+    if (!v) return;
+    var fields = {
+      title: v.invoiceNumber ? "Invoice " + v.invoiceNumber : "Invoice",
+      invoiceNumber: v.invoiceNumber, invoiceAmount: Number(v.invoiceAmount),
+      invoiceClientName: v.invoiceClientName, invoiceDueDate: v.invoiceDueDate,
+      invoiceSent: v.sent === "yes",
+    };
+    // a dateTime column rejects "" outright, so only send a date we have
+    if (v.sent === "yes") fields.invoiceSentDate = todayISO() + "T12:00:00Z";
+    try { await mnPost("invAdd", { projectId: PID, fields: fields }); }
+    catch (e) { return DCR.alert(e.message || "Could not create that invoice."); }
+    load();
+  }
+
+  async function mnEditInvoice(id) {
+    var iv = null;
+    ((state.payload || {}).invoices || []).forEach(function (x) { if (String(x.id) === String(id)) iv = x; });
+    if (!iv || !(state.payload.can || {}).invoices) return;
+    var v = await DCR.modal({
+      title: "Invoice " + (iv.invoiceNumber ? "#" + iv.invoiceNumber : ""), okText: "Save",
+      fields: [
+        { name: "invoiceAmount", label: "Amount", type: "number", step: "0.01", value: String(iv.invoiceAmount || "") },
+        { name: "sent", label: "Sent to the client", type: "select", options: YESNO, value: iv.invoiceSent ? "yes" : "no" },
+        { name: "paid", label: "Client has paid it", type: "select", options: YESNO, value: iv.invoicePaid ? "yes" : "no" },
+        { name: "paidDate", label: "Date paid", type: "date", value: String(iv.invoicePaidDate || "").slice(0, 10) },
+        { name: "invoiceDueDate", label: "Due date", type: "date", value: iv.invoiceDueDate || "" },
+      ],
+    });
+    if (!v) return;
+    var fields = {
+      invoiceAmount: Number(v.invoiceAmount) || 0,
+      invoiceSent: v.sent === "yes", invoicePaid: v.paid === "yes",
+      invoiceDueDate: v.invoiceDueDate,
+    };
+    if (v.sent === "yes" && !iv.invoiceSentDate) fields.invoiceSentDate = todayISO() + "T12:00:00Z";
+    if (v.paid === "yes") fields.invoicePaidDate = (v.paidDate || todayISO()) + "T12:00:00Z";
+    try { await mnPost("invUpdate", { itemId: iv.id, fields: fields }); }
+    catch (e) { return DCR.alert(e.message || "Could not save that invoice."); }
+    load();
+  }
+
+  async function mnAddBill() {
+    var v = await DCR.modal({
+      title: "Log a bill we received", okText: "Save",
+      fields: [
+        { name: "who", label: "Who sent it" },
+        { name: "kind", label: "Kind", type: "select", options: MONEY_KINDS, value: "Subcontractor" },
+        { name: "num", label: "Their invoice number" },
+        { name: "amount", label: "Amount", type: "number", step: "0.01" },
+        { name: "invDate", label: "Invoice date", type: "date", value: todayISO() },
+        { name: "dueDate", label: "Due date", type: "date" },
+        { name: "what", label: "What it is for", type: "textarea", rows: 2 },
+      ],
+      validate: function (x) {
+        if (!String(x.who || "").trim()) return "Say who sent the bill.";
+        if (!(Number(x.amount) > 0)) return "Put in the amount.";
+        return null;
+      },
+    });
+    if (!v) return;
+    var r;
+    try {
+      r = await mnPost("bilAdd", { projectId: PID, fields: {
+        title: v.who + (v.num ? " " + v.num : ""),
+        expenseVendorCompany: v.who, expenseKind: v.kind, expenseInvoiceNumber: v.num,
+        expenseAmount: Number(v.amount), expenseInvoiceDate: v.invDate,
+        expenseDueDate: v.dueDate, expenseDescription: v.what,
+      } });
+    } catch (e) { return DCR.alert(e.message || "Could not save that bill."); }
+    await load();
+    // straight on to the paperwork: it cannot be approved without it
+    if (r && r.id) mnAttach(String(r.id));
+  }
+
+  /* The scan or photo of the bill goes through the same queue the site photos
+     use, so a receipt photographed in a truck with no signal is already safe,
+     and the row is wired to the file when it finally lands. */
+  function mnAttach(billId) {
+    var inp = document.createElement("input");
+    inp.type = "file";
+    inp.accept = "image/*,application/pdf";
+    inp.style.display = "none";
+    document.body.appendChild(inp);
+    inp.onchange = async function () {
+      var f = inp.files && inp.files[0];
+      inp.remove();
+      if (!f) return;
+      var stamp = new Date().toISOString().slice(0, 16).replace("T", " ").replace(/:/g, ".");
+      var ext = (/\.([A-Za-z0-9]{2,5})$/.exec(f.name || "") || [0, "pdf"])[1].toLowerCase();
+      try {
+        await DCR.uploadQueue.add({
+          pid: PID, target: "receipts", mime: f.type || "", blob: f,
+          name: "BILL " + stamp + " " + billId + "." + ext,
+          tag: "bill:" + billId,
+          // wires DocumentItemId onto the bill once the bytes land — declarative,
+          // so it still happens if the tab is closed mid-upload
+          after: { action: "project", op: "bilUpdate", itemId: String(billId),
+                   field: "documentItemId", nameField: "documentName" },
+        });
+      } catch (e) { return DCR.alert(e.message || "Could not take that file."); }
+      await DCR.alert("Saved on this device and uploading now. Once it lands you can approve the bill.",
+        { title: "Document attached" });
+      setTimeout(load, 2500);
+    };
+    inp.click();
+  }
+
+  async function mnApprove(id) {
+    var b = billById(id);
+    if (!b) return;
+    var v = await DCR.modal({
+      title: "Approve " + C.money(b.expenseAmount) + "?",
+      message: "This authorizes " + (b.expenseVendorCompany || "this vendor") +
+        " to be paid. Your name and today's date are recorded against the bill.",
+      okText: "Approve for payment",
+      fields: [{ name: "note", label: "Note (optional)" }],
+    });
+    if (!v) return;
+    try {
+      var r = await mnPost("billApprove", { itemId: id, note: v.note });
+      if (r && r.alreadyApproved) {
+        await DCR.alert("Already approved by " + (r.approvedByName || "someone") +
+          " on " + (r.approvedDate || "an earlier date") + ".", { title: "Already approved" });
+      }
+    } catch (e) {
+      return DCR.alert(e.message || "Could not approve that bill.", { title: "Not approved" });
+    }
+    load();
+  }
+
+  async function mnPay(id) {
+    var b = billById(id);
+    if (!b) return;
+    var owed = Number(b.owedAmount) || 0;
+    var v = await DCR.modal({
+      title: "Record a payment",
+      message: "Still owed on this bill: " + C.money(owed),
+      okText: "Record it",
+      fields: [
+        { name: "amount", label: "Amount paid", type: "number", step: "0.01", value: String(owed || "") },
+        { name: "how", label: "How", type: "select", value: "Check",
+          options: ["Check", "Card", "ACH / transfer", "Cash", "Other"] },
+        { name: "ref", label: "Check / reference number" },
+        { name: "notes", label: "Notes" },
+      ],
+      validate: function (x) {
+        var n = Number(x.amount);
+        if (!(n > 0)) return "Put in the amount paid.";
+        if (n > owed + 0.005) return "That is more than the " + C.money(owed) + " still owed on this bill.";
+        return null;
+      },
+    });
+    if (!v) return;
+    try {
+      await mnPost("payAdd", { projectId: PID, fields: {
+        paymentName: (b.expenseVendorCompany || "Payment") + (b.expenseInvoiceNumber ? " " + b.expenseInvoiceNumber : ""),
+        expenseID: Number(id), projectID: Number(PID),
+        paymentExpenseAmount: Number(v.amount), paymentMethod: v.how,
+        paymentReference: v.ref, paymentPaidNotes: v.notes, paymentPAID: true,
+      } });
+    } catch (e) {
+      return DCR.alert(e.message || "Could not record that payment.", { title: "Not recorded" });
+    }
+    load();
+  }
+
+  async function mnViewDoc(itemId) {
+    try {
+      var d = await DCR.api("/api/portal?action=drive&fileInfo=" + encodeURIComponent(itemId));
+      // a pre-authed URL, so a big scan opens without going through the API
+      var url = d && (d.downloadUrl || d.webUrl);
+      if (url) window.open(url, "_blank", "noopener");
+      else await DCR.alert("That document could not be opened.");
+    } catch (e) { await DCR.alert(e.message || "That document could not be opened."); }
+  }
+
+  function wireMoney() {
+    var a = el("mnAddInv"); if (a) a.onclick = mnAddInvoice;
+    var b = el("mnAddBill"); if (b) b.onclick = mnAddBill;
+    document.querySelectorAll("[data-doc]").forEach(function (n) {
+      n.onclick = function (e) { e.stopPropagation(); mnViewDoc(n.getAttribute("data-doc")); };
+    });
+    document.querySelectorAll("[data-attach]").forEach(function (n) {
+      n.onclick = function (e) { e.stopPropagation(); mnAttach(n.getAttribute("data-attach")); };
+    });
+    document.querySelectorAll("[data-approve]").forEach(function (n) {
+      n.onclick = function (e) { e.stopPropagation(); mnApprove(n.getAttribute("data-approve")); };
+    });
+    document.querySelectorAll("[data-pay]").forEach(function (n) {
+      n.onclick = function (e) { e.stopPropagation(); mnPay(n.getAttribute("data-pay")); };
+    });
+    document.querySelectorAll("[data-inv]").forEach(function (n) {
+      n.onclick = function () { mnEditInvoice(n.getAttribute("data-inv")); };
+    });
+  }
+
   function extrasPanel() {
     var p = state.payload, m = state.model;
     if (!p.expenses || m.pricesHidden) return "";
@@ -269,14 +595,42 @@
     if (!m.pricesHidden && p.items) {
       var est = 0, com = 0, inv = 0, paid = 0;
       m.lanes.forEach(function (l) { est += l.estTotal || 0; com += l.awarded || 0; inv += l.invoiced || 0; paid += l.paid || 0; });
-      var cards = [["Estimate", est], ["Committed to subs", com], ["Sub invoices", inv], ["Paid to subs", paid]];
-      if (p.payments) {
-        var billed = 0, collected = 0;
-        p.payments.forEach(function (x) { billed += x.paymentInvoiceAmount; if (x.paymentPAID) collected += x.paymentInvoiceAmount; });
-        cards.push(["Billed to client", billed], ["Collected", collected]);
+      var cards = [["Estimate", est], ["Committed to subs", com]];
+      /* Money in: what we invoiced the client and what they have paid.
+         Invoices is the record; Payments used to double as both and is now the
+         disbursement log, so it is deliberately not summed here. */
+      if (p.invoices) {
+        var billedOut = 0, collected = 0;
+        p.invoices.forEach(function (iv) {
+          var amt = Number(iv.invoiceAmount) || 0;
+          if (iv.invoiceSent) billedOut += amt;
+          if (iv.invoicePaid) collected += amt;
+        });
+        cards.push(["Billed to client", billedOut], ["Collected", collected]);
+      }
+      /* Money out. "Awaiting approval" and "Due to pay" are the two numbers a
+         project manager actually acts on, so they get their own tiles. */
+      if (p.bills) {
+        var billedIn = 0, waitAmt = 0, waitN = 0, dueAmt = 0, overdueAmt = 0;
+        var today = new Date().toISOString().slice(0, 10);
+        p.bills.forEach(function (b) {
+          var amt = Number(b.expenseAmount) || 0;
+          billedIn += amt;
+          if (!String(b.approvedDate || "").trim()) { waitAmt += amt; waitN += 1; return; }
+          var owe = Number(b.owedAmount) || 0;
+          dueAmt += owe;
+          if (owe > 0 && b.expenseDueDate && String(b.expenseDueDate) < today) overdueAmt += owe;
+        });
+        cards.push(["Billed to us", billedIn]);
+        cards.push(["Awaiting approval", waitAmt, waitN ? waitN + (waitN === 1 ? " bill" : " bills") : "", waitN ? "warn" : ""]);
+        cards.push(["Due to pay", dueAmt, overdueAmt > 0 ? C.money(overdueAmt) + " overdue" : "", overdueAmt > 0 ? "bad" : ""]);
+      } else {
+        cards.push(["Sub invoices", inv], ["Paid to subs", paid]);
       }
       money = '<div class="pm-cards">' + cards.map(function (c) {
-        return '<div class="pm-card"><div class="k">' + esc(c[0]) + '</div><div class="v">' + C.money(c[1]) + "</div></div>";
+        return '<div class="pm-card' + (c[3] ? " " + c[3] : "") + '"><div class="k">' + esc(c[0]) + "</div>" +
+          '<div class="v">' + C.money(c[1]) + "</div>" +
+          (c[2] ? '<div class="n">' + esc(c[2]) + "</div>" : "") + "</div>";
       }).join("") + "</div>";
     }
 
@@ -339,9 +693,10 @@
           (document.fullscreenElement ? "✕ Exit full screen" : "⛶ Full screen") + "</button>" +
         '<span class="pm-legend">✓ Done · ● In progress · ⚠ Waiting · ◌ Not started</span>' +
       "</div>" +
-      chart + extrasPanel() + tasksPanel() + empty;
+      chart + moneyPanel() + extrasPanel() + tasksPanel() + empty;
 
     wire(compact);
+    wireMoney();
   }
 
   function wire(compact) {

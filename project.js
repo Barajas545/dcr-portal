@@ -1041,12 +1041,17 @@
       var rows = d.rows||[]; var canEdit = !!d.canEdit;
       state.payRows = rows;
       var cols = canEdit ? 7 : 6;
+      /* A payment now has to say which bill it settles — that link is what
+         makes "approved before paid" enforceable, and what makes "still owed"
+         computable. So it is recorded from the money band on the progress
+         chart, beside the bill, rather than from a free-standing form here. */
       var bar = '<div class="pj-bar">' +
-        (canEdit?'<button class="pj-btn pj-btn-primary pj-btn-sm" id="payAddBtn">＋ New payment</button>':"") +
-        '<span class="pj-sub">'+rows.length+' payment records</span></div>';
+        (canEdit?'<a class="pj-btn pj-btn-primary pj-btn-sm" href="pm.html?id='+encodeURIComponent(PID)+'">＋ Record a payment</a>':"") +
+        '<span class="pj-sub">'+rows.length+' payment records</span>' +
+        (canEdit?'<span class="pj-sub">Payments are recorded against the bill they pay, on the progress chart.</span>':"") +
+        '</div>';
       if (!rows.length) {
         pane.innerHTML = bar + '<div class="pj-empty">No payment records for this project.</div>';
-        var ab0 = el("payAddBtn"); if (ab0) ab0.onclick = function(){ openSubModal("pay", null); };
         return;
       }
       var t = { est:0, inv:0, exp:0, paid:0 };
@@ -1070,7 +1075,6 @@
         '<td class="num">'+fmtMoney(t.est)+'</td><td class="num">'+fmtMoney(t.inv)+'</td><td class="num">'+fmtMoney(t.exp)+'</td><td></td><td></td>'+(canEdit?'<td></td>':"")+'</tr>';
       pane.innerHTML = bar +
         '<div class="pj-tblwrap"><table class="pj-tbl"><thead><tr><th>Payment</th><th class="num">Estimate</th><th class="num">Invoice</th><th class="num">Expense</th><th>Status</th><th>Notes</th>'+(canEdit?'<th></th>':"")+'</tr></thead><tbody>'+body+'</tbody></table></div>';
-      var ab = el("payAddBtn"); if (ab) ab.onclick = function(){ openSubModal("pay", null); };
       wireSubButtons(pane);
       pane.querySelectorAll("[data-pay-tgl]").forEach(function(b){
         b.onclick = async function(){

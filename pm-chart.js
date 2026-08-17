@@ -141,6 +141,7 @@
     // ── lanes ──
     var items = payload.items || [];
     var quotes = payload.quotes; // may be null
+    var bills = payload.bills;   // accounts payable; null when prices are hidden
     var hidden = !!payload.pricesHidden;
     var laneByKey = {}, laneOrder = [];
     items.forEach(function (it) { laneByKey[it.key] = null; laneOrder.push(it.key); });
@@ -168,6 +169,27 @@
       unlinkedQuotes.push(q);
     });
 
+    /* Bills we received land in a lane by the same three-step match as quotes:
+       the task row id, then the exact estimate+group pair, then the group name
+       alone. Anything matching nothing is money owed on this project that is not
+       attached to a scope item — kept and surfaced, never dropped. */
+    var billsBy = {}, unlinkedBills = [];
+    items.forEach(function (it) { billsBy[it.key] = []; });
+    (bills || []).forEach(function (b) {
+      var tid = b.taskItemID != null && b.taskItemID !== "" ? String(b.taskItemID) : "";
+      if (tid) {
+        for (var i = 0; i < items.length; i++) {
+          if (items[i].rowIds.indexOf(tid) !== -1) { billsBy[items[i].key].push(b); return; }
+        }
+      }
+      var est = String(b.taskEstimateName || ""), grp = String(b.taskGroupingName || "");
+      var exact = items.filter(function (it) { return it.estimateName === est && it.groupingName === grp; });
+      if (exact.length) { billsBy[exact[0].key].push(b); return; }
+      var byGrp = items.filter(function (it) { return it.groupingName === grp; });
+      if (byGrp.length) { b._ambiguous = byGrp.length > 1; billsBy[byGrp[0].key].push(b); return; }
+      unlinkedBills.push(b);
+    });
+
     function received(q) { return !!(q.quoteReceivedDate || Number(q.quoteAmount) > 0); }
 
     var lanes = items.map(function (it) {
@@ -192,6 +214,30 @@
       });
       var invDated = awardedRows.some(function (q) { return q.invoiceDate; });
       var paidDated = awardedRows.some(function (q) { return q.paidDate; });
+
+      /* Money out for this scope item, from the bills actually received.
+         `billed` is what was invoiced to us, `approvedAmt` the part somebody
+         authorized, `paidOut` what has left. Bills are the real record; the
+         amounts typed on an awarded quote are the older, coarser one, used only
+         when this lane has no bills at all. */
+      var laneBills = billsBy[it.key] || [];
+      var billed = 0, approvedAmt = 0, paidOut = 0, waiting = 0, owed = 0, overdueBill = false;
+      var todayStr = todayISO();
+      laneBills.forEach(function (b) {
+        var amt = Number(b.expenseAmount) || 0;
+        billed += amt;
+        paidOut += Number(b.paidAmount) || 0;
+        if (String(b.approvedDate || "").trim()) {
+          approvedAmt += amt;
+          owed += Number(b.owedAmount) || 0;
+        } else {
+          waiting += 1;
+        }
+        if (b.expenseDueDate && String(b.expenseDueDate) < todayStr && (Number(b.owedAmount) || 0) > 0) {
+          overdueBill = true;
+        }
+      });
+      var hasBills = laneBills.length > 0;
 
       function st(node) {
         // A1 quotes in
@@ -221,10 +267,16 @@
           return { s: "notStarted", chip: "" };
         }
         if (node === "B2") {
-          if (selfOnly && !awardedRows.length) return { s: "skipped", chip: "" };
+          if (selfOnly && !awardedRows.length && !hasBills) return { s: "skipped", chip: "" };
           var b1 = st("B1");
-          if (b1.s !== "done") return { s: "notStarted", chip: "" };
-          if (hidden) return invDated ? { s: "done", chip: "invoiced" } : { s: "inProgress", chip: "" };
+          if (b1.s !== "done" && !hasBills) return { s: "notStarted", chip: "" };
+          if (hidden) return (hasBills || invDated) ? { s: "done", chip: "billed" } : { s: "inProgress", chip: "" };
+          // A bill we were actually sent beats an amount typed on a quote.
+          if (hasBills) {
+            var blabel = money(billed, true) + (laneBills.length > 1 ? " ×" + laneBills.length : "");
+            if (awarded > 0 && billed > 1.001 * awarded) return { s: "attention", chip: blabel + " over" };
+            return { s: "done", chip: blabel };
+          }
           if (awarded > 0 && inv >= 0.999 * awarded) return { s: "done", chip: money(inv, true) };
           // With no agreed amount there is nothing to measure against, so an
           // invoice is unverified — not an overrun. Saying "$1.5k of $0" reads
@@ -233,21 +285,40 @@
           if (inv > 0) return { s: "attention", chip: money(inv, true) + " of " + money(awarded, true) };
           return { s: "inProgress", chip: "no invoice" };
         }
+        /* B3 — authorized to pay. The whole point of the approval: at a
+           glance, is money sitting here that nobody has signed off? */
         if (node === "B3") {
-          if (selfOnly && !awardedRows.length) return { s: "skipped", chip: "" };
-          if (hidden) return paidDated ? { s: "done", chip: "paid" } : ((invDated) ? { s: "inProgress", chip: "" } : { s: "notStarted", chip: "" });
-          if (inv > 0 && paid >= 0.999 * inv) return { s: "done", chip: money(paid, true) };
-          if (paid > 0) return { s: "attention", chip: money(paid, true) + " of " + money(inv, true) };
-          if (inv > 0) return { s: "inProgress", chip: "unpaid" };
+          if (!hasBills) {
+            if (selfOnly && !awardedRows.length) return { s: "skipped", chip: "" };
+            return { s: "notStarted", chip: "" };
+          }
+          if (waiting) return { s: "attention", chip: waiting + " waiting" };
+          if (hidden) return { s: "done", chip: "approved" };
+          return { s: "done", chip: money(approvedAmt, true) };
+        }
+        if (node === "B4") {
+          if (!hasBills) {
+            if (selfOnly && !awardedRows.length) return { s: "skipped", chip: "" };
+            // no bills on this lane: fall back to the older quote-based amounts
+            if (hidden) return paidDated ? { s: "done", chip: "paid" } : { s: "notStarted", chip: "" };
+            if (inv > 0 && paid >= 0.999 * inv) return { s: "done", chip: money(paid, true) };
+            if (paid > 0) return { s: "attention", chip: money(paid, true) + " of " + money(inv, true) };
+            if (inv > 0) return { s: "inProgress", chip: "unpaid" };
+            return { s: "notStarted", chip: "" };
+          }
+          if (hidden) return owed > 0 ? { s: "inProgress", chip: "" } : { s: "done", chip: "paid" };
+          if (approvedAmt > 0 && paidOut >= 0.999 * approvedAmt) return { s: "done", chip: money(paidOut, true) };
+          if (overdueBill) return { s: "attention", chip: money(owed, true) + " overdue" };
+          if (owed > 0) return { s: "inProgress", chip: money(owed, true) + " due" };
           return { s: "notStarted", chip: "" };
         }
         return { s: "notStarted", chip: "" };
       }
 
-      var nodes = { A1: st("A1"), A2: st("A2"), B1: st("B1"), B2: st("B2"), B3: st("B3") };
+      var nodes = { A1: st("A1"), A2: st("A2"), B1: st("B1"), B2: st("B2"), B3: st("B3"), B4: st("B4") };
       var flag = it.flag || null;
       if (flag && flag.state === "complete") {
-        ["A1", "A2", "B1", "B2", "B3"].forEach(function (k) {
+        ["A1", "A2", "B1", "B2", "B3", "B4"].forEach(function (k) {
           if (nodes[k].s !== "skipped") nodes[k] = { s: "done", chip: nodes[k].chip };
         });
       }
@@ -256,21 +327,29 @@
         : nodes.A1.s === "done" ? 60
         : requests.length ? 30 : 0;
       if (it.priced) pctA = 100;
+      /* Execution progress in four equal steps: awarded, billed, approved,
+         paid. (The three-step version assigned pctB three times in a row and
+         only the last one counted — the first two were dead code.) */
       var pctB = 0;
-      if (awardedRows.length || selfOnly) {
-        pctB = 33;
-        if (!hidden && awarded > 0) {
-          pctB = 33 + Math.min(1, inv / awarded) * 33;
-          if (inv > 0) pctB = 66 * Math.min(1, inv / awarded) / 2 + 33; // linear 33→66 by inv
-          pctB = 33 + 33 * Math.min(1, awarded ? inv / awarded : 0);
-          if (inv > 0) pctB += 34 * Math.min(1, paid / inv);
-        } else if (hidden) {
-          pctB = paidDated ? 100 : invDated ? 66 : 33;
+      if (awardedRows.length || selfOnly || hasBills) {
+        pctB = 25;
+        if (hidden) {
+          pctB = hasBills ? (owed > 0 ? (waiting ? 50 : 75) : 100)
+               : paidDated ? 100 : invDated ? 75 : 25;
+        } else if (hasBills) {
+          pctB = 25;
+          pctB += 25 * Math.min(1, awarded > 0 ? billed / awarded : 1);
+          if (billed > 0) pctB += 25 * Math.min(1, approvedAmt / billed);
+          if (approvedAmt > 0) pctB += 25 * Math.min(1, paidOut / approvedAmt);
+        } else if (awarded > 0) {
+          pctB += 25 * Math.min(1, inv / awarded);
+          if (inv > 0) pctB += 50 * Math.min(1, paid / inv);
         }
       }
       if (flag && flag.state === "complete") { pctA = 100; pctB = 100; }
       var attention = (!flag || flag.state !== "complete") &&
         (overdue || nodes.B2.s === "attention" || nodes.B3.s === "attention" ||
+          nodes.B4.s === "attention" ||
           (flag && (flag.state === "blocked" || flag.state === "important")));
 
       var assignees = it.assignees || [];
@@ -290,6 +369,9 @@
         colorSlot: groupSlot(it.groupingName),
         takeoff: it.takeoff || null,
         awarded: awarded, invoiced: inv, paid: paid,
+        // money out, from the bills we were actually sent
+        bills: laneBills, billed: billed, approvedAmt: approvedAmt,
+        paidOut: paidOut, owed: owed, waiting: waiting, overdueBill: overdueBill,
         nodes: nodes, pctA: pctA, pctB: Math.round(pctB), flag: flag, attention: attention,
       };
     });
@@ -354,7 +436,9 @@
       },
       overall: overall, pulseAt: pulseAt,
       quotesReady: !!payload.quotesReady, pricesHidden: hidden,
-      unlinkedQuotes: unlinkedQuotes, unassignedCosts: unassignedCosts, unassignedRows: unassignedRows,
+      unlinkedQuotes: unlinkedQuotes, unlinkedBills: unlinkedBills,
+      invoices: payload.invoices || null, bills: bills,
+      unassignedCosts: unassignedCosts, unassignedRows: unassignedRows,
       statusDates: statusDates,
       attentionCount: lanes.filter(function (l) { return l.attention; }).length,
     };
@@ -381,7 +465,7 @@
     var n = lanes.length;
     var expA = model.regions.expandedA, expB = model.regions.expandedB;
     var spanA = expA ? LEAD + 2 * NODE_W + GAP : 210;
-    var spanB = expB ? LEAD + 3 * NODE_W + 2 * GAP : 210;
+    var spanB = expB ? LEAD + 4 * NODE_W + 3 * GAP : 210;
     var x = {};
     x.M1 = 40; x.M2 = 150; x.M3 = 260;
     x.Astart = x.M3 + 46;
@@ -394,7 +478,7 @@
     var nodeX = { A: [], B: [] };
     var ax = x.Astart + LEAD, bx = x.Bstart + LEAD;
     nodeX.A = [ax, ax + NODE_W + GAP];
-    nodeX.B = [bx, bx + NODE_W + GAP, bx + 2 * (NODE_W + GAP)];
+    nodeX.B = [bx, bx + NODE_W + GAP, bx + 2 * (NODE_W + GAP), bx + 3 * (NODE_W + GAP)];
     var cy = 58, y0 = 168;   // room for the milestone label + date at body size
     var showLanes = (expA || expB) && n > 0;
     var H = showLanes ? y0 + n * LANE_H + 40 : y0 + 40;
@@ -526,7 +610,7 @@
       var STROKE = { done: "var(--ok)", inProgress: "var(--acc)", attention: "var(--gold)", notStarted: "var(--border)", skipped: "var(--border)", na: "var(--border)" };
       var FILL = { done: "rgba(47,166,121,.10)", inProgress: "var(--tint)", attention: "rgba(214,161,58,.14)", notStarted: "transparent", skipped: "transparent", na: "transparent" };
       var A_LABELS = { A1: "Quotes", A2: "Priced" };
-      var B_LABELS = { B1: "Awarded", B2: "Invoiced", B3: "Paid" };
+      var B_LABELS = { B1: "Awarded", B2: "Billed to us", B3: "Approved", B4: "Paid" };
 
       // Item identity, drawn at the head of each region's lane: the color slot,
       // who it's assigned to, the group name, its labor/material scope and any
@@ -620,7 +704,11 @@
           s.push("</g>");
         }
         if (expA) { if (L.LABEL_W) laneLabel(x.Astart, y, l); node(L.nodeX.A[0], "A1"); node(L.nodeX.A[1], "A2"); }
-        if (expB) { if (L.LABEL_W) laneLabel(x.Bstart, y, l); node(L.nodeX.B[0], "B1"); node(L.nodeX.B[1], "B2"); node(L.nodeX.B[2], "B3"); }
+        if (expB) {
+          if (L.LABEL_W) laneLabel(x.Bstart, y, l);
+          node(L.nodeX.B[0], "B1"); node(L.nodeX.B[1], "B2");
+          node(L.nodeX.B[2], "B3"); node(L.nodeX.B[3], "B4");
+        }
       });
     }
 
