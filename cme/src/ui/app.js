@@ -17,6 +17,9 @@ import { formatFeetInches, formatInches, formatSquareFeet } from '../core/units/
 import { parseConstructionLength } from '../core/units/parse-length.js';
 import { CommandStack, replaceDocument } from '../history/command-stack.js';
 import { adaptiveGridSpacing, createViewport, fitViewport, panViewport, zoomViewport } from '../rendering/viewport-controller.js';
+import { createBeam, addBeam, getBeams } from '../tools/beam/beam.js';
+import { createJoist, addJoist, getJoists, arrayObject, ON_CENTRE_SPACINGS, DEFAULT_SPACING_INCHES, DEFAULT_COPIES } from '../tools/joist-group/joist-group.js';
+import { createPost, createPillar, addPost, getPosts, getPillars } from '../tools/post-footing/post-footing.js';
 import { chamferVertex, clearEdgeOrientationConstraint, createDeckBoundary, findAdjacentMergeCandidate, getBoundaryCentroid, getBoundaryLifecycle, getEdgeOrientationConstraint, insertVertex, isEdgeLocked, isVertexLocked, markBoundaryEdited, mergeAdjacentVertices, moveVertexWithConstraints, offsetEdge, orthogonalizeBoundary, removeVertex, setEdgeLength, setEdgeLocked, setEdgeOrientationConstraint, setEdgeRole, setVertexLocked, splitEdgeIntoSegments, updateEdgeProperties, validateDeckBoundary } from '../tools/deck-boundary/deck-boundary.js';
 import { deleteDeckAssembly } from '../tools/deck-boundary/delete-deck-assembly.js';
 import { clearDeckBoardingDirection, deriveDeckBoardingSegments, getDeckBoarding, rotateDeckBoardingDirection, setDeckBoardingDirection } from '../tools/deck-boarding/deck-boarding.js';
@@ -95,6 +98,12 @@ let projectMenuOpen = false;
 let exportMenuOpen = false;
 let pendingProjectDeleteId = null;
 let catTool = 'line';
+/* Framing is one rail button with a sub-palette rather than four more rail
+   buttons: the rail is already nine deep and these four belong together. */
+let framingTool = 'joist';
+let framingDraft = null;
+let framingSpacing = DEFAULT_SPACING_INCHES;
+let framingCopies = DEFAULT_COPIES;
 let catDraft = null;
 let catPointer = null;
 let catSnapState = { type: 'none', label: 'Free', guides: [] };
@@ -241,6 +250,7 @@ function render() {
           <button class="tool-button ${mode === 'stair' ? 'active' : ''}" data-mode="stair" title="Attach stairs to a boundary edge" ${!current ? 'disabled' : ''}><span class="tool-icon">▰</span><span class="tool-label">Stairs</span></button>
           <button class="tool-button ${mode === 'railing' ? 'active' : ''}" data-mode="railing" title="Add railing along a construction edge" ${!current ? 'disabled' : ''}><span class="tool-icon">╥</span><span class="tool-label">Railing</span></button>
           <button class="tool-button ${mode === 'cat' ? 'active' : ''}" data-mode="cat" title="Create CAT construction references and field measurements"><span class="tool-icon">⌁</span><span class="tool-label">CAT CL</span></button>
+          <button class="tool-button ${mode === 'framing' ? 'active' : ''}" data-mode="framing" title="Beams, joists, posts and footings"><span class="tool-icon">▤</span><span class="tool-label">Framing</span></button>
           <div class="tool-spacer"></div>
           <button class="tool-button ${utilityPanel === 'visibility' ? 'active' : ''}" data-action="toggle-visibility-panel" title="Drawing layer visibility" aria-pressed="${utilityPanel === 'visibility'}"><span class="tool-icon">◉</span><span class="tool-label">Visibility</span></button>
           <button class="tool-button ${utilityPanel === 'snap' ? 'active' : ''}" data-action="toggle-snap-panel" title="Snap and precision controls" aria-pressed="${utilityPanel === 'snap'}"><span class="tool-icon">⌁</span><span class="tool-label">Snap</span></button>
@@ -258,6 +268,7 @@ function render() {
             ${mode === 'level-down' ? '<button class="button primary" data-action="cancel-level-down">Cancel Level Down</button>' : ''}
           </div>
           ${renderCatToolbar()}
+          ${renderFramingToolbar()}
           <svg class="model-canvas ${mode === 'draw' || mode === 'level-down' || mode === 'cat' ? 'drawing' : ''} ${mode === 'cat' ? 'cat' : ''} ${boardingDirectionMode ? 'board-direction' : ''}" viewBox="${viewport.x} ${viewport.y} ${viewport.width} ${viewport.height}" aria-label="Deck boundary modeling workspace"></svg>
           <div class="cursor-hud" aria-live="polite"><div class="hud-row"><span>Length</span><strong data-hud-length>—</strong></div><div class="hud-row"><span>Angle</span><strong data-hud-angle>—</strong></div><div class="hud-row snap"><span data-hud-snap-dot></span><strong data-hud-snap>Grid</strong></div><div class="hud-input" data-hud-input>Type a length</div></div>
           <div class="stair-live-hud" aria-live="polite"><div class="stair-live-label">TOTAL RISE</div><strong data-stair-live-rise>0″</strong><div class="stair-live-grid"><span><b data-stair-live-risers>—</b> risers</span><span><b data-stair-live-treads>—</b> treads</span><span><b data-stair-live-riser>—</b> each rise</span><span><b data-stair-live-tread>—</b> each tread</span><span class="stair-live-run"><b data-stair-live-run>—</b> total run</span></div><small data-stair-live-status>Release to build · 5″–7.5″ risers · 10″–11″ treads</small></div>
@@ -382,7 +393,7 @@ function renderContextPanel(current) {
       const assemblyLocked = localBoundary.vertices.some((vertex) => vertex.locked) || localBoundary.edges.some((edge) => edge.properties?.custom?.locked);
       const deleting = pendingDeckDeleteId === localBoundary.id;
       const boardingActive = boardingDirectionMode?.boundaryId === localBoundary.id;
-      return `<section class="context-object-panel"><div class="context-heading"><div><div class="eyebrow">Selected deck area</div><h2>${formatSquareFeet(localBoundary.computed.areaSquareInches)}${levelDown > 0 ? ` · ↓ ${formatInches(levelDown)}` : ''}</h2></div>${close}</div><label class="context-select"><span>Down level · local deck</span><div class="compound-field"><input id="boundary-level-down" value="${formatInches(levelDown)}"><button class="button" data-action="apply-boundary-level">Apply</button></div></label><div class="context-actions"><button class="button primary ${moveBoundaryMode?.boundaryId === localBoundary.id ? 'active-constraint' : ''}" data-action="move-deck-area" ${assemblyLocked ? 'disabled' : ''}>Move deck area</button><button class="button" data-action="toggle-decking">${deckingVisible ? 'Hide all decking' : 'Show all decking'}</button></div><div class="context-actions"><button class="button" data-action="make-boundary-90">Make 90° corners</button><button class="button" data-action="start-level-down">Add level down</button></div><div class="context-actions context-actions-3"><button class="button ${boardingActive ? 'active-constraint' : ''}" data-action="set-board-direction">${boardingActive ? '✓ Select line' : boarding ? 'Change direction' : 'Board direction'}</button><button class="button" data-action="rotate-board-direction" ${boarding ? '' : 'disabled'}>Rotate 90°</button><button class="button" data-action="clear-board-direction" ${boarding ? '' : 'disabled'}>Clear boards</button></div><div class="context-actions"><button class="button ${dimensionLeaderMode?.referenceId === selected.id ? 'active-constraint' : ''}" data-action="reposition-dimension-arrow">Reposition arrow</button><button class="button" data-action="reset-dimension-arrow">Reset arrow</button></div><div class="context-actions"><button class="button danger" data-action="toggle-selected-dimension">Delete dimension</button><button class="button" data-action="reset-dimension-position">Reset area position</button></div>${deleting ? '<div class="delete-confirmation"><strong>Delete this complete deck area?</strong><span>Attached stairs, railings, Level Down objects, and local dimensions will also be removed.</span><div class="context-actions"><button class="button danger" data-action="confirm-delete-deck">Confirm delete</button><button class="button" data-action="cancel-delete-deck">Cancel</button></div></div>' : '<button class="button danger context-full" data-action="request-delete-deck">Delete deck area</button>'}<div class="context-note">${assemblyLocked ? 'Unlock local nodes and edges before moving this deck.' : boarding ? `Boarding follows a ${formatInches(boarding.boardWidth)} board with a ${formatInches(boarding.gap)} gap.` : 'Select Board direction, then touch any construction line. Deck objects remain above the subtle board pattern.'}</div></section>`;
+      return `<section class="context-object-panel"><div class="context-heading"><div><div class="eyebrow">Selected deck area</div><h2>${formatSquareFeet(localBoundary.computed.areaSquareInches)}${levelDown > 0 ? ` · ↓ ${formatInches(levelDown)}` : ''}</h2></div>${close}</div><label class="context-select"><span>Down level · local deck</span><div class="compound-field"><input id="boundary-level-down" value="${formatInches(levelDown)}"><button class="button" data-action="apply-boundary-level">Apply</button></div></label><div class="context-actions"><button class="button primary ${moveBoundaryMode?.boundaryId === localBoundary.id ? 'active-constraint' : ''}" data-action="move-deck-area" ${assemblyLocked ? 'disabled' : ''}>Move deck area</button><button class="button" data-action="toggle-decking">${deckingVisible ? 'Hide all decking' : 'Show all decking'}</button></div><div class="context-actions"><button class="button" data-action="make-boundary-90">Make 90° corners</button><button class="button" data-action="start-level-down">Add level down</button></div><div class="context-actions"><button class="button ${localBoundary.metadata?.excludeFromDeckArea ? 'active-constraint' : ''}" data-action="toggle-bill-area" aria-pressed="${Boolean(localBoundary.metadata?.excludeFromDeckArea)}">${localBoundary.metadata?.excludeFromDeckArea ? '✗ Not billed' : '✓ Billed'}</button></div><div class="context-note">${localBoundary.metadata?.excludeFromDeckArea ? 'This area is drawn but kept OUT of the square footage the estimate prices. Use it for a shed pad, a roof outline, or anything you are not charging for.' : 'This area counts toward the square footage the estimate prices.'}</div><div class="context-actions context-actions-3"><button class="button ${boardingActive ? 'active-constraint' : ''}" data-action="set-board-direction">${boardingActive ? '✓ Select line' : boarding ? 'Change direction' : 'Board direction'}</button><button class="button" data-action="rotate-board-direction" ${boarding ? '' : 'disabled'}>Rotate 90°</button><button class="button" data-action="clear-board-direction" ${boarding ? '' : 'disabled'}>Clear boards</button></div><div class="context-actions"><button class="button ${dimensionLeaderMode?.referenceId === selected.id ? 'active-constraint' : ''}" data-action="reposition-dimension-arrow">Reposition arrow</button><button class="button" data-action="reset-dimension-arrow">Reset arrow</button></div><div class="context-actions"><button class="button danger" data-action="toggle-selected-dimension">Delete dimension</button><button class="button" data-action="reset-dimension-position">Reset area position</button></div>${deleting ? '<div class="delete-confirmation"><strong>Delete this complete deck area?</strong><span>Attached stairs, railings, Level Down objects, and local dimensions will also be removed.</span><div class="context-actions"><button class="button danger" data-action="confirm-delete-deck">Confirm delete</button><button class="button" data-action="cancel-delete-deck">Cancel</button></div></div>' : '<button class="button danger context-full" data-action="request-delete-deck">Delete deck area</button>'}<div class="context-note">${assemblyLocked ? 'Unlock local nodes and edges before moving this deck.' : boarding ? `Boarding follows a ${formatInches(boarding.boardWidth)} board with a ${formatInches(boarding.gap)} gap.` : 'Select Board direction, then touch any construction line. Deck objects remain above the subtle board pattern.'}</div></section>`;
     }
     if (reference?.kind === 'level-down-area') return renderLevelDownContext(reference.levelDown, reference.region, deckingVisible, close, true);
     return `<section class="context-object-panel"><div class="context-heading"><div><div class="eyebrow">Selected annotation</div><h2>Dimension</h2></div>${close}</div><div class="context-actions"><button class="button primary" data-action="edit-dimension">Edit object</button><button class="button" data-action="reset-dimension-position">Reset position</button></div><div class="context-actions"><button class="button ${dimensionLeaderMode?.referenceId === selected.id ? 'active-constraint' : ''}" data-action="reposition-dimension-arrow">Reposition arrow</button><button class="button" data-action="reset-dimension-arrow">Reset arrow</button></div><button class="button danger context-full" data-action="toggle-selected-dimension">Delete dimension</button></section>`;
@@ -427,6 +438,25 @@ function renderUtilityPopover() {
   if (!utilityPanel) return '';
   const content = utilityPanel === 'visibility' ? renderVisibilityControls() : renderSnapControls();
   return `<div class="utility-popover ${utilityPanel}" role="dialog" aria-label="${utilityPanel === 'visibility' ? 'Drawing layer visibility' : 'Snap controls'}"><button class="utility-close" data-action="close-utility-panel" aria-label="Close panel">×</button><div class="utility-popover-body">${content}</div></div>`;
+}
+
+function renderFramingToolbar() {
+  if (mode !== 'framing') return '';
+  const hint = framingDraft
+    ? 'Choose the far end'
+    : framingTool === 'post' || framingTool === 'pillar'
+      ? 'Tap to place'
+      : 'Tap each end of the run';
+  const chips = ON_CENTRE_SPACINGS.map((value) => `<button class="button ${framingSpacing === value ? 'primary' : 'ghost'}" data-action="framing-spacing-${value}" aria-pressed="${framingSpacing === value}">${value}″</button>`).join('');
+  const selectedFraming = selected.kind === 'framing' ? selected.id : null;
+  return `<div class="cat-toolbar" role="toolbar" aria-label="Framing tools"><div class="cat-toolbar-title"><strong>Framing</strong><small>${hint}</small></div>`
+    + `<button class="button ${framingTool === 'joist' ? 'primary' : 'ghost'}" data-action="framing-tool-joist" aria-pressed="${framingTool === 'joist'}">Joist</button>`
+    + `<button class="button ${framingTool === 'beam' ? 'primary' : 'ghost'}" data-action="framing-tool-beam" aria-pressed="${framingTool === 'beam'}">Beam</button>`
+    + `<button class="button ${framingTool === 'post' ? 'primary' : 'ghost'}" data-action="framing-tool-post" aria-pressed="${framingTool === 'post'}">Post</button>`
+    + `<button class="button ${framingTool === 'pillar' ? 'primary' : 'ghost'}" data-action="framing-tool-pillar" aria-pressed="${framingTool === 'pillar'}">Pillar</button>`
+    + `<span class="cat-toolbar-title"><small>On centre</small></span>${chips}`
+    + `<button class="button ${selectedFraming ? '' : 'ghost'}" data-action="framing-array" ${selectedFraming ? '' : 'disabled'} title="Repeat the selected member on centre">⧉ Repeat ×${framingCopies}</button>`
+    + `<button class="button ghost" data-action="close-framing-tool">Done</button></div>`;
 }
 
 function renderCatToolbar() {
@@ -755,8 +785,61 @@ function drawCanvas(svg, current, validation) {
       if (chamferDraft) renderChamferDimension(svg, chamferDraft);
     }
   }
+  renderFramingGraphics(svg);
   renderCatGraphics(svg);
   if (draft.length) renderDraft(svg);
+}
+
+/* Framing draws above the deck surface and below the dimensions, in the trade
+   colours the old tool used: beams green, joists a dashed amber, posts and
+   pillars solid squares. */
+function renderFramingGraphics(svg) {
+  const pick = (id) => (selected.kind === 'framing' && selected.id === id ? ' selected' : '');
+
+  getBeams(documentModel).forEach((beam) => {
+    svg.append(svgElement('line', {
+      x1: beam.start.x, y1: beam.start.y, x2: beam.end.x, y2: beam.end.y,
+      class: 'framing-beam' + pick(beam.id), 'data-framing-id': beam.id,
+    }));
+    svg.append(svgElement('line', {
+      x1: beam.start.x, y1: beam.start.y, x2: beam.end.x, y2: beam.end.y,
+      class: 'framing-hit', 'data-framing-id': beam.id,
+    }));
+  });
+
+  getJoists(documentModel).forEach((joist) => {
+    svg.append(svgElement('line', {
+      x1: joist.start.x, y1: joist.start.y, x2: joist.end.x, y2: joist.end.y,
+      class: 'framing-joist' + pick(joist.id), 'data-framing-id': joist.id,
+    }));
+    svg.append(svgElement('line', {
+      x1: joist.start.x, y1: joist.start.y, x2: joist.end.x, y2: joist.end.y,
+      class: 'framing-hit', 'data-framing-id': joist.id,
+    }));
+  });
+
+  getPosts(documentModel).forEach((post) => {
+    const half = 1.75;   // a 4x4 is 3.5 inches
+    svg.append(svgElement('rect', {
+      x: post.at.x - half, y: post.at.y - half, width: half * 2, height: half * 2,
+      class: 'framing-post' + pick(post.id), 'data-framing-id': post.id,
+    }));
+  });
+
+  getPillars(documentModel).forEach((pillar) => {
+    const half = (Number(pillar.sizeInches) || 6) / 2;
+    svg.append(svgElement('rect', {
+      x: pillar.at.x - half, y: pillar.at.y - half, width: half * 2, height: half * 2,
+      class: 'framing-pillar' + pick(pillar.id), 'data-framing-id': pillar.id,
+    }));
+  });
+
+  if (framingDraft && pointerWorld) {
+    svg.append(svgElement('line', {
+      x1: framingDraft.start.x, y1: framingDraft.start.y,
+      x2: pointerWorld.x, y2: pointerWorld.y, class: 'framing-draft',
+    }));
+  }
 }
 
 function renderCatGraphics(svg) {
@@ -1395,6 +1478,7 @@ function bindEvents() {
 
 function setMode(nextMode) {
   mode = nextMode;
+  framingDraft = null;
   utilityPanel = null;
   projectMenuOpen = false;
   exportMenuOpen = false;
@@ -1452,6 +1536,7 @@ function canvasPointerDown(svg, event) {
   const railingId = event.target.dataset.railingId;
   const levelDownSegmentId = event.target.dataset.levelDownSegmentId;
   const catObjectId = event.target.dataset.catObjectId;
+  const framingId = event.target.dataset.framingId;
   const catNoteId = event.target.dataset.catNoteId;
   const targetBoundaryId = event.target.dataset.boundaryId ?? boundaryForReference(vertexId ?? edgeId ?? dimensionId ?? levelDownSegmentId)?.id;
   if (moveBoundaryMode && event.button === 0) {
@@ -1464,6 +1549,18 @@ function canvasPointerDown(svg, event) {
     return;
   }
   activateBoundary(targetBoundaryId);
+  if (framingId && event.button === 0 && mode === 'select') {
+    event.preventDefault();
+    selected = { kind: 'framing', id: framingId };
+    message = 'Framing member selected · switch to Framing to repeat it on centre';
+    render();
+    return;
+  }
+  if (mode === 'framing' && event.button === 0) {
+    event.preventDefault();
+    placeFramingPoint(screenToWorld(svg, event), event.pointerType);
+    return;
+  }
   if (mode === 'cat' && event.button === 0) {
     event.preventDefault();
     placeCatPoint(screenToWorld(svg, event), event.pointerType, event, catObjectId);
@@ -1712,6 +1809,55 @@ function catCuttingSegments(excludedLineId = null) {
   })));
   const catSegments = getCatLines(documentModel).filter((line) => line.id !== excludedLineId).map((line) => ({ id: line.id, start: line.vertices[0], end: line.vertices[1] }));
   return [...boundarySegments, ...catSegments];
+}
+
+/* Beams and joists are two taps; posts and pillars are one. Snapping runs
+   through the same engine every other tool uses, so a joist lands on the beam
+   it sits on rather than near it. */
+function placeFramingPoint(raw, pointerType = 'mouse') {
+  const snapped = snapForPointer(raw, framingDraft?.start ?? null, [], new Set(), pointerType);
+  const point = snapped.point;
+
+  if (framingTool === 'post' || framingTool === 'pillar') {
+    const object = framingTool === 'post' ? createPost({ at: point }) : createPillar({ at: point });
+    selected = { kind: 'framing', id: object.id };
+    message = framingTool === 'post'
+      ? 'Post placed · it carries a base and three bags of concrete'
+      : 'Pillar placed';
+    commit(addPost(documentModel, object), framingTool === 'post' ? 'Place post' : 'Place pillar');
+    return;
+  }
+
+  if (!framingDraft) {
+    framingDraft = { start: point };
+    message = 'Choose the far end';
+    render();
+    return;
+  }
+
+  const start = framingDraft.start;
+  framingDraft = null;
+  if (Math.hypot(point.x - start.x, point.y - start.y) < 1) {
+    message = 'That run is too short to keep';
+    render();
+    return;
+  }
+  try {
+    if (framingTool === 'beam') {
+      const beam = createBeam({ start, end: point });
+      selected = { kind: 'framing', id: beam.id };
+      message = 'Beam placed';
+      commit(addBeam(documentModel, beam), 'Place beam');
+    } else {
+      const joist = createJoist({ start, end: point });
+      selected = { kind: 'framing', id: joist.id };
+      message = `Joist placed · use Repeat to run them at ${framingSpacing}″ on centre`;
+      commit(addJoist(documentModel, joist), 'Place joist');
+    }
+  } catch (error) {
+    message = error.message;
+    render();
+  }
 }
 
 function placeCatPoint(raw, pointerType = 'mouse', pointerEvent = null, targetCatObjectId = null) {
@@ -2658,6 +2804,49 @@ function handleAction(action, source = null) {
     persist();
     message = 'Local project deleted';
     render();
+    return;
+  }
+  if (action.startsWith('framing-tool-')) {
+    framingTool = action.slice('framing-tool-'.length);
+    framingDraft = null;
+    render();
+    return;
+  }
+  if (action.startsWith('framing-spacing-')) {
+    framingSpacing = Number(action.slice('framing-spacing-'.length)) || DEFAULT_SPACING_INCHES;
+    render();
+    return;
+  }
+  if (action === 'close-framing-tool') { framingDraft = null; setMode('select'); return; }
+  if (action === 'framing-array') {
+    if (selected.kind !== 'framing') return;
+    const before = documentModel.objects.length;
+    const next = arrayObject(documentModel, selected.id, {
+      spacingInches: framingSpacing, count: framingCopies, direction: 'perpendicular',
+    });
+    if (next.objects.length === before) {
+      message = 'That repeat was refused — check the spacing and the count';
+      render();
+      return;
+    }
+    message = `Repeated ${framingCopies}× at ${framingSpacing}″ on centre`;
+    // one commit for the whole array, so undo takes the whole array back
+    commit(next, `Repeat at ${framingSpacing}\u2033 on centre`);
+    return;
+  }
+  if (action === 'toggle-bill-area') {
+    /* The old tool decided what to bill from a shape's LABEL - tag it "Landing"
+       and it counted, tag it "Roof" and it dropped out. That was the rep's only
+       control over the price. CME counts every boundary, so without this switch
+       the control disappears silently. */
+    const target = boundary();
+    if (!target) return;
+    const excluded = !target.metadata?.excludeFromDeckArea;
+    message = excluded ? 'This area is no longer billed' : 'This area is billed again';
+    commit(upsertObject(documentModel, {
+      ...target,
+      metadata: { ...target.metadata, excludeFromDeckArea: excluded },
+    }), excluded ? 'Exclude area from billing' : 'Include area in billing');
     return;
   }
   if (action === 'save-step-one') { saveToStepOne(); return; }

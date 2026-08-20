@@ -503,3 +503,16 @@ button { color: inherit; }
   body.print-takeoff.takeoff-no-prices .takeoff-price, body.print-takeoff.takeoff-no-prices .takeoff-subtotal { display: none !important; }
   body.print-takeoff.takeoff-no-prices .takeoff-line { grid-template-columns: minmax(300px, 1fr) 90px; }
 }
+
+/* ── framing ──────────────────────────────────────────────────────────────
+   Trade colours carried over from the tool this replaces: beams green, joists
+   a dashed amber, posts and pillars solid. The -hit twin is a fat transparent
+   line so a fingertip can find a 1.5" member on a phone. */
+.framing-beam { stroke: #3fbf6f; stroke-width: 6; vector-effect: non-scaling-stroke; stroke-linecap: round; }
+.framing-joist { stroke: #d8b34a; stroke-width: 2; vector-effect: non-scaling-stroke; stroke-dasharray: 7 5; }
+.framing-post { fill: #cfd8dd; stroke: #6d7b83; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.framing-pillar { fill: #b9c6cd; stroke: #55636b; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.framing-draft { stroke: #7cc4ff; stroke-width: 2; vector-effect: non-scaling-stroke; stroke-dasharray: 6 4; }
+.framing-hit { stroke: transparent; stroke-width: 18; vector-effect: non-scaling-stroke; cursor: pointer; }
+.framing-beam.selected, .framing-joist.selected { stroke: #7cc4ff; }
+.framing-post.selected, .framing-pillar.selected { stroke: #7cc4ff; stroke-width: 2.5; }
