@@ -27,8 +27,20 @@ import { analyzeRailingGeometries, createRailingLine, deriveRailingGeometry, der
 import { TAKEOFF_CATEGORIES, addManualTakeoffLine, createTakeoffExport, getEffectiveTakeoffLines, removeManualTakeoffLine, resetTakeoffLine, updateTakeoffLine } from '../tools/takeoff/takeoff.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-const STORAGE_KEY = 'cme.project.v1';
-const PROJECT_LIBRARY_STORAGE_KEY = 'cme.project-library.v1';
+/* Storage is scoped per estimate when the portal hosts this.
+
+   The library key holds EVERY project on the device with an activeProjectId.
+   On a shared tablet that means opening estimate B lists estimate A's customer
+   by name in the switcher, and one wrong tap attaches the wrong deck to the
+   wrong quote. Scoping the key keeps each estimate's drawing to itself.
+   Standalone (no portal) keeps the original key, so existing local work is
+   still found. */
+const STORAGE_SCOPE = (typeof window !== 'undefined' && window.CME_STORAGE_SCOPE)
+  ? String(window.CME_STORAGE_SCOPE) : '';
+const SCOPE_SUFFIX = STORAGE_SCOPE && STORAGE_SCOPE !== 'standalone' ? '.' + STORAGE_SCOPE : '';
+const IN_PORTAL = typeof window !== 'undefined' && Boolean(window.CME_PORTAL);
+const STORAGE_KEY = 'cme.project.v1' + SCOPE_SUFFIX;
+const PROJECT_LIBRARY_STORAGE_KEY = 'cme.project-library.v1' + SCOPE_SUFFIX;
 const app = document.querySelector('#app');
 let history = new CommandStack();
 let projectLibrary = loadProjectLibrary();
@@ -209,7 +221,10 @@ function render() {
     <main class="app-shell">
       <header class="topbar">
         <div class="brand"><div class="brand-mark">CME</div><div class="brand-copy"><div class="brand-name">Construction Modeling Engine</div><div class="brand-subtitle">${progress.stage.label} · One evolving project</div></div></div>
-        <div class="project-switcher"><button class="project-switcher-button ${projectMenuOpen ? 'active' : ''}" data-action="toggle-project-menu" aria-expanded="${projectMenuOpen}"><span class="saved-dot"></span><span>${escapeHtml(documentModel.name)}</span><small>Saved locally</small><b>⌄</b></button>${renderProjectMenu()}</div>
+        <div class="project-switcher">${IN_PORTAL
+          ? `<div class="project-switcher-button" aria-hidden="true"><span class="saved-dot"></span><span>${escapeHtml(documentModel.name)}</span><small>${escapeHtml(window.CME_PORTAL?.clientName || 'Saved locally')}</small></div>`
+          : `<button class="project-switcher-button ${projectMenuOpen ? 'active' : ''}" data-action="toggle-project-menu" aria-expanded="${projectMenuOpen}"><span class="saved-dot"></span><span>${escapeHtml(documentModel.name)}</span><small>Saved locally</small><b>⌄</b></button>${renderProjectMenu()}`
+        }</div>
         <div class="project-summary" aria-label="Project totals"><div class="top-metric"><span>Project surface</span><strong>${formatSquareFeet(projectSurface)}</strong></div><div class="top-metric"><span>Deck areas</span><strong>${deckAreaCount}</strong></div></div>
         <div class="top-actions"><button class="button primary save-step-one" data-action="save-step-one">Save to Step 1</button><div class="export-control"><button class="button ghost export-toggle ${exportMenuOpen ? 'active-constraint' : ''}" data-action="toggle-export-menu" aria-expanded="${exportMenuOpen}"><span class="export-long">Export options</span><span class="export-short">Export</span> ⌄</button>${renderExportMenu()}</div></div>
       </header>

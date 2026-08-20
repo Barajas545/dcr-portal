@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!-- A drawing tool: pinch must zoom the model, not the page. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <title>DCR — Drawing</title>
+    <!--
+      CME's stylesheet only. It declares color-scheme:dark and font-family on
+      bare :root and styles bare h2/small/button; the portal's styles.css
+      declares a LIGHT token set on the same :root with a dark media override.
+      Loading both is a fight over :root that resolves by source order and
+      breaks in exactly one of the two OS themes. This is a full-bleed dark
+      tool, so it owns the page.
+    -->
+    <link rel="stylesheet" href="./cme/src/ui/styles.css" />
+    <style>
+      /* Full-viewport, no portal chrome — the same shape planview.html uses. */
+      html, body { height: 100%; margin: 0; overscroll-behavior: none; }
+      #app { height: 100dvh; }
+      /* Shown only if the module graph fails to load, so a blank screen is
+         never the whole story. */
+      #cmeBootError {
+        display: none; position: fixed; inset: 0; z-index: 9999;
+        background: #0d1114; color: #e6edf3; padding: 28px;
+        font: 14px/1.6 system-ui, Segoe UI, Arial, sans-serif;
+      }
+      #cmeBootError a { color: #7cc4ff; }
+      #cmeBootError code { color: #ffb86b; }
+    </style>
+    <link rel="manifest" href="manifest.json" />
+    <link rel="icon" type="image/png" href="icon-192.png" />
+    <link rel="apple-touch-icon" href="icon-180.png" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#0d1114" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0d1114" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="DCR Portal" />
+  </head>
+  <body>
+    <div id="app"></div>
+
+    <div id="cmeBootError">
+      <h2 style="margin:0 0 10px">The drawing tool could not start</h2>
+      <p id="cmeBootWhy"></p>
+      <p>
+        The first time this page is opened it has to download while online.
+        If you are in the field with no signal, open it once on Wi-Fi and it
+        will work offline afterwards.
+      </p>
+      <p><a href="estimates.html">← Back to estimates</a></p>
+    </div>
+
+    <!-- Classic scripts run to completion before any module, so window.DCR
+         exists by the time boot.js evaluates. -->
+    <script src="config.js"></script>
+    <script src="common.js"></script>
+    <script type="module" src="./cme/boot.js"></script>
+    <script>
+      // A failed module import is otherwise a silent blank screen.
+      window.addEventListener("error", function (e) {
+        if (!e || !e.target || e.target.tagName !== "SCRIPT") return;
+        var box = document.getElementById("cmeBootError");
+        var why = document.getElementById("cmeBootWhy");
+        if (why) why.textContent = "Could not load " + (e.target.src || "a required file") + ".";
+        if (box) box.style.display = "block";
+      }, true);
+    </script>
+  </body>
+</html>

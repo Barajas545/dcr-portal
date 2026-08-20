@@ -603,11 +603,34 @@
 
   window.DCR = DCR;
 
-  // Register the service worker so the portal is installable as an app and
-  // opens offline. Registered once; the browser scopes it to /dcr-portal/.
+  /* Register the service worker so the portal is installable and opens
+     offline.
+
+     The path is worked out from where THIS file was loaded, not from the page.
+     A relative "sw.js" resolves against the page's own directory, so a page in
+     a subfolder (cme.html's module tree, say) asked for /dcr-portal/cme/sw.js,
+     got a 404, and the .catch swallowed it — a cold install entered through
+     that page silently never registered a worker at all. common.js always sits
+     in the portal root, so its own URL is the reliable anchor, and unlike a
+     hardcoded "/dcr-portal/" it still works on localhost and on any other host. */
   if ("serviceWorker" in navigator) {
+    var portalRoot = (function () {
+      try {
+        var self = document.currentScript && document.currentScript.src;
+        if (!self) {
+          var tags = document.getElementsByTagName("script");
+          for (var i = 0; i < tags.length; i++) {
+            if (/(^|\/)common\.js(\?|$)/.test(tags[i].src || "")) { self = tags[i].src; break; }
+          }
+        }
+        return self ? new URL(".", self).href : null;
+      } catch (e) { return null; }
+    })();
     window.addEventListener("load", function () {
-      navigator.serviceWorker.register("sw.js").catch(function () { /* non-fatal */ });
+      if (!portalRoot) return;                       // nothing safe to register against
+      navigator.serviceWorker
+        .register(portalRoot + "sw.js", { scope: portalRoot })
+        .catch(function () { /* non-fatal */ });
     });
   }
 

@@ -3,7 +3,11 @@
    always up to date (no stale-cache surprises). Responses are cached only as an
    offline fallback. Cross-origin requests (the Vercel API) and non-GET requests
    (logins, saves) are never intercepted — they always hit the network directly. */
-const CACHE = "dcr-portal-v4";
+/* Bumped for the CME drawing tool: ~30 separate ES module files with no
+   content hashing, so a partially-filled old cache could serve a mixed-version
+   module graph offline. Network-first covers the online case; a new cache name
+   covers the offline one. */
+const CACHE = "dcr-portal-v5";
 
 self.addEventListener("install", function () {
   self.skipWaiting(); // activate the new worker immediately
