@@ -2,6 +2,13 @@ import { upsertObject } from '../../core/document/project-document.js';
 import { point } from '../../core/geometry/vector.js';
 
 export const POST_TYPE = 'post';
+
+/* A document handed in from a save, a test, or a half-built state may have
+   no objects array at all. Reading through a helper keeps every getter from
+   throwing a raw TypeError at a caller that only asked what was on the
+   drawing. */
+const objectsOf = (document) => (Array.isArray(document?.objects) ? document.objects : []);
+
 export const PILLAR_TYPE = 'pillar';
 export const POST_FOOTING_SCHEMA_VERSION = 1;
 export const DEFAULT_POST_SIZE = '4x4x8';
@@ -55,15 +62,15 @@ export function addPost(document, post, now = new Date().toISOString()) {
 export function removePost(document, postId, now = new Date().toISOString()) {
   const target = document.objects.find((object) => object.id === postId);
   if (!target || (target.type !== POST_TYPE && target.type !== PILLAR_TYPE)) return document;
-  return { ...document, updatedAt: now, objects: document.objects.filter((object) => object.id !== postId) };
+  return { ...document, updatedAt: now, objects: objectsOf(document).filter((object) => object.id !== postId) };
 }
 
 export function getPosts(document) {
-  return document.objects.filter((object) => object.type === POST_TYPE);
+  return objectsOf(document).filter((object) => object.type === POST_TYPE);
 }
 
 export function getPillars(document) {
-  return document.objects.filter((object) => object.type === PILLAR_TYPE);
+  return objectsOf(document).filter((object) => object.type === PILLAR_TYPE);
 }
 
 export function describeTakeoff(document) {

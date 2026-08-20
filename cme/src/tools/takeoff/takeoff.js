@@ -1,8 +1,11 @@
 import { distance } from '../../core/geometry/vector.js';
+import { analyzeRailingGeometries } from '../railing/railing.js';
 import { deriveDeckBoardingSegments, getDeckBoarding } from '../deck-boarding/deck-boarding.js';
 import { describeTakeoff as describeBeams } from '../beam/beam.js';
 import { describeTakeoff as describeJoists } from '../joist-group/joist-group.js';
 import { describeTakeoff as describePosts } from '../post-footing/post-footing.js';
+import { describeTakeoff as describeSymbols } from '../symbols/symbols.js';
+import { describeTakeoff as describeRailingSystems } from '../railing/railing-systems.js';
 
 export const TAKEOFF_SCHEMA_VERSION = 1;
 
@@ -127,6 +130,9 @@ export function deriveAutomaticTakeoff(document, options = {}) {
   }
   if (stairRiserLF > 0) lines.push(purchaseLine({ id: 'auto:stairs:square-riser', category: 'stairs', description: 'Square-edge stair riser covering', specification: '12 ft board', requiredLinearFeet: stairRiserLF, stockLengthFeet: 12, sourceObjectIds: stairIds, confidence: 'review' }, settings));
 
+  /* Posts are counted over the Wild Hog runs ONLY. options.railingPostCount is
+     analysed across every run in the project, so once stick-built and Trex
+     started billing their own posts this line was adding theirs a second time. */
   const wildHog = (options.railingGeometries ?? []).filter((geometry) => (geometry.railing?.settings?.system ?? 'wild-hog') === 'wild-hog');
   const railLengthInches = wildHog.reduce((sum, geometry) => sum + Number(geometry.length ?? 0), 0);
   const panelCount = wildHog.reduce((sum, geometry) => sum + Number(geometry.sectionCount ?? 0), 0);
@@ -136,7 +142,8 @@ export function deriveAutomaticTakeoff(document, options = {}) {
     lines.push(purchaseLine({ id: 'auto:railing:wild-hog-track', category: 'railing', description: 'Wild Hog aluminum track', specification: '8 ft track', requiredLinearFeet: railLengthInches / 12 * 2, stockLengthFeet: 8, sourceObjectIds: railingIds, confidence: 'review' }, { ...settings, wastePercent: 0 }));
     lines.push(purchaseLine({ id: 'auto:railing:wild-hog-handrail', category: 'railing', description: '2×6 DW handrail', specification: '2×6×8', requiredLinearFeet: railLengthInches / 12, stockLengthFeet: 8, sourceObjectIds: railingIds }, { ...settings, wastePercent: 0 }));
     lines.push(countLine({ id: 'auto:railing:wild-hog-support', category: 'railing', description: 'Panel support', specification: '2×4×8 · top and bottom', quantity: panelCount * 2, sourceObjectIds: railingIds }));
-    lines.push(countLine({ id: 'auto:railing:wild-hog-post', category: 'railing', description: 'Railing post', specification: '4×4×5', quantity: options.railingPostCount ?? wildHog.reduce((sum, geometry) => sum + Number(geometry.postCount ?? 0), 0), sourceObjectIds: railingIds }));
+    lines.push(countLine({ id: 'auto:railing:wild-hog-post', category: 'railing', description: 'Railing post', specification: '4×4×5', quantity: analyzeRailingGeometries(wildHog).estimatedPostCount
+        || wildHog.reduce((sum, geometry) => sum + Number(geometry.postCount ?? 0), 0), sourceObjectIds: railingIds }));
   }
   /* Framing: counted pieces, straight from the drawing. See the READMEs in
      tools/beam and tools/joist-group for why these are counts and not a
@@ -144,6 +151,12 @@ export function deriveAutomaticTakeoff(document, options = {}) {
   lines.push(...fromDescriptors(describeBeams(document), settings));
   lines.push(...fromDescriptors(describeJoists(document), settings));
   lines.push(...fromDescriptors(describePosts(document), settings));
+  /* Count pins are how a rep tallies anything this tool has no idea about, so
+     their labels reach the estimator verbatim. */
+  lines.push(...fromDescriptors(describeSymbols(document), settings));
+  /* Stick-built and Trex only. Wild Hog is billed above and must not be billed
+     twice. */
+  lines.push(...fromDescriptors(describeRailingSystems(document, options), settings));
 
   /* Recipes the tool being replaced had and this one did not.
      Each carries its source line so the arithmetic can be checked later. */

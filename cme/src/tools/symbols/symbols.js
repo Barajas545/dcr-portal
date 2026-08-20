@@ -2,6 +2,13 @@ import { distance, point } from '../../core/geometry/vector.js';
 import { upsertObject } from '../../core/document/project-document.js';
 
 export const TEXT_LABEL_TYPE = 'text-label';
+
+/* A document handed in from a save, a test, or a half-built state may have
+   no objects array at all. Reading through a helper keeps every getter from
+   throwing a raw TypeError at a caller that only asked what was on the
+   drawing. */
+const objectsOf = (document) => (Array.isArray(document?.objects) ? document.objects : []);
+
 export const COUNT_MARKER_TYPE = 'count-marker';
 export const GATE_TYPE = 'gate';
 export const DOOR_TYPE = 'door';
@@ -143,31 +150,31 @@ export function addSymbol(document, symbol, now = new Date().toISOString()) {
 export function removeSymbol(document, symbolId, now = new Date().toISOString()) {
   const target = document.objects.find((object) => object.id === symbolId);
   if (!target || !SYMBOL_TYPES.includes(target.type)) return document;
-  return { ...document, updatedAt: now, objects: document.objects.filter((object) => object.id !== symbolId) };
+  return { ...document, updatedAt: now, objects: objectsOf(document).filter((object) => object.id !== symbolId) };
 }
 
 export function getSymbols(document) {
-  return document.objects.filter((object) => SYMBOL_TYPES.includes(object.type));
+  return objectsOf(document).filter((object) => SYMBOL_TYPES.includes(object.type));
 }
 
 export function getTextLabels(document) {
-  return document.objects.filter((object) => object.type === TEXT_LABEL_TYPE);
+  return objectsOf(document).filter((object) => object.type === TEXT_LABEL_TYPE);
 }
 
 export function getCountMarkers(document) {
-  return document.objects.filter((object) => object.type === COUNT_MARKER_TYPE);
+  return objectsOf(document).filter((object) => object.type === COUNT_MARKER_TYPE);
 }
 
 export function getGates(document) {
-  return document.objects.filter((object) => object.type === GATE_TYPE);
+  return objectsOf(document).filter((object) => object.type === GATE_TYPE);
 }
 
 export function getDoors(document) {
-  return document.objects.filter((object) => object.type === DOOR_TYPE);
+  return objectsOf(document).filter((object) => object.type === DOOR_TYPE);
 }
 
 export function getWindows(document) {
-  return document.objects.filter((object) => object.type === WINDOW_TYPE);
+  return objectsOf(document).filter((object) => object.type === WINDOW_TYPE);
 }
 
 /* Re-measure when the stored width is missing. An opening deserialised from an
@@ -187,6 +194,12 @@ function openingWidth(opening) {
    there has to know what a symbol object looks like. */
 export function getGateOpenings(document) {
   return getGates(document)
+    /* The raw values are tested BEFORE point() coerces them. Number(null) is 0,
+       so a gate deserialised with at:{x:null,y:null} used to arrive as a real
+       gate standing at the drawing origin: its width came off whichever railing
+       happened to be nearest 0,0 and the run it actually belongs to stayed full
+       length. One run short, one run long, and nothing said so. */
+    .filter((gate) => [gate.at?.x, gate.at?.y].every(Number.isFinite))
     .map((gate) => ({ id: gate.id, widthInches: openingWidth(gate), at: point(gate.at?.x, gate.at?.y) }))
     /* A gate with no usable width or position is left out entirely rather than
        passed on: railing length minus NaN is NaN, and a railing run that quietly

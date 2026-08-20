@@ -133,7 +133,11 @@ function svgForPaper(source) {
 }
 
 function takeoffRows(documentModel) {
-  const lines = deriveAutomaticTakeoff(documentModel, {});
+  /* The same context the on-screen takeoff uses. Without it Wild Hog railing -
+     which is billed from resolved geometries rather than from the document -
+     would be missing from the saved drawing's table while showing on screen. */
+  const context = typeof window.CME_TAKEOFF_CONTEXT === 'function' ? window.CME_TAKEOFF_CONTEXT() : {};
+  const lines = deriveAutomaticTakeoff(documentModel, context);
   const state = getTakeoffState(documentModel);
   const manual = state.manualLines || [];
   return [...lines, ...manual]

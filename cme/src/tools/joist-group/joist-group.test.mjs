@@ -211,3 +211,18 @@ test('nothing mutates the document or the objects handed in', () => {
   assert.deepEqual(document, documentBefore);
   assert.deepEqual(joist, joistBefore);
 });
+
+test('an anchored object such as a post or a count pin can be repeated too', () => {
+  /* These carry their position in `at`, not start/end. arraySpan used to miss
+     them entirely and arrayObject returned the document untouched, so the
+     Repeat button looked dead for a row of footings. */
+  const post = { id: 'post-1', type: 'post', name: 'Post', at: { x: 0, y: 0 }, lifecycle: { revision: 1 } };
+  const base = { ...emptyDocument() };
+  const document = { ...base, objects: [...base.objects, post] };
+
+  const arrayed = arrayObject(document, 'post-1', { spacingInches: 24, count: 3 });
+  assert.equal(arrayed.objects.length, 4, 'the original plus three copies');
+  const xs = arrayed.objects.filter((o) => o.type === 'post').map((o) => o.at.x).sort((a, b) => a - b);
+  assert.deepEqual(xs, [0, 24, 48, 72], 'a lone anchor walks sideways, the way the old tool did it');
+  assert.equal(new Set(arrayed.objects.map((o) => o.id)).size, 4, 'every copy gets its own id');
+});

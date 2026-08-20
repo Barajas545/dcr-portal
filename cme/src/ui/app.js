@@ -53,6 +53,11 @@ let documentModel = getActiveProject(projectLibrary);
    `let` binding always reads the current one, so nothing has to be kept in
    sync and app.js needs no further portal awareness than this line. */
 if (typeof window !== 'undefined') window.CME_CURRENT_DOCUMENT = () => documentModel;
+/* The bridge must bill exactly what the on-screen takeoff bills. Wild Hog
+   railing is derived from resolved geometries the caller supplies, so a bridge
+   calling deriveAutomaticTakeoff with no options would silently drop every
+   Wild Hog line from the saved drawing's table. */
+if (typeof window !== 'undefined') window.CME_TAKEOFF_CONTEXT = () => takeoffContext();
 const salesHubLaunch = parseSalesHubLaunchContext(window.location.search);
 let mode = 'select';
 let draft = [];

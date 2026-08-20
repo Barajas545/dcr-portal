@@ -82,7 +82,16 @@ export function removeJoist(document, joistId, now = new Date().toISOString()) {
 }
 
 function arraySpan(object) {
-  const chain = object.vertices ?? object.points ?? [object.start, object.end, object.anchor];
+  /* `at` is in this list because posts, pillars, gates and count pins anchor
+     themselves there rather than at start/end. Without it arraySpan found no
+     points, arrayUnit returned null, and arrayObject bailed out returning the
+     document unchanged — silently, so repeating a row of footings looked like
+     a dead button. A single anchor gives a zero-length span, which falls
+     through to the sideways direction below, matching how the old tool arrayed
+     a post. */
+  const chain = object.vertices ?? object.points
+    ?? [object.start, object.end, object.anchor, object.at,
+        object.computed?.start, object.computed?.end];
   const points = chain.filter((entry) => Number.isFinite(entry?.x) && Number.isFinite(entry?.y));
   // The old tool ran the direction from the first drawn point to the last one, whatever the item was.
   return points.length ? { start: points[0], end: points.at(-1) } : null;
