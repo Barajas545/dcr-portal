@@ -72,6 +72,10 @@ try {
   window.CME_STORAGE_SCOPE = estimateId ? 'estimate-' + estimateId : 'standalone';
 
   await import('./src/ui/app.js');
+
+  /* After the app, so window.CME_CURRENT_DOCUMENT exists to read from. */
+  await import('./portal-bridge.js');
+  window.CME_BRIDGE.install(() => window.CME_CURRENT_DOCUMENT());
 } catch (error) {
   console.error('[CME] boot failed', error);
   fail((error && error.message) || 'Something went wrong starting the drawing tool.');

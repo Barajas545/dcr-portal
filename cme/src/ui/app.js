@@ -45,6 +45,11 @@ const app = document.querySelector('#app');
 let history = new CommandStack();
 let projectLibrary = loadProjectLibrary();
 let documentModel = getActiveProject(projectLibrary);
+
+/* The portal bridge needs whatever is on screen right now. A closure over the
+   `let` binding always reads the current one, so nothing has to be kept in
+   sync and app.js needs no further portal awareness than this line. */
+if (typeof window !== 'undefined') window.CME_CURRENT_DOCUMENT = () => documentModel;
 const salesHubLaunch = parseSalesHubLaunchContext(window.location.search);
 let mode = 'select';
 let draft = [];

@@ -735,10 +735,31 @@
         title: "Open & edit — markup on photos, full editor on drawings",
         icon: "✏️",
         badge: function (p) {
+          if (p.cme) return "▣ model";
           if (p.cad) return "📐 edit";
           return p.ann && p.ann.items && p.ann.items.length ? "✏️ " + p.ann.items.length : "✏️";
         },
         onClick: function (entry, idx, rerender) {
+          /* Branch on the ENTRY, not on the current tool. A drawing made in
+             the old editor stays readable in the old editor forever: its
+             format cannot be read by CME, and converting it would drop half of
+             what it contains. New drawings are CME's. */
+          if (entry.cme) {
+            DCRCme.open({
+              entry: entry,
+              estimateId: state.project && state.project.id,
+              clientName: state.project && state.project.clientName,
+              title: (state.project.clientName || "Site") + " — drawing",
+              getPathParts: mediaPathParts,
+              onNumbers: applyDrawingNumbers,
+              onSave: function (patch) {
+                Object.assign(entry, patch);
+                rerender();
+                autoSaveMedia();
+              },
+            });
+            return;
+          }
           if (entry.cad) {
             // a CAD field sketch — reopen the drafting editor
             DCRCad.open({
@@ -767,8 +788,10 @@
       },
     });
     el("edNewDrawing").onclick = function () {
-      DCRCad.open({
+      DCRCme.open({
         entry: null,
+        estimateId: state.project && state.project.id,
+        clientName: state.project && state.project.clientName,
         title: (state.project.clientName || "Site") + " — new drawing",
         getPathParts: mediaPathParts,
         onNumbers: applyDrawingNumbers,
