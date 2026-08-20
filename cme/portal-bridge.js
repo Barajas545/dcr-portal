@@ -102,8 +102,13 @@ const PAPER_STYLE = `
   .dimension-bg { fill: #ffffff; stroke: #4f5d64; }
   .dimension-text { fill: #111111; }
   .area-dimension, .dimension-text.area { fill: #111111; }
+  .framing-beam { stroke: #1e7a3f; stroke-width: 5; stroke-linecap: round; }
+  .framing-joist { stroke: #8a6d1a; stroke-width: 1.6; stroke-dasharray: 7 5; }
+  .framing-post { fill: #e8edf0; stroke: #4a565d; stroke-width: 1; }
+  .framing-pillar { fill: #d7dfe4; stroke: #39434a; stroke-width: 1.5; }
+  .framing-draft { display: none; }
   /* the transparent twins exist only to catch a fingertip; they carry no ink */
-  [class$="-hit"], .dimension-hit, .cat-line-hit, .cat-note-hit, .level-down-hit { display: none; }
+  [class$="-hit"], .dimension-hit, .cat-line-hit, .cat-note-hit, .level-down-hit, .framing-hit { display: none; }
   .cursor-crosshair, .snap-indicator, .cat-snap-marker, .dimension-arrow-pulse { display: none; }
 `;
 

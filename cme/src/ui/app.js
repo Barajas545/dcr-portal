@@ -46,6 +46,11 @@ const STORAGE_KEY = 'cme.project.v1' + SCOPE_SUFFIX;
 const PROJECT_LIBRARY_STORAGE_KEY = 'cme.project-library.v1' + SCOPE_SUFFIX;
 const app = document.querySelector('#app');
 let history = new CommandStack();
+/* Declared before the library loads: loadProjectLibrary() runs on the next
+   line and may need to park a boot notice, and `message` itself is declared
+   further down. A let below the call site is a temporal-dead-zone crash - the
+   boot error page caught exactly that during verification. */
+let pendingBootNotice = null;
 let projectLibrary = loadProjectLibrary();
 let documentModel = getActiveProject(projectLibrary);
 
@@ -68,7 +73,7 @@ let draggingEdgeId = null;
 let edgeDragStart = null;
 let mergeCandidateId = null;
 let selected = { kind: null, id: null };
-let message = 'Ready';
+let message = pendingBootNotice ?? 'Ready';
 let viewport = createViewport();
 let panGesture = null;
 let lastMiddleClick = 0;
@@ -119,18 +124,53 @@ let takeoffOpen = false;
 let takeoffExpanded = new Set(['decking', 'railing']);
 let takeoffAddCategory = null;
 
+/* The drawing saved on the estimate, handed over by the portal on open.
+
+   Without this, the handoff was read off sessionStorage and then IGNORED - a
+   drawing saved on one device reopened as an empty canvas on any other, and an
+   estimator could never see the salesperson's sketch. It was masked in testing
+   because the same browser still held a local copy under the same storage key.
+
+   The local copy wins only when it is the same project with NEWER work - a rep
+   who drew more after saving, then reopened. Handed-over work must never
+   silently overwrite newer offline work; that is the vision's own guardrail. */
+function incomingPortalProject() {
+  const incoming = typeof window !== 'undefined' ? window.CME_PORTAL?.incoming : null;
+  if (!incoming || typeof incoming !== 'object' || !incoming.id) return null;
+  try {
+    return parseProject(JSON.stringify(incoming));
+  } catch (error) {
+    console.warn('[CME] the handed-over drawing could not be read:', error);
+    return null;
+  }
+}
+
+function mergeIncoming(library, incoming) {
+  if (!incoming) return library;
+  const local = (library.projects ?? []).find((project) => project.id === incoming.id);
+  const localIsNewer = local && String(local.updatedAt ?? '') > String(incoming.updatedAt ?? '');
+  if (localIsNewer) {
+    pendingBootNotice = 'This device has newer unsaved work on this drawing — showing that. Save to the estimate to keep it.';
+    return activateLibraryProject(library, local.id);
+  }
+  return activateLibraryProject(upsertLibraryProject(library, incoming), incoming.id);
+}
+
 function loadProjectLibrary() {
+  const incoming = incomingPortalProject();
   const savedLibrary = localStorage.getItem(PROJECT_LIBRARY_STORAGE_KEY);
   if (savedLibrary) {
     try {
       const library = parseProjectLibrary(savedLibrary);
-      if (getActiveProject(library)) return library;
+      if (getActiveProject(library)) return mergeIncoming(library, incoming);
     } catch { /* Migrate the last single-project save below. */ }
   }
   const savedProject = localStorage.getItem(STORAGE_KEY);
   if (savedProject) {
-    try { return createProjectLibrary(parseProject(savedProject)); } catch { /* Recover with a new project below. */ }
+    try { return mergeIncoming(createProjectLibrary(parseProject(savedProject)), incoming); }
+    catch { /* Recover with a new project below. */ }
   }
+  if (incoming) return createProjectLibrary(incoming);
   return createProjectLibrary(createProjectDocument({ name: 'Backyard deck' }));
 }
 
