@@ -1,7 +1,16 @@
 import { distance } from '../../core/geometry/vector.js';
 import { deriveDeckBoardingSegments, getDeckBoarding } from '../deck-boarding/deck-boarding.js';
+import { describeTakeoff as describeBeams } from '../beam/beam.js';
+import { describeTakeoff as describeJoists } from '../joist-group/joist-group.js';
+import { describeTakeoff as describePosts } from '../post-footing/post-footing.js';
 
 export const TAKEOFF_SCHEMA_VERSION = 1;
+
+/* Fascia is cut to length off the board and the offcuts are mostly usable, so
+   the tool being replaced allowed 5% here against 10% everywhere else
+   (cad-sketch.js:900). Keeping the difference rather than rounding it into the
+   global rate, because it changes what gets ordered. */
+const FASCIA_WASTE_PERCENT = 5;
 
 export const TAKEOFF_CATEGORIES = [
   { id: 'decking', label: 'Decking & trim' },
@@ -72,6 +81,17 @@ function countLine({ id, category, description, specification, quantity, sourceO
   return { id, category, description, specification, stockLengthFeet: null, calculatedQuantity: Math.ceil(quantity), quantity: Math.ceil(quantity), unit: 'ea', unitPrice: null, requiredLinearFeet: null, wastePercent: 0, origin: 'auto', confidence, sourceObjectIds };
 }
 
+/* The framing modules hand back plain descriptors rather than finished lines,
+   so they never have to import from here - that would be circular. This is the
+   one place that turns them into takeoff lines. */
+function fromDescriptors(descriptors, settings) {
+  return descriptors.map((descriptor) => (descriptor.kind === 'count'
+    ? countLine(descriptor)
+    : purchaseLine(descriptor, descriptor.wastePercent === undefined
+      ? settings
+      : { ...settings, wastePercent: descriptor.wastePercent })));
+}
+
 export function deriveAutomaticTakeoff(document, options = {}) {
   const state = getTakeoffState(document);
   const settings = state.settings;
@@ -96,7 +116,7 @@ export function deriveAutomaticTakeoff(document, options = {}) {
   if (pictureFrameLF > 0) lines.push(purchaseLine({ id: 'auto:decking:square-picture-frame', category: 'decking', description: 'Square-edge picture frame', specification: `${settings.squareEdgeStockFeet} ft board`, requiredLinearFeet: pictureFrameLF, stockLengthFeet: settings.squareEdgeStockFeet, sourceObjectIds: boundaries.map((boundary) => boundary.id) }, settings));
 
   const fasciaLF = boundaries.reduce((sum, boundary) => sum + boundary.edges.filter((edge) => edge.properties?.finishes?.fascia).reduce((edgeSum, edge) => edgeSum + boundaryEdgeLength(boundary, edge), 0), 0) / 12;
-  if (fasciaLF > 0) lines.push(purchaseLine({ id: 'auto:decking:fascia', category: 'decking', description: 'Fascia board', specification: `${settings.fasciaStockFeet} ft fascia`, requiredLinearFeet: fasciaLF, stockLengthFeet: settings.fasciaStockFeet, sourceObjectIds: boundaries.map((boundary) => boundary.id) }, settings));
+  if (fasciaLF > 0) lines.push(purchaseLine({ id: 'auto:decking:fascia', category: 'decking', description: 'Fascia board', specification: `${settings.fasciaStockFeet} ft fascia`, requiredLinearFeet: fasciaLF, stockLengthFeet: settings.fasciaStockFeet, sourceObjectIds: boundaries.map((boundary) => boundary.id) }, { ...settings, wastePercent: FASCIA_WASTE_PERCENT }));
 
   const stairTreadLF = stairs.reduce((sum, stair) => sum + Number(stair.dimensions?.width ?? 0) * Number(stair.dimensions?.treadCount ?? 0), 0) / 12;
   const stairRiserLF = stairs.reduce((sum, stair) => sum + Number(stair.dimensions?.width ?? 0) * Number(stair.dimensions?.riserCount ?? 0), 0) / 12;
@@ -118,6 +138,37 @@ export function deriveAutomaticTakeoff(document, options = {}) {
     lines.push(countLine({ id: 'auto:railing:wild-hog-support', category: 'railing', description: 'Panel support', specification: '2×4×8 · top and bottom', quantity: panelCount * 2, sourceObjectIds: railingIds }));
     lines.push(countLine({ id: 'auto:railing:wild-hog-post', category: 'railing', description: 'Railing post', specification: '4×4×5', quantity: options.railingPostCount ?? wildHog.reduce((sum, geometry) => sum + Number(geometry.postCount ?? 0), 0), sourceObjectIds: railingIds }));
   }
+  /* Framing: counted pieces, straight from the drawing. See the READMEs in
+     tools/beam and tools/joist-group for why these are counts and not a
+     lineal-feet buy off a stock length. */
+  lines.push(...fromDescriptors(describeBeams(document), settings));
+  lines.push(...fromDescriptors(describeJoists(document), settings));
+  lines.push(...fromDescriptors(describePosts(document), settings));
+
+  /* Recipes the tool being replaced had and this one did not.
+     Each carries its source line so the arithmetic can be checked later. */
+
+  // cad-sketch.js:898 - roughly one 5lb box per 100 sq ft
+  const deckSquareFeet = boundaries.reduce(
+    (sum, boundary) => sum + (Number(boundary.computed?.areaSquareInches) || 0) / 144, 0);
+  if (deckSquareFeet > 0) {
+    lines.push(countLine({
+      id: 'auto:hardware:deck-screw', category: 'hardware',
+      description: '3" deck screw (5lb)', specification: 'about one box per 100 sq ft',
+      quantity: Math.ceil(deckSquareFeet / 100),
+      sourceObjectIds: boundaries.map((boundary) => boundary.id),
+    }));
+  }
+
+  // cad-sketch.js:906 - three stringers to a flight
+  if (stairs.length) {
+    lines.push(countLine({
+      id: 'auto:stairs:stringer', category: 'stairs',
+      description: 'Stair stringer (2x12)', specification: 'three per flight',
+      quantity: stairs.length * 3, sourceObjectIds: stairs.map((stair) => stair.id),
+    }));
+  }
+
   return lines;
 }
 
