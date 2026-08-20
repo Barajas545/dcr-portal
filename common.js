@@ -642,6 +642,18 @@
   // window that holds an exclusive Web Lock — auto-activating when the other
   // closes. Scoped to display-mode:standalone so it never restricts browser tabs.
   (function () {
+    /* Frames are not windows.
+
+       An iframe inherits its parent's display-mode, and any portal page loaded
+       into one - the drawing tool, for instance - also loads this file. It then
+       asked for the very lock its own parent was holding, decided it was a
+       second copy of the app, and covered itself with "DCR Portal is already
+       open". The guard exists to stop a second APP WINDOW, so a frame inside
+       the window that already holds the lock is explicitly not its business. */
+    var inFrame = false;
+    try { inFrame = window.top !== window.self; } catch (e) { inFrame = true; }  // cross-origin parent
+    if (inFrame) return;
+
     var standalone = (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
       window.navigator.standalone === true;
     if (!standalone || !navigator.locks || !navigator.locks.request) return;
