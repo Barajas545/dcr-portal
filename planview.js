@@ -39,7 +39,10 @@
     ppfDefault: 18, scaleLabel: '1/4" = 1\'', ppfPage: {}, scaleLabelPage: {},
     items: [], undo: [], redo: [], sel: -1, hide: false, dirty: false,
     draw: null, // in-progress {type, pts, ...}
-    countLabel: "", info: null, notesId: null,
+    countLabel: "", info: null,
+    // which notes file this session read, how new it was, and whether we can
+    // vouch for having read it - the three things a safe save depends on
+    notesId: null, notesStamp: null, notesUnreadable: false,
     pinch: null, pointers: {},
     tile: null, renderTask: null, _tileRAF: 0, // crisp vector tile covering the viewport
   };
@@ -61,7 +64,8 @@
     if (num === den) { whole += 1; num = 0; }
     if (whole === 12) { ft += 1; whole = 0; }
     while (num && num % 2 === 0 && den % 2 === 0) { num /= 2; den /= 2; }
-    var inStr = whole + (num ? " " + num + "/" + den : "") + '"';
+    // a bare fraction reads as 1/8", not 0 1/8" — but keep the 0 in 5'-0"
+    var inStr = (whole || !num ? String(whole) : "") + (num ? (whole ? " " : "") + num + "/" + den : "") + '"';
     var s = ft ? ft + "'-" + inStr : inStr;
     return (neg ? "-" : "") + s;
   }
@@ -73,6 +77,34 @@
     var a = 0;
     for (var i = 0; i < pts.length; i++) { var j = (i + 1) % pts.length; a += pts[i][0] * pts[j][1] - pts[j][0] * pts[i][1]; }
     return Math.abs(a) / 2;
+  }
+  /* The shoelace formula quietly returns nonsense for an outline that crosses
+     itself - a bow-tie cancels to zero. Somebody orders material off these
+     figures, so a crossed outline gets flagged rather than reported as fact. */
+  function segsCross(a, b, c, d) {
+    function side(p, q, r) { return Math.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])); }
+    var d1 = side(a, b, c), d2 = side(a, b, d), d3 = side(c, d, a), d4 = side(c, d, b);
+    return d1 !== d2 && d3 !== d4; // proper crossing only; shared endpoints are fine
+  }
+  function selfIntersects(raw) {
+    // A repeated corner (a double-click finish, or older saved notes) is not a
+    // crossing - drop zero-length segments before testing, or every such shape
+    // would be wrongly flagged.
+    var pts = [];
+    for (var k = 0; k < raw.length; k++) {
+      var prev = pts[pts.length - 1];
+      if (!prev || dist(prev, raw[k]) > 1e-9) pts.push(raw[k]);
+    }
+    if (pts.length > 1 && dist(pts[0], pts[pts.length - 1]) <= 1e-9) pts.pop();
+    var n = pts.length;
+    if (n < 4) return false;
+    for (var i = 0; i < n; i++) {
+      for (var j = i + 1; j < n; j++) {
+        if (j === i || (j + 1) % n === i || (i + 1) % n === j) continue; // skip adjacent
+        if (segsCross(pts[i], pts[(i + 1) % n], pts[j], pts[(j + 1) % n])) return true;
+      }
+    }
+    return false;
   }
 
   /* ══ page rendering — direct pdf.js VECTOR, tile follows the viewport ══
@@ -179,11 +211,36 @@
     redraw();
   }
 
+  // a page is "calibrated" when its label is not one of the standard scales
+  function isCalibrated(page) {
+    var lbl = state.scaleLabelPage[page];
+    return Boolean(lbl) && !SCALES.some(function (sc) { return sc.label === lbl; });
+  }
+
+  /* The dropdown must always show the scale in force for the sheet ON SCREEN.
+     It used to show a document-wide setting, which is how a user could believe
+     a sheet was at 1/2" while its measurements were being valued at 1/4". */
+  function syncScaleSelect() {
+    var si = el("pvScale");
+    if (!si || !si.options.length) return;
+    var calOpt = si.querySelector('option[value="cal"]');
+    if (isCalibrated(state.page)) {
+      if (!calOpt) { calOpt = document.createElement("option"); calOpt.value = "cal"; si.appendChild(calOpt); }
+      calOpt.textContent = scaleLabelFor(state.page);
+      si.value = "cal";
+      return;
+    }
+    if (calOpt) calOpt.remove();
+    var lbl = scaleLabelFor(state.page);
+    for (var i = 0; i < SCALES.length; i++) if (SCALES[i].label === lbl) { si.value = String(i); return; }
+  }
+
   function updateStatus() {
     el("pgInfo").textContent = state.page + "/" + state.pages;
     el("zPct").textContent = Math.round(state.zoom * 100) + "%";
-    el("pvScaleInfo").textContent = "Scale: " + scaleLabelFor(state.page) +
-      (state.ppfPage[state.page] ? " (calibrated)" : "");
+    el("pvScaleInfo").textContent = "Sheet " + state.page + " scale: " + scaleLabelFor(state.page) +
+      (isCalibrated(state.page) ? " (calibrated)" : "");
+    syncScaleSelect();
   }
 
   async function refresh() {
@@ -237,7 +294,7 @@
     if (selected) { ctx.shadowColor = "#4ea3ff"; ctx.shadowBlur = 12; }
     ctx.strokeStyle = it.color; ctx.fillStyle = it.color;
     ctx.lineWidth = lw(it.width || 3); ctx.lineCap = "round"; ctx.lineJoin = "round";
-    var p = ppf(it.page);
+    var p = itemPpf(it);
 
     if (it.type === "measure" && pts.length === 2) {
       ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); ctx.lineTo(pts[1][0], pts[1][1]); ctx.stroke();
@@ -258,7 +315,10 @@
       var sf = polyArea(it.pts) / (p * p);
       var per = (polyLen(it.pts) + dist(it.pts[it.pts.length - 1], it.pts[0])) / p;
       var c = pts.reduce(function (a, q) { return [a[0] + q[0], a[1] + q[1]]; }, [0, 0]).map(function (v) { return v / pts.length; });
-      pill(ctx, c[0], c[1], (it.label ? it.label + ": " : "") + fmtSF(sf) + " · per " + fmtLF(per), "#a8e6c7");
+      var crossed = selfIntersects(it.pts);
+      pill(ctx, c[0], c[1], (it.label ? it.label + ": " : "")
+        + (crossed ? "⚠ outline crosses itself — area not reliable" : fmtSF(sf) + " · per " + fmtLF(per)),
+        crossed ? "#ffc9c9" : "#a8e6c7");
     } else if (it.type === "count") {
       var q0 = pts[0], R = lw(9);
       ctx.beginPath(); ctx.arc(q0[0], q0[1], R, 0, 7); ctx.globalAlpha = .9; ctx.fill(); ctx.globalAlpha = 1;
@@ -323,7 +383,18 @@
     state.dirty = true;
     el("pvSave").textContent = "💾 Save Notes ●";
   }
-  function addItem(it) { snapshot(); state.items.push(it); markDirty(); redraw(); }
+  /* A measurement records the scale it was taken under, and keeps it.
+     Geometry alone is not a quantity - it only becomes feet through a ppf, and
+     if that ppf is looked up fresh at paint time then changing the scale later
+     silently re-values work already done, on sheets nobody is even looking at.
+     Stamping it here is what makes a recorded figure stay the figure. */
+  function addItem(it) {
+    it.ppf = ppf(state.page);
+    it.scaleLabel = scaleLabelFor(state.page);
+    snapshot(); state.items.push(it); markDirty(); redraw();
+  }
+  // the scale a given item was measured at (older notes carry no stamp)
+  function itemPpf(it) { return Number(it.ppf) > 0 ? Number(it.ppf) : ppf(it.page); }
   function doUndo() {
     if (!state.undo.length) return;
     state.redo.push(JSON.stringify(state.items));
@@ -569,6 +640,9 @@
   var calPending = null;
   function openCalibrate(d) {
     calPending = d;
+    // start empty every time: a leftover entry from the last calibration would
+    // otherwise be accepted as if it described THIS line
+    el("calFt").value = ""; el("calIn").value = "";
     el("calInfo").textContent = "Line length on paper: " + (polyLen(d.pts) / 72).toFixed(3) + " in";
     el("calModal").classList.add("open");
     setTimeout(function () { el("calFt").focus(); el("calFt").select(); }, 50);
@@ -585,9 +659,13 @@
   function summaryData() {
     var g = {}; // key -> {label, unit, valuePage, valueAll, count...}
     state.items.forEach(function (it) {
-      var p = ppf(it.page), key, add = 0, unit = "";
+      var p = itemPpf(it), key, add = 0, unit = "";
       if (it.type === "measure" || it.type === "poly") { key = "LF|" + (it.label || (it.type === "measure" ? "Measurements" : "Lineal ft")); add = polyLen(it.pts) / p; unit = "LF"; }
-      else if (it.type === "area") { key = "SF|" + (it.label || "Areas"); add = polyArea(it.pts) / (p * p); unit = "sq ft"; }
+      else if (it.type === "area") {
+        // a crossed outline is counted nowhere; it is listed so it cannot be missed
+        if (selfIntersects(it.pts)) { key = "SF|⚠ " + (it.label || "Areas") + " — outline crosses itself"; add = 0; unit = "check"; }
+        else { key = "SF|" + (it.label || "Areas"); add = polyArea(it.pts) / (p * p); unit = "sq ft"; }
+      }
       else if (it.type === "count") { key = "EA|" + (it.label || "Count"); add = 1; unit = "ea"; }
       else return;
       if (!g[key]) g[key] = { label: key.split("|")[1], unit: unit, page: 0, all: 0 };
@@ -617,11 +695,17 @@
   }
 
   /* ══ save / load .PDFNotes ══ */
-  function notesName() { return state.info.name + ".PDFNotes"; }
+  // The server rewrites these characters before it writes the file, so the
+  // client has to ask for the same name - otherwise a plan called "Lot #14.pdf"
+  // saves to "Lot -14.pdf.PDFNotes" and then goes looking for a file that
+  // cannot exist, starts blank, and overwrites the real notes on the next save.
+  function sanitizeName(n) { return String(n).replace(/[\\/:*?"<>|#%]/g, "-").trim(); }
+  function notesName() { return sanitizeName(state.info.name + ".PDFNotes"); }
 
   async function uploadNotes(blob) {
     var s = await DCR.api("/api/portal?action=drive", { method: "POST", body: {
-      op: "uploadSession", parentId: state.info.parentId, name: notesName(), mimeType: "application/json" } });
+      op: "uploadSession", parentId: state.info.parentId, name: notesName(), mimeType: "application/json",
+      replace: true } });
     await new Promise(function (resolve, reject) {
       var x = new XMLHttpRequest();
       x.open("PUT", s.uploadUrl);
@@ -634,6 +718,25 @@
 
   async function saveNotes() {
     if (!state.info) return;
+    /* If a notes file exists but would not open, this session started blank -
+       saving would write that blank over somebody's afternoon. Ask first. */
+    if (state.notesUnreadable) {
+      var over = DCR.confirm ? await DCR.confirm(
+        "This plan already has a notes file that could not be opened, so this session started empty. Saving now replaces it with only what is on screen.",
+        { title: "Overwrite the unreadable notes?", danger: true, okText: "Overwrite" }) : true;
+      if (!over) return;
+      state.notesUnreadable = false;
+    }
+    /* Someone else may have saved this same sheet while it was open here. */
+    var moved = await remoteNotesChanged();
+    if (moved !== false) {
+      var msg = moved === null
+        ? "Could not check whether anyone else has saved this plan since you opened it. Saving replaces whatever is there now."
+        : "Someone else has saved notes on this plan since you opened it. Saving replaces their work with yours; reloading discards yours instead.";
+      var go = DCR.confirm ? await DCR.confirm(msg,
+        { title: moved === null ? "Save without checking?" : "Their notes are newer", danger: true, okText: "Overwrite theirs" }) : true;
+      if (!go) return;
+    }
     var payload = {
       version: 1, app: "dcr-planview", pdfName: state.info.name,
       scaleDefault: { label: state.scaleLabel, ppf: state.ppfDefault },
@@ -647,6 +750,13 @@
       state.dirty = false;
       el("pvSave").textContent = "💾 Save Notes";
       hint("Notes saved as " + notesName() + " ✓");
+      // this tab is now the newest writer - re-baseline so the next save does
+      // not accuse the user of colliding with themselves
+      try {
+        var after = await DCR.api("/api/portal?action=drive&folderId=" + encodeURIComponent(state.info.parentId));
+        var mine = notesCandidates(after.items)[0];
+        if (mine) { state.notesId = mine.id; state.notesStamp = mine.modifiedTime || null; }
+      } catch (e) { state.notesId = null; state.notesStamp = null; }
     } catch (e) {
       el("pvSave").textContent = "💾 Save Notes ●";
       hint("SAVE FAILED: " + (e.message || "error"));
@@ -655,25 +765,80 @@
     el("pvSave").disabled = false;
   }
 
+  // Saves used to be renamed aside instead of replaced, so a plan can already
+  // carry "<name> 2.PDFNotes" holding NEWER work than the canonical file. Match
+  // the whole family and open the most recently modified one; the next save
+  // (which now replaces) folds it back onto the canonical name.
+  function notesCandidates(items) {
+    var esc = function (v) { return v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); };
+    // the name the server writes today, plus the raw name older saves used
+    var bases = [sanitizeName(state.info.name), state.info.name]
+      .filter(function (v, i, a) { return a.indexOf(v) === i; }).map(esc);
+    var re = new RegExp("^(?:" + bases.join("|") + ")(?: \\d+)?\\.pdfnotes(?: \\d+)?$", "i");
+    return (items || []).filter(function (f) { return !f.isFolder && re.test(f.name); })
+      .sort(function (a, b) { return String(b.modifiedTime || "").localeCompare(String(a.modifiedTime || "")); });
+  }
+
   async function loadNotes() {
+    var hit = null;
+    /* Assume the worst until proven otherwise. If the folder listing itself
+       fails - Graph throttling, a dropped signal on a tablet - we do NOT know
+       whether notes exist, and starting blank then saving would erase them.
+       This is cleared only on the two outcomes we can actually vouch for:
+       a clean listing with no notes, or notes we read successfully. */
+    state.notesUnreadable = true;
     try {
       var d = await DCR.api("/api/portal?action=drive&folderId=" + encodeURIComponent(state.info.parentId));
-      var hit = (d.items || []).find(function (f) { return !f.isFolder && f.name.toLowerCase() === notesName().toLowerCase(); });
-      if (!hit) return;
+      var found = notesCandidates(d.items);
+      hit = found[0] || null;
+      if (!hit) { state.notesUnreadable = false; return; }
       var info = await DCR.api("/api/portal?action=drive&fileInfo=" + encodeURIComponent(hit.id));
       var resp = await fetch(info.downloadUrl);
+      if (!resp.ok) throw new Error("download " + resp.status);
       var data = await resp.json();
       if (data && data.items) {
         state.items = data.items;
+        // remember exactly which file this came from, and how new it was, so a
+        // save can tell whether somebody else has written since
+        state.notesId = hit.id;
+        state.notesStamp = hit.modifiedTime || null;
+        state.notesUnreadable = false;
         if (data.scaleDefault) { state.ppfDefault = data.scaleDefault.ppf || 18; state.scaleLabel = data.scaleDefault.label || state.scaleLabel; }
         state.ppfPage = data.scalePerPage || {};
         state.scaleLabelPage = data.scaleLabelPerPage || {};
         if (data.tolerance) { state.tol = data.tolerance; el("pvTol").value = String(data.tolerance); }
-        var si = el("pvScale");
-        for (var i = 0; i < si.options.length; i++) if (si.options[i].textContent === state.scaleLabel) si.selectedIndex = i;
-        hint("Loaded saved notes (" + state.items.length + " items) from " + notesName());
+        syncScaleSelect(); // shows the scale for the sheet on screen, not the default
+        hint("Loaded saved notes (" + state.items.length + " items) from " + hit.name
+          + (hit.name.toLowerCase() === notesName().toLowerCase() ? "" : " — the newest copy on this plan"));
+      } else throw new Error("not a notes file");
+    } catch (e) {
+      /* No notes at all is normal and silent. Notes that EXIST but will not open
+         is not - starting blank and saving would destroy them, so say so. */
+      state.notesUnreadable = true;
+      if (hit) {
+        hint("SAVED NOTES COULD NOT BE OPENED (" + hit.name + ") — starting empty. Saving will ask before replacing them.");
+        if (DCR.alert) DCR.alert("This plan has a saved notes file (" + hit.name + ") that could not be opened. You are starting with an empty markup. Nothing is overwritten unless you save and confirm.");
+      } else {
+        hint("COULD NOT CHECK FOR SAVED NOTES — starting empty. Saving will ask first.");
+        if (DCR.alert) DCR.alert("This plan's folder could not be read, so it is not known whether saved notes exist. You are starting with an empty markup, and saving will ask before it replaces anything.");
       }
-    } catch (e) { /* no notes or unreadable — start fresh */ }
+    }
+  }
+
+  /* Nobody's afternoon should vanish because two people had the same sheet
+     open. Before writing, look at what is actually on SharePoint now and
+     compare it with what this tab loaded. */
+  async function remoteNotesChanged() {
+    try {
+      var d = await DCR.api("/api/portal?action=drive&folderId=" + encodeURIComponent(state.info.parentId));
+      var now = notesCandidates(d.items)[0] || null;
+      if (!now) return false;                                   // nothing to lose
+      if (!state.notesId) return true;                          // appeared since we opened
+      return now.id !== state.notesId
+        || String(now.modifiedTime || "") !== String(state.notesStamp || "");
+    } catch (e) {
+      return null; // could not tell - the caller decides how cautious to be
+    }
   }
 
   /* ══ misc UI ══ */
@@ -707,10 +872,41 @@
     s.innerHTML = SCALES.map(function (sc, i) {
       return '<option value="' + i + '"' + (sc.ppf === state.ppfDefault ? " selected" : "") + ">" + esc(sc.label) + "</option>";
     }).join("");
-    s.onchange = function () {
+    s.onchange = async function () {
+      if (s.value === "cal") return;               // the synthetic "calibrated" row
       var sc = SCALES[Number(s.value)];
-      state.ppfDefault = sc.ppf; state.scaleLabel = sc.label;
-      delete state.ppfPage[state.page]; delete state.scaleLabelPage[state.page];
+      if (!sc) return;
+      /* The scale belongs to the SHEET, not the document. A plan set mixes 1/4"
+         floor plans with 1/2" sections, and a document-wide setting re-valued
+         sheets the user was not even looking at. It also used to silently throw
+         away this sheet's calibration; now that is asked about. */
+      if (isCalibrated(state.page)) {
+        var drop = DCR.confirm ? await DCR.confirm(
+          "This sheet was calibrated against a known dimension (" + scaleLabelFor(state.page) + "). Using " + sc.label + " discards that calibration.",
+          { title: "Discard this sheet's calibration?", danger: true, okText: "Discard" }) : true;
+        if (!drop) { syncScaleSelect(); return; }
+      }
+      var was = scaleLabelFor(state.page);
+      var stale = state.items.filter(function (it) {
+        return it.page === state.page && Math.abs(itemPpf(it) - sc.ppf) > 1e-9;
+      });
+      state.ppfPage[state.page] = sc.ppf;
+      state.scaleLabelPage[state.page] = sc.label;
+      /* Existing measurements keep the scale they were taken at unless the user
+         says otherwise - a recorded quantity does not change behind their back,
+         but they can still restate a sheet they set up wrong. */
+      if (stale.length && DCR.confirm) {
+        var many = stale.length > 1;
+        var restate = await DCR.confirm(
+          stale.length + " measurement" + (many ? "s" : "") + " on this sheet " + (many ? "were" : "was")
+            + " taken at " + was + ". Restate " + (many ? "them" : "it") + " at " + sc.label
+            + "? Their quantities will change.",
+          { title: "Restate this sheet's measurements?", okText: "Restate", cancelText: "Leave them" });
+        if (restate) {
+          snapshot();
+          stale.forEach(function (it) { it.ppf = sc.ppf; it.scaleLabel = sc.label; });
+        }
+      }
       markDirty(); updateStatus(); redraw();
     };
   }
@@ -760,14 +956,27 @@
     el("calOk").onclick = function () {
       var ft = Number(el("calFt").value) || 0, inch = Number(el("calIn").value) || 0;
       var real = ft + inch / 12;
-      if (calPending && real > 0) {
-        var basePts = polyLen(calPending.pts);
-        state.ppfPage[state.page] = basePts / real;
-        state.scaleLabelPage[state.page] = "calibrated (" + (basePts / real).toFixed(2) + " pt/ft)";
-        markDirty();
+      /* This used to close exactly like a success when the entry was blank or
+         zero, leaving the sheet on the old scale with no hint that nothing had
+         happened - every later measurement on it was then wrong by whatever the
+         two scales differed by. Refuse instead of pretending. */
+      if (!calPending) { el("calModal").classList.remove("open"); return; }
+      if (!(real > 0)) { el("calInfo").textContent = "Enter the real length of the line you drew — it must be more than zero."; el("calFt").focus(); return; }
+      var basePts = polyLen(calPending.pts);
+      if (basePts < 10) { el("calInfo").textContent = "That calibration line is too short to measure from. Close this, draw along the full dimension, and try again."; return; }
+      var newPpf = basePts / real;
+      // a real drawing scale sits well inside this band; outside it, the line or
+      // the entered length is a mistake, and accepting it corrupts the sheet
+      if (!isFinite(newPpf) || newPpf < 0.5 || newPpf > 150) {
+        el("calInfo").textContent = "That works out to " + newPpf.toFixed(2) + " pt/ft, which is not a plausible drawing scale. Check the length you entered.";
+        return;
       }
+      state.ppfPage[state.page] = newPpf;
+      state.scaleLabelPage[state.page] = "calibrated (" + newPpf.toFixed(2) + " pt/ft)";
+      markDirty();
       el("calModal").classList.remove("open"); calPending = null;
       setTool("pan"); updateStatus(); redraw();
+      hint("Sheet " + state.page + " calibrated: " + fmtFtIn(real) + " measured across that line.");
     };
     el("cntCancel").onclick = function () { el("cntModal").classList.remove("open"); if (!state.countLabel) setTool("pan"); };
     el("cntOk").onclick = function () {
