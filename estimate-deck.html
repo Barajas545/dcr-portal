@@ -166,6 +166,31 @@
 
       /* estimate output */
       .ed-total{font-size:26px; font-weight:800; color:var(--acc);}
+      /* ── the estimator's rates and extra items (step 4) ── */
+      .ed-rates{border:1px solid var(--border); border-radius:10px; overflow:hidden; margin-top:8px;}
+      .ed-rate{display:grid; grid-template-columns:1.5fr 1fr 1.2fr .9fr; gap:10px; align-items:center;
+        padding:9px 12px; border-bottom:1px solid var(--border); font-size:13px;}
+      .ed-rate:last-child{border-bottom:none;}
+      .ed-rate.hd{font-size:11px; text-transform:uppercase; letter-spacing:.04em;
+        color:var(--text-muted); font-weight:700; background:var(--surface-2, rgba(255,255,255,.03));}
+      .ed-rate .lb{font-weight:600; display:flex; flex-direction:column;}
+      .ed-rate .lb small{font-weight:400; color:var(--text-muted); font-size:10.5px; line-height:1.3;}
+      .ed-rate .qt{color:var(--text-muted);}
+      .ed-rate .rt{display:flex; align-items:center; gap:4px;}
+      .ed-rate .rt small,.ed-item .f small{color:var(--text-muted); font-size:10.5px; white-space:nowrap;}
+      .ed-rate input,.ed-item input,.ed-item select{width:100%; min-width:0; padding:6px 8px; font-size:13px;}
+      .ed-rate .tt{text-align:right; font-weight:700; white-space:nowrap;}
+      .ed-item{display:grid; grid-template-columns:1.6fr .8fr .9fr .9fr .8fr auto; gap:8px;
+        align-items:center; padding:8px 0; border-bottom:1px solid var(--border);}
+      .ed-item .f{display:flex; align-items:center; gap:4px; min-width:0;}
+      .ed-item .tt{text-align:right; font-weight:700; white-space:nowrap;}
+      @media (max-width:720px){
+        .ed-rate{grid-template-columns:1fr 1fr; }
+        .ed-rate.hd{display:none;}
+        .ed-rate .tt{text-align:left;}
+        .ed-item{grid-template-columns:1fr 1fr; }
+        .ed-item .itName{grid-column:1/-1;}
+      }
       .ed-kv{display:flex; justify-content:space-between; gap:10px; padding:6px 0; font-size:13.5px;
         border-bottom:1px solid var(--border);}
       .ed-kv:last-child{border-bottom:none;}

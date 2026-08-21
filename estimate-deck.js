@@ -44,9 +44,19 @@
       complexity: "", terrain: "", access: "", notes: "" },
     refs: null,                // loaded comps
     ranked: null,
-    referenceId: null,         // projectRef of chosen comp
+    referenceId: null,         // projectRef of chosen comp — anchors the benchmark
+    showRefs: [],              // extra comps the estimator wants the client to see
     catalog: null,             // materials
-    sel: { primary: null, alternative: null },
+    // primary drives colour/profile and the snapshot; options are the other
+    // lines the client is being shown side by side. alternative is kept in sync
+    // with options[0] so estimates saved before this existed still read back.
+    sel: { primary: null, alternative: null, options: [] },
+    /* The estimator's own rates for THIS job. Nothing here is invented: a blank
+       rate simply contributes nothing, which is why the totals can be trusted. */
+    pricing: {
+      rates: { framingSF: "", deckingSF: "", railingLF: "", stairsEach: "", sidingSF: "" },
+      sidingArea: "", laborRate: "", items: [],
+    },
     output: null,
     media: { photos: [], audioNotes: [] }, // photos = gallery entries (+.ann markup); audio = {audioId,txtId,name,when,transcript}
     _gal: null,                // mounted gallery handle (step 1 only)
@@ -197,6 +207,8 @@
       range: range,
       sourceRows: rows,
       anySample: anySample,
+      pricing: pricingTotals(),
+      pricingInput: JSON.parse(JSON.stringify(state.pricing)),
       materialCost: { amount: null, status: "pending_admin_pricing",
         note: "Material pricing is deferred until approved price records exist — it is not estimated from research data." },
       assumptions: buildAssumptions(p, snapshot, benchmark, range, anySample),
@@ -207,6 +219,25 @@
   function products() { return (state.catalog && state.catalog.products) || []; }
   function findProduct(id) { return products().find(function (x) { return x.materialId === id; }) || null; }
 
+  // where a line sits in the comparison list (-1 when it is not being compared)
+  function optIndex(id) {
+    return (state.sel.options || []).findIndex(function (o) { return o.materialId === id; });
+  }
+  // the selection this card's colour/profile chips belong to
+  function selFor(id) {
+    if (state.sel.primary && state.sel.primary.materialId === id) return state.sel.primary;
+    var i = optIndex(id);
+    return i >= 0 ? state.sel.options[i] : null;
+  }
+  /* Estimates written before comparisons existed read `alternative`, and so do
+     the saved-estimate list and the print view. Keep it pointing at the first
+     comparison so nothing downstream has to know about the change. */
+  function syncAlternative() {
+    var first = (state.sel.options || [])[0];
+    state.sel.alternative = first ? { materialId: first.materialId, colorId: first.colorId } : null;
+    saveDraftLocal();
+  }
+
   function buildSnapshot() {
     var sel = state.sel;
     if (!sel.primary) return null;
@@ -214,26 +245,80 @@
     if (!p) return null;
     var color = (p.colors || []).find(function (c) { return c.colorId === sel.primary.colorId; }) || (p.colors || [])[0] || null;
     var profile = (p.profiles || []).find(function (x) { return x.profileId === sel.primary.profileId; }) || (p.profiles || [])[0] || null;
-    var alt = null;
-    if (sel.alternative) {
-      var ap = findProduct(sel.alternative.materialId);
-      if (ap) {
-        var ac = (ap.colors || []).find(function (c) { return c.colorId === sel.alternative.colorId; }) || (ap.colors || [])[0] || null;
-        alt = { materialId: ap.materialId, brandName: ap.brandName, officialName: ap.officialName,
-          marketTier: ap.marketTier, colorName: ac ? ac.name : "" };
-      }
-    }
+    // every line the client is being shown, in the order they were added
+    var options = (sel.options || []).map(function (o) {
+      var op = findProduct(o.materialId);
+      if (!op) return null;
+      var oc = (op.colors || []).find(function (c) { return c.colorId === o.colorId; }) || (op.colors || [])[0] || null;
+      var of = (op.profiles || []).find(function (x) { return x.profileId === o.profileId; }) || (op.profiles || [])[0] || null;
+      return { materialId: op.materialId, brandName: op.brandName, officialName: op.officialName,
+        marketTier: op.marketTier, colorName: oc ? oc.name : "",
+        nominalDimensions: of ? of.nominalDimensions : "" };
+    }).filter(Boolean);
+    var alt = options[0] || null;   // back-compat for readers written before options existed
     return {
       primary: { materialId: p.materialId, brandName: p.brandName, officialName: p.officialName,
         marketTier: p.marketTier, colorId: color ? color.colorId : null, colorName: color ? color.name : "",
         profileId: profile ? profile.profileId : null,
         profileType: profile ? profile.profileType : "", nominalDimensions: profile ? profile.nominalDimensions : "" },
       alternative: alt,
+      options: options,
       pricingStatus: "pending_admin_pricing",
     };
   }
 
+  /* ══ priced scope — the estimator's rates, never a guess ══
+     Material pricing stays pending (no approved price records), but LABOUR and
+     the work itself are things the estimator knows for this location, so they
+     type them and the arithmetic is done here. A blank rate contributes
+     nothing rather than a made-up number. */
+  var MARKUPS = [0, 5, 10, 15, 20, 25, 30];
+  function num(v) { var n = Number(v); return isFinite(n) ? n : 0; }
+
+  function workLines() {
+    var p = state.project, pc = state.pricing, r = pc.rates, out = [];
+    function add(label, qty, unit, rate) {
+      qty = num(qty); rate = num(rate);
+      if (qty > 0 && rate > 0) out.push({ label: label, qty: qty, unit: unit, rate: rate, total: qty * rate });
+    }
+    add("Framing", p.framingArea, "SF", r.framingSF);
+    add("Decking", p.deckingArea, "SF", r.deckingSF);
+    add("Railing", p.railing, "LF", r.railingLF);
+    add("Stairs", p.stairs, "ea", r.stairsEach);
+    add("Siding", pc.sidingArea, "SF", r.sidingSF);
+    return out;
+  }
+
+  function itemLines() {
+    var pc = state.pricing;
+    return (pc.items || []).map(function (it) {
+      if (it.kind === "labor") {
+        var rate = num(it.rate) || num(pc.laborRate);
+        var hours = num(it.guys) * num(it.days) * 8;
+        return { kind: "labor", name: it.name || "Untitled task", hours: hours, rate: rate,
+          detail: num(it.guys) + " × " + num(it.days) + "d (8h) = " + hours + " hrs @ " + money2(rate) + "/hr",
+          total: hours * rate, ready: hours > 0 && rate > 0 };
+      }
+      var base = num(it.price), mk = num(it.markup);
+      return { kind: "priced", name: it.name || "Untitled item", base: base, markup: mk,
+        detail: money2(base) + (mk ? " + " + mk + "% markup" : " · no markup"),
+        total: base * (1 + mk / 100), ready: base > 0 };
+    });
+  }
+
+  function pricingTotals() {
+    var w = workLines(), i = itemLines();
+    var wt = w.reduce(function (a, l) { return a + l.total; }, 0);
+    var it = i.reduce(function (a, l) { return a + (l.ready ? l.total : 0); }, 0);
+    return { work: w, items: i, workTotal: wt, itemsTotal: it, total: wt + it,
+      priced: w.length > 0 || i.some(function (l) { return l.ready; }) };
+  }
+
   /* ══ helpers ══ */
+  function money2(n) {
+    if (!isFinite(Number(n))) return "—";
+    return "$" + Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
   function money(n) {
     if (!isFinite(Number(n))) return "—";
     return "$" + Number(n).toLocaleString("en-US", { maximumFractionDigits: 0 });
@@ -248,6 +333,7 @@
       localStorage.setItem(DRAFT_KEY, JSON.stringify({
         estimateId: state.estimateId, estimateRef: state.estimateRef, version: state.version,
         estStatus: state.estStatus, project: state.project, referenceId: state.referenceId, sel: state.sel,
+        showRefs: state.showRefs, pricing: state.pricing,
         media: state.media,
       }));
     } catch (e) {}
@@ -439,8 +525,11 @@
     var pr = findProduct(mv.materialId);
     mv.colorId = colorId;
     mv.idx = 0;
-    if (pr && state.sel.primary && state.sel.primary.materialId === pr.materialId) {
-      state.sel.primary.colorId = colorId;
+    // applies to the primary OR to this line's comparison entry, whichever it is
+    var sel = pr ? selFor(pr.materialId) : null;
+    if (sel) {
+      sel.colorId = colorId;
+      syncAlternative();
       renderStep3();
     }
     renderMatModal();
@@ -451,7 +540,7 @@
     mv.photos = matPhotos(pr, mv.colorId);
     if (mv.idx >= mv.photos.length) mv.idx = 0;
     var isPrimary = state.sel.primary && state.sel.primary.materialId === pr.materialId;
-    var isAlt = state.sel.alternative && state.sel.alternative.materialId === pr.materialId;
+    var isAlt = optIndex(pr.materialId) >= 0;
     var selectable = pr.selectable !== undefined ? pr.selectable !== false : pr.status === "active";
     var colName = (colorOf(pr, mv.colorId) || {}).name || "";
 
@@ -487,7 +576,8 @@
 
     var profs = (pr.profiles || []).length
       ? '<div class="ed-chips">' + pr.profiles.map(function (f) {
-          var on = isPrimary && state.sel.primary.profileId === f.profileId;
+          var mvSel = selFor(pr.materialId);
+          var on = mvSel && mvSel.profileId === f.profileId;
           return '<span class="ed-chip' + (on ? " on" : "") + '" data-mvprofile="' + esc(f.profileId) + '">' +
             esc((f.profileType || "").replace(/_/g, " ") + " · " + (f.nominalDimensions || "")) + "</span>";
         }).join("") + "</div>"
@@ -531,7 +621,7 @@
           (mv.photos.length ? '<button class="btn btn-ghost btn-sm" id="mvPresent">' +
             (mv.present ? "✕ Exit photo view" : "⛶ Photo view") + "</button>" : "") +
           (selectable
-            ? '<button class="btn btn-ghost btn-sm" id="mvAlt">' + (isAlt ? "✓ Alternative" : "+ Set as alternative") + "</button>" +
+            ? '<button class="btn btn-ghost btn-sm" id="mvAlt">' + (isAlt ? "✓ Comparing" : "+ Compare") + "</button>" +
               '<button class="btn btn-sm" id="mvUse"' + (isPrimary ? " disabled" : "") + ">" +
                 (isPrimary ? "✓ Selected" : "Use this line →") + "</button>"
             : '<span class="ed-sub" style="margin:0;font-size:12px">We quote this line on request.</span>') +
@@ -564,8 +654,10 @@
     });
     el("mvBody").querySelectorAll("[data-mvprofile]").forEach(function (c) {
       c.onclick = function () {
-        if (!(state.sel.primary && state.sel.primary.materialId === pr.materialId)) return;
-        state.sel.primary.profileId = c.getAttribute("data-mvprofile");
+        var sel = selFor(pr.materialId);
+        if (!sel) return;
+        sel.profileId = c.getAttribute("data-mvprofile");
+        syncAlternative();
         renderStep3();
         renderMatModal();
       };
@@ -574,21 +666,51 @@
     if (pres) pres.onclick = function () { mv.present = !mv.present; renderMatModal(); };
     var useBtn = el("mvUse");
     if (useBtn) useBtn.onclick = function () {
+      var was = optIndex(pr.materialId), old = state.sel.primary;
       state.sel.primary = { materialId: pr.materialId, colorId: mv.colorId,
-        profileId: (pr.profiles && pr.profiles[0]) ? pr.profiles[0].profileId : null };
-      if (state.sel.alternative && state.sel.alternative.materialId === pr.materialId) state.sel.alternative = null;
+        profileId: (was >= 0 && state.sel.options[was].profileId) ||
+          ((pr.profiles && pr.profiles[0]) ? pr.profiles[0].profileId : null) };
+      if (was >= 0) state.sel.options.splice(was, 1);
+      // whatever it displaced stays on the table as a comparison
+      if (old && old.materialId !== pr.materialId && optIndex(old.materialId) < 0) state.sel.options.unshift(old);
+      syncAlternative();
       renderStep3();
       closeMatModal();
     };
     var altBtn = el("mvAlt");
     if (altBtn) altBtn.onclick = function () {
-      if (state.sel.alternative && state.sel.alternative.materialId === pr.materialId) state.sel.alternative = null;
+      var i = optIndex(pr.materialId);
+      if (i >= 0) state.sel.options.splice(i, 1);
       else if (!(state.sel.primary && state.sel.primary.materialId === pr.materialId)) {
-        state.sel.alternative = { materialId: pr.materialId, colorId: mv.colorId };
+        state.sel.options.push({ materialId: pr.materialId, colorId: mv.colorId,
+          profileId: (pr.profiles && pr.profiles[0]) ? pr.profiles[0].profileId : null });
       }
+      syncAlternative();
       renderStep3();
       renderMatModal();
     };
+  }
+
+  /* The estimator's own rates, shown as a plain bill of work. Kept visibly
+     apart from the historical comparables above it: one is what past jobs
+     cost, the other is what this estimator says this job costs. */
+  function pricedScopeHtml(t) {
+    if (!t || !t.priced) return "";
+    var rows = t.work.map(function (l) {
+      return "<tr><td>" + esc(l.label) + '</td><td class="num">' + l.qty + " " + esc(l.unit) +
+        '</td><td class="num">' + money2(l.rate) + '</td><td class="num"><b>' + money2(l.total) + "</b></td></tr>";
+    }).join("") +
+    t.items.filter(function (l) { return l.ready; }).map(function (l) {
+      return "<tr><td>" + esc(l.name) + '</td><td class="num" colspan="2">' + esc(l.detail) +
+        '</td><td class="num"><b>' + money2(l.total) + "</b></td></tr>";
+    }).join("");
+    return '<h3 style="margin:18px 0 4px;font-size:15px">4 · Priced scope — your rates</h3>' +
+      '<div style="overflow-x:auto"><table class="ed-tbl"><thead><tr><th>Work</th>' +
+      '<th class="num">Quantity</th><th class="num">Rate</th><th class="num">Total</th></tr></thead><tbody>' +
+      rows + "</tbody></table></div>" +
+      '<div class="ed-kv"><span><b>Priced scope total</b></span><span class="v ed-total">' + money(t.total) + "</span></div>" +
+      '<div class="ed-note">These figures come from the rates you entered for this job, not from the comparables above. ' +
+      "Decking material is still pending pricing and is <b>not</b> included.</div>";
   }
 
   /* ══ step navigation ══
@@ -1220,7 +1342,9 @@
       return;
     }
     var cards = state.ranked.map(function (r) {
-      var selCls = state.referenceId === r.projectRef ? " sel" : "";
+      var isRef = state.referenceId === r.projectRef;
+      var isShown = state.showRefs.indexOf(r.projectRef) >= 0;
+      var selCls = (isRef ? " sel" : "") + (isShown ? " shown" : "");
       var gal = DCRGallery.parse(r);
       var picHtml = gal.length
         ? '<div class="ed-refpic" data-car="' + esc(r.projectRef) + '" data-idx="0">' +
@@ -1248,22 +1372,36 @@
         "<span>Cost/SF: <b>" + (isFinite(Number(r.costPerPrimaryUnit)) ? "$" + Number(r.costPerPrimaryUnit).toFixed(2) : "—") + "</b></span>" +
         (r.productLine ? "<span>" + esc(r.deckingManufacturer || "") + " <b>" + esc(r.productLine) + "</b></span>" : "") +
         "</div>" +
-        '<div style="margin-top:10px"><button class="btn btn-sm ' + (state.referenceId === r.projectRef ? "" : "btn-ghost") + ' pickRef" data-ref="' + esc(r.projectRef) + '">' +
-        (state.referenceId === r.projectRef ? "✓ Reference selected" : "Use as reference →") + "</button></div></div>";
+        '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">' +
+        '<button class="btn btn-sm ' + (isRef ? "" : "btn-ghost") + ' pickRef" data-ref="' + esc(r.projectRef) + '">' +
+        (isRef ? "✓ Reference selected" : "Use as reference →") + "</button>" +
+        '<button class="btn btn-sm ' + (isShown ? "" : "btn-ghost") + ' showRef" data-ref="' + esc(r.projectRef) + '">' +
+        (isShown ? "✓ Showing client" : "+ Show client") + "</button>" +
+        "</div></div>";
     }).join("");
 
     el("edApp").innerHTML =
       '<div class="ed-card"><h2>📊 Similar completed projects</h2>' +
-      '<p class="ed-sub">Ranked by similarity to your scope. Pick the best historical reference — it anchors the benchmark on the estimate.</p>' +
+      '<p class="ed-sub">Ranked by similarity to your scope. Pick the best historical reference — it anchors the benchmark on the estimate. ' +
+      'Tick <b>Show client</b> on as many projects as you like; those ride along to the estimate as examples of work like theirs.</p>' +
       (cards || '<p class="ed-sub">No reference projects in the library yet. You can continue without one, or add past projects from the Estimates page.</p>') +
       '<div class="ed-msg" id="s2msg" style="color:var(--text-muted)">' +
-      (state.referenceId ? "Reference: " + esc(state.referenceId) : "No reference selected (optional but recommended).") + "</div>" +
+      (state.referenceId ? "Reference: " + esc(state.referenceId) : "No reference selected (optional but recommended).") +
+      (state.showRefs.length ? " · Showing the client " + state.showRefs.length + " project" + (state.showRefs.length === 1 ? "" : "s") : "") + "</div>" +
       '<div class="ed-nav"><button class="btn btn-ghost" id="s2back">← Project</button>' +
       '<button class="btn" id="s2next">Choose materials →</button></div></div>';
 
     document.querySelectorAll(".pickRef").forEach(function (b) {
       b.onclick = function () {
         state.referenceId = b.dataset.ref === state.referenceId ? null : b.dataset.ref;
+        renderStep2();
+      };
+    });
+    document.querySelectorAll(".showRef").forEach(function (b) {
+      b.onclick = function () {
+        var i = state.showRefs.indexOf(b.dataset.ref);
+        if (i >= 0) state.showRefs.splice(i, 1); else state.showRefs.push(b.dataset.ref);
+        saveDraftLocal();
         renderStep2();
       };
     });
@@ -1305,8 +1443,9 @@
     var cards = products().map(function (pr) {
       var selectable = pr.selectable !== undefined ? pr.selectable !== false : pr.status === "active";
       var isPrimary = state.sel.primary && state.sel.primary.materialId === pr.materialId;
-      var isAlt = state.sel.alternative && state.sel.alternative.materialId === pr.materialId;
-      var cls = "ed-mat" + (isPrimary ? " sel" : "") + (isAlt ? " alt" : "") + (selectable ? "" : " dis");
+      var optIdx = optIndex(pr.materialId);
+      var isOpt = optIdx >= 0;
+      var cls = "ed-mat" + (isPrimary ? " sel" : "") + (isOpt ? " alt" : "") + (selectable ? "" : " dis");
       // the cover falls back to the selected (or first) color's photo, since
       // that is where photos actually live for most lines
       var shot = coverPhoto(pr, isPrimary ? state.sel.primary.colorId : null);
@@ -1314,16 +1453,17 @@
       var thumb = '<span class="ed-cover' + (shot ? " has-pic" : "") + '">' +
         (shot ? '<img data-mvpic="' + esc(pr.materialId) + '" alt="">' : "🪵") + "</span>";
       var colorChips = "", profChips = "";
-      if (isPrimary) {
+      var chosen = isPrimary ? state.sel.primary : (isOpt ? state.sel.options[optIdx] : null);
+      if (chosen) {
         colorChips = '<div class="ed-chips">' + (pr.colors || []).map(function (c) {
-          var on = state.sel.primary.colorId === c.colorId;
+          var on = chosen.colorId === c.colorId;
           var sw = (c.pictureItemId || c.pictureUrl)
             ? '<img style="display:none;width:18px;height:18px;border-radius:4px;object-fit:cover;vertical-align:-4px;margin-right:5px"' + picAttrs(c) + ' alt="">'
             : "";
           return '<span class="ed-chip' + (on ? " on" : "") + '" data-color="' + esc(c.colorId) + '">' + sw + esc(c.name) + "</span>";
         }).join("") + "</div>";
         profChips = '<div class="ed-chips">' + (pr.profiles || []).map(function (f) {
-          var on = state.sel.primary.profileId === f.profileId;
+          var on = chosen.profileId === f.profileId;
           return '<span class="ed-chip' + (on ? " on" : "") + '" data-profile="' + esc(f.profileId) + '">' +
             esc((f.profileType || "").replace(/_/g, " ") + " · " + (f.nominalDimensions || "")) + "</span>";
         }).join("") + "</div>";
@@ -1336,18 +1476,24 @@
         '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="ed-tier">' + esc(pr.marketTier || "") + "</span>" +
         '<button class="btn btn-sm btn-ghost detBtn" data-mat="' + esc(pr.materialId) + '">Details</button>' +
         (selectable
-          ? '<button class="btn btn-sm btn-ghost altBtn" data-mat="' + esc(pr.materialId) + '">' + (isAlt ? "✓ Alternative" : "+ Alt") + "</button>"
+          ? '<button class="btn btn-sm ' + (isOpt ? "" : "btn-ghost") + ' altBtn" data-mat="' + esc(pr.materialId) + '">' +
+            (isOpt ? "✓ Comparing" : "+ Compare") + "</button>"
           : '<span class="ed-badge sample">pending approval</span>') +
         "</div></div>" +
-        (isPrimary ? '<div style="font-size:11.5px;font-weight:700;margin-top:8px">Color</div>' + colorChips +
+        (chosen ? '<div style="font-size:11.5px;font-weight:700;margin-top:8px">Color' +
+            (isPrimary ? "" : " <span style=\"font-weight:400;color:var(--text-muted)\">· comparison ' + (optIdx + 1) + '</span>") + "</div>" + colorChips +
           '<div style="font-size:11.5px;font-weight:700;margin-top:8px">Profile</div>' + profChips : "") +
         "</div>";
     }).join("");
 
     el("edApp").innerHTML =
       '<div class="ed-card"><h2>🪵 Decking material</h2>' +
-      '<p class="ed-sub">Pick the primary decking line (tap a card), then its color and profile. Optionally mark a second line as the client\'s alternative. ' +
+      '<p class="ed-sub">Tap a card to set the <b>primary</b> line, then its color and profile. Tick <b>Compare</b> on as many other lines as you want to put in front of the client — each keeps its own color and profile. ' +
       'Identity data is manufacturer-verified; <b>pricing stays pending</b> until approved price records exist.</p>' +
+      '<div class="ed-msg" style="color:var(--text-muted)">' +
+        (state.sel.primary ? "Primary set" : "No primary line yet") +
+        (state.sel.options.length ? " · comparing " + state.sel.options.length + " other line" + (state.sel.options.length === 1 ? "" : "s") : "") +
+      "</div>" +
       cards +
       '<div class="ed-msg" id="s3msg" style="color:var(--err)"></div>' +
       '<div class="ed-nav"><button class="btn btn-ghost" id="s3back">← Similar projects</button>' +
@@ -1376,32 +1522,52 @@
         var id = card.dataset.mat;
         if (state.sel.primary && state.sel.primary.materialId === id) return;
         var pr = findProduct(id);
+        var was = optIndex(id) >= 0 ? state.sel.options[optIndex(id)] : null;
+        var old = state.sel.primary;
         state.sel.primary = { materialId: id,
-          colorId: (pr.colors && pr.colors[0]) ? pr.colors[0].colorId : null,
-          profileId: (pr.profiles && pr.profiles[0]) ? pr.profiles[0].profileId : null };
-        if (state.sel.alternative && state.sel.alternative.materialId === id) state.sel.alternative = null;
+          // promoting a compared line keeps the colour the client was shown
+          colorId: (was && was.colorId) || ((pr.colors && pr.colors[0]) ? pr.colors[0].colorId : null),
+          profileId: (was && was.profileId) || ((pr.profiles && pr.profiles[0]) ? pr.profiles[0].profileId : null) };
+        if (was) state.sel.options.splice(optIndex(id), 1);
+        // the line it replaced stays on the table as a comparison
+        if (old && old.materialId !== id && optIndex(old.materialId) < 0) state.sel.options.unshift(old);
+        syncAlternative();
         renderStep3();
       };
     });
     document.querySelectorAll(".altBtn").forEach(function (b) {
       b.onclick = function (ev) {
         ev.stopPropagation();
-        var id = b.dataset.mat;
-        if (state.sel.alternative && state.sel.alternative.materialId === id) {
-          state.sel.alternative = null;
-        } else {
+        var id = b.dataset.mat, i = optIndex(id);
+        if (i >= 0) state.sel.options.splice(i, 1);
+        else {
           if (state.sel.primary && state.sel.primary.materialId === id) return;
           var pr = findProduct(id);
-          state.sel.alternative = { materialId: id, colorId: (pr.colors && pr.colors[0]) ? pr.colors[0].colorId : null };
+          state.sel.options.push({ materialId: id,
+            colorId: (pr.colors && pr.colors[0]) ? pr.colors[0].colorId : null,
+            profileId: (pr.profiles && pr.profiles[0]) ? pr.profiles[0].profileId : null });
         }
+        syncAlternative();
         renderStep3();
       };
     });
-    document.querySelectorAll("[data-color]").forEach(function (chip) {
-      chip.onclick = function () { state.sel.primary.colorId = chip.dataset.color; renderStep3(); };
+    document.querySelectorAll(".ed-mat [data-color]").forEach(function (chip) {
+      chip.onclick = function () {
+        var sel = selFor(chip.closest(".ed-mat").dataset.mat);
+        if (!sel) return;
+        sel.colorId = chip.dataset.color;
+        syncAlternative();
+        renderStep3();
+      };
     });
-    document.querySelectorAll("[data-profile]").forEach(function (chip) {
-      chip.onclick = function () { state.sel.primary.profileId = chip.dataset.profile; renderStep3(); };
+    document.querySelectorAll(".ed-mat [data-profile]").forEach(function (chip) {
+      chip.onclick = function () {
+        var sel = selFor(chip.closest(".ed-mat").dataset.mat);
+        if (!sel) return;
+        sel.profileId = chip.dataset.profile;
+        syncAlternative();
+        renderStep3();
+      };
     });
     // the viewer is open over this step — keep its contents in step with it
     if (!el("matModal").hidden && mv.materialId) renderMatModal();
@@ -1446,13 +1612,151 @@
       '<h3 style="margin:16px 0 2px;font-size:14px">Materials</h3>' +
       (snap ? kv("Primary", esc(snap.primary.officialName) + " · " + esc(snap.primary.colorName) +
           (snap.primary.nominalDimensions ? " · " + esc(snap.primary.nominalDimensions) : "")) +
-          (snap.alternative ? kv("Alternative", esc(snap.alternative.officialName) + " · " + esc(snap.alternative.colorName)) : "")
+          (snap.options || []).map(function (o, i) {
+            return kv("Comparison " + (i + 1), esc(o.officialName) + " · " + esc(o.colorName) +
+              (o.nominalDimensions ? " · " + esc(o.nominalDimensions) : ""));
+          }).join("")
         : '<p class="ed-sub">No material selected.</p>') +
-      '<div class="ed-warn">Material <b>pricing</b> is not included yet — totals below come only from completed-project cost history.</div>' +
+      (state.showRefs.length
+        ? '<h3 style="margin:16px 0 2px;font-size:14px">Projects being shown to the client</h3>' +
+          state.showRefs.map(function (id) {
+            var r2 = (state.ranked || []).find(function (x) { return x.projectRef === id; });
+            return r2 ? kv(esc(r2.projectName), r2.match + "% match · " + money(r2.referencePrice)) : "";
+          }).join("")
+        : "") +
+      '<div class="ed-warn">Material <b>pricing</b> is not included yet — the comparable totals come only from completed-project cost history. The rates below are <b>yours</b>, and only what you fill in is counted.</div>' +
+      renderRateEditor() +
       '<div class="ed-nav"><button class="btn btn-ghost" id="s4back">← Materials</button>' +
       '<button class="btn" id="s4next">Generate preliminary estimate →</button></div></div>';
+    wireRateEditor();
     el("s4back").onclick = function () { go(3); };
     el("s4next").onclick = function () { go(5); };
+  }
+
+  /* ══ the estimator's rates ══
+     Five rates against quantities already captured in the scope, plus any
+     number of extra items in the two shapes the shop actually quotes in:
+     a crew for so many days, or a price with a markup on it. */
+  var RATE_FIELDS = [
+    { k: "framingSF", label: "Framing", unit: "SF", qty: function () { return num(state.project.framingArea); } },
+    { k: "deckingSF", label: "Decking", unit: "SF", qty: function () { return num(state.project.deckingArea); } },
+    { k: "railingLF", label: "Railing", unit: "LF", qty: function () { return num(state.project.railing); } },
+    { k: "stairsEach", label: "Stairs", unit: "each", qty: function () { return num(state.project.stairs); },
+      hint: "per stair — bigger flights can be added as their own item below" },
+    { k: "sidingSF", label: "Siding", unit: "SF", qty: function () { return num(state.pricing.sidingArea); }, qtyField: "sidingArea" },
+  ];
+
+  function renderRateEditor() {
+    var pc = state.pricing;
+    var rows = RATE_FIELDS.map(function (f) {
+      var q = f.qty();
+      var qtyCell = f.qtyField
+        ? '<input type="number" min="0" step="any" class="rateQty" data-qty="' + f.qtyField + '" value="' + esc(pc[f.qtyField]) + '" placeholder="0">'
+        : '<span class="rq">' + (q || 0) + " " + f.unit + "</span>";
+      return '<div class="ed-rate"><span class="lb">' + f.label +
+        (f.hint ? '<small>' + f.hint + "</small>" : "") + "</span>" +
+        '<span class="qt">' + qtyCell + "</span>" +
+        '<span class="rt">$<input type="number" min="0" step="any" class="rateIn" data-rate="' + f.k +
+          '" value="' + esc(pc.rates[f.k]) + '" placeholder="0.00"><small>/' + f.unit + "</small></span>" +
+        '<span class="tt" data-rowtot="' + f.k + '">—</span></div>';
+    }).join("");
+
+    var items = (pc.items || []).map(function (it, i) { return renderItemRow(it, i); }).join("");
+
+    return '<h3 style="margin:20px 0 2px;font-size:14px">Your rates for this job</h3>' +
+      '<p class="ed-sub">Quantities come from the scope. Fill in the rates you are using at this location — leave any blank and it is simply left out.</p>' +
+      '<div class="ed-rates"><div class="ed-rate hd"><span class="lb">Work</span><span class="qt">Quantity</span><span class="rt">Rate</span><span class="tt">Total</span></div>' +
+      rows + "</div>" +
+      '<h3 style="margin:20px 0 2px;font-size:14px">Additional items</h3>' +
+      '<p class="ed-sub">Crew tasks are priced as <b>guys × days × 8 hours × your hourly rate</b>. Priced items take a markup.</p>' +
+      '<div class="ed-grid" style="max-width:340px"><div><label>Hourly rate for this location</label>' +
+      '<input type="number" min="0" step="any" id="pc_labor" value="' + esc(pc.laborRate) + '" placeholder="0.00"></div></div>' +
+      '<div id="edItems">' + (items || '<p class="ed-sub" style="margin:8px 0">No additional items yet.</p>') + "</div>" +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">' +
+      '<button class="btn btn-sm btn-ghost" id="addCrew">+ Crew task</button>' +
+      '<button class="btn btn-sm btn-ghost" id="addPriced">+ Priced item</button></div>' +
+      '<div id="edPriceTot"></div>';
+  }
+
+  function renderItemRow(it, i) {
+    if (it.kind === "labor") {
+      return '<div class="ed-item" data-i="' + i + '">' +
+        '<input class="itName" data-f="name" value="' + esc(it.name) + '" placeholder="Task name — e.g. demo old deck">' +
+        '<span class="f"><input type="number" min="0" step="1" data-f="guys" value="' + esc(it.guys) + '" placeholder="0"><small>guys</small></span>' +
+        '<span class="f"><input type="number" min="0" step="any" data-f="days" value="' + esc(it.days) + '" placeholder="0"><small>days (8h)</small></span>' +
+        '<span class="f">$<input type="number" min="0" step="any" data-f="rate" value="' + esc(it.rate) + '" placeholder="hourly"><small>/hr</small></span>' +
+        '<span class="tt" data-itemtot="' + i + '">—</span>' +
+        '<button class="btn btn-sm btn-ghost delItem" data-i="' + i + '" title="Remove">✕</button></div>';
+    }
+    return '<div class="ed-item" data-i="' + i + '">' +
+      '<input class="itName" data-f="name" value="' + esc(it.name) + '" placeholder="Item name — e.g. permit, dumpster">' +
+      '<span class="f">$<input type="number" min="0" step="any" data-f="price" value="' + esc(it.price) + '" placeholder="0.00"><small>price</small></span>' +
+      '<span class="f"><select data-f="markup">' + MARKUPS.map(function (m) {
+        return '<option value="' + m + '"' + (num(it.markup) === m ? " selected" : "") + ">" + m + "%</option>";
+      }).join("") + "</select><small>markup</small></span>" +
+      '<span class="f"></span>' +
+      '<span class="tt" data-itemtot="' + i + '">—</span>' +
+      '<button class="btn btn-sm btn-ghost delItem" data-i="' + i + '" title="Remove">✕</button></div>';
+  }
+
+  /* Totals refresh in place. Re-rendering the whole step on every keystroke
+     would throw away focus mid-number, which is maddening on a tablet. */
+  function refreshRateTotals() {
+    var t = pricingTotals();
+    RATE_FIELDS.forEach(function (f) {
+      var cell = document.querySelector('[data-rowtot="' + f.k + '"]');
+      if (!cell) return;
+      var line = t.work.find(function (l) { return l.label === f.label; });
+      cell.textContent = line ? money2(line.total) : "—";
+    });
+    t.items.forEach(function (l, i) {
+      var cell = document.querySelector('[data-itemtot="' + i + '"]');
+      if (cell) cell.textContent = l.ready ? money2(l.total) : "—";
+    });
+    var box = el("edPriceTot");
+    if (!box) return;
+    box.innerHTML = t.priced
+      ? '<div class="ed-note" style="margin-top:14px">' +
+        '<div class="ed-kv"><span>Work at your rates</span><span class="v">' + money2(t.workTotal) + "</span></div>" +
+        '<div class="ed-kv"><span>Additional items</span><span class="v">' + money2(t.itemsTotal) + "</span></div>" +
+        '<div class="ed-kv"><span><b>Priced scope total</b></span><span class="v ed-total">' + money(t.total) + "</span></div>" +
+        '<div style="font-size:11.5px;color:var(--text-muted);margin-top:6px">Your rates only — decking material is still pending pricing and is not in this figure.</div></div>'
+      : '<p class="ed-sub" style="margin-top:12px">No rates entered yet — the estimate will show the historical comparables alone.</p>';
+    saveDraftLocal();
+  }
+
+  function wireRateEditor() {
+    document.querySelectorAll(".rateIn").forEach(function (i) {
+      i.oninput = function () { state.pricing.rates[i.dataset.rate] = i.value; refreshRateTotals(); };
+    });
+    document.querySelectorAll(".rateQty").forEach(function (i) {
+      i.oninput = function () { state.pricing[i.dataset.qty] = i.value; refreshRateTotals(); };
+    });
+    var lab = el("pc_labor");
+    if (lab) lab.oninput = function () { state.pricing.laborRate = lab.value; refreshRateTotals(); };
+    document.querySelectorAll(".ed-item").forEach(function (row) {
+      var i = Number(row.dataset.i);
+      row.querySelectorAll("[data-f]").forEach(function (f) {
+        f.oninput = f.onchange = function () {
+          state.pricing.items[i][f.dataset.f] = f.value;
+          refreshRateTotals();
+        };
+      });
+    });
+    document.querySelectorAll(".delItem").forEach(function (b) {
+      b.onclick = function () { state.pricing.items.splice(Number(b.dataset.i), 1); renderStep4(); };
+    });
+    var ac = el("addCrew");
+    if (ac) ac.onclick = function () {
+      state.pricing.items.push({ kind: "labor", name: "", guys: "", days: "", rate: "" });
+      renderStep4();
+    };
+    var ap = el("addPriced");
+    if (ap) ap.onclick = function () {
+      state.pricing.items.push({ kind: "priced", name: "", price: "", markup: 15 });
+      renderStep4();
+    };
+    refreshRateTotals();
   }
 
   /* ══ STEP 5 — preliminary estimate ══ */
@@ -1519,9 +1823,13 @@
       '<h3 style="margin:18px 0 4px;font-size:15px">3 · Materials</h3>' +
       (snap
         ? '<div class="ed-kv"><span>Primary</span><span class="v">' + esc(snap.primary.officialName) + " · " + esc(snap.primary.colorName) + "</span></div>" +
-          (snap.alternative ? '<div class="ed-kv"><span>Alternative</span><span class="v">' + esc(snap.alternative.officialName) + " · " + esc(snap.alternative.colorName) + "</span></div>" : "") +
+          (snap.options || []).map(function (op, i) {
+            return '<div class="ed-kv"><span>Option ' + (i + 2) + '</span><span class="v">' +
+              esc(op.officialName) + " · " + esc(op.colorName) + "</span></div>";
+          }).join("") +
           '<div class="ed-note">Material cost: <b>pending</b> — ' + esc(o.materialCost.note) + "</div>"
         : '<p class="ed-sub">No material selection recorded.</p>') +
+      pricedScopeHtml(o.pricing) +
       (state.media.photos.length || state.media.audioNotes.length
         ? '<h3 style="margin:18px 0 4px;font-size:15px">Project documentation</h3>' +
           (state.media.photos.length
@@ -1576,7 +1884,8 @@
       siteAddress: p.address, city: p.city, projectType: p.projectType, complexity: p.complexity,
       primaryAreaSF: p.deckingArea, secondaryAreaSF: p.framingArea, railingLF: p.railing, stairs: p.stairs,
       scopeJson: JSON.stringify(p),
-      selectionJson: JSON.stringify({ sel: state.sel, snapshot: o.selectionSnapshot }),
+      selectionJson: JSON.stringify({ sel: state.sel, snapshot: o.selectionSnapshot,
+        pricing: state.pricing, showRefs: state.showRefs }),
       outputJson: JSON.stringify(o),
       mediaJson: JSON.stringify(state.media),
       referenceProjectId: state.referenceId || "",
@@ -1613,6 +1922,9 @@
     try {
       var selWrap = JSON.parse(est.selectionJson || "{}");
       if (selWrap.sel) state.sel = selWrap.sel;
+      if (selWrap.pricing) state.pricing = Object.assign(state.pricing, selWrap.pricing);
+      if (selWrap.showRefs) state.showRefs = selWrap.showRefs;
+      normalizeSel();
     } catch (e) {}
     try {
       var media = JSON.parse(est.mediaJson || "{}");
@@ -1620,6 +1932,19 @@
       normalizeNotes();
     } catch (e) {}
     state.referenceId = est.referenceProjectId || null;
+  }
+
+  /* An estimate saved before comparisons existed has `alternative` and no
+     `options`. Promote it so the rest of the code only ever sees one shape. */
+  function normalizeSel() {
+    if (!state.sel.options) state.sel.options = [];
+    if (!state.sel.options.length && state.sel.alternative) {
+      state.sel.options = [{ materialId: state.sel.alternative.materialId,
+        colorId: state.sel.alternative.colorId || null, profileId: null }];
+    }
+    if (!state.pricing.rates) state.pricing.rates = { framingSF: "", deckingSF: "", railingLF: "", stairsEach: "", sidingSF: "" };
+    if (!state.pricing.items) state.pricing.items = [];
+    if (!state.showRefs) state.showRefs = [];
   }
 
   // A restored note can't still be "uploading" — the in-memory audio is gone.
@@ -1656,6 +1981,9 @@
           state.project = Object.assign(state.project, draft.project);
           state.referenceId = draft.referenceId || null;
           state.sel = draft.sel || state.sel;
+          if (draft.showRefs) state.showRefs = draft.showRefs;
+          if (draft.pricing) state.pricing = Object.assign(state.pricing, draft.pricing);
+          normalizeSel();
           state.estimateId = draft.estimateId || null;
           state.estimateRef = draft.estimateRef || "";
           state.version = draft.version || 0;
