@@ -516,3 +516,24 @@ button { color: inherit; }
 .framing-hit { stroke: transparent; stroke-width: 18; vector-effect: non-scaling-stroke; cursor: pointer; }
 .framing-beam.selected, .framing-joist.selected { stroke: #7cc4ff; }
 .framing-post.selected, .framing-pillar.selected { stroke: #7cc4ff; stroke-width: 2.5; }
+
+/* ── symbols: gates and count pins ─────────────────────────────────────── */
+.gate-span { stroke: #0d1114; stroke-width: 6; vector-effect: non-scaling-stroke; }
+.symbol-gate .gate-span { stroke: #0d1114; }         /* clears the railing line */
+.gate-tick { stroke: #2f6fb5; stroke-width: 2.5; vector-effect: non-scaling-stroke; }
+.gate-swing { stroke: #2f6fb5; stroke-width: 1.2; vector-effect: non-scaling-stroke; fill: none; stroke-dasharray: 4 3; }
+.count-pin { fill: #d6a13a; stroke: #7a5a12; stroke-width: 1.2; vector-effect: non-scaling-stroke; }
+.count-seq { fill: #1b1408; font-size: 8px; font-weight: 800; }
+.symbol-gate.selected .gate-tick, .symbol-gate.selected .gate-swing { stroke: #7cc4ff; }
+.symbol-count.selected .count-pin { stroke: #7cc4ff; stroke-width: 2; }
+
+/* ---- takeoff calculation settings ---- */
+.takeoff-settings { border: 1px solid var(--line, #d8dee6); border-radius: 10px; margin: 0 0 10px; background: var(--panel, #fff); }
+.takeoff-settings .takeoff-category-heading { width: 100%; }
+.takeoff-settings-body { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px 14px; padding: 12px 14px 4px; }
+.takeoff-setting { display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
+.takeoff-setting > span { font-weight: 600; color: var(--ink, #1c2733); }
+.takeoff-setting > span small { font-weight: 400; opacity: 0.6; }
+.takeoff-setting input { padding: 7px 9px; border: 1px solid var(--line, #cfd6df); border-radius: 8px; font-size: 14px; min-height: 40px; }
+.takeoff-setting > small { color: var(--muted, #5b6b7c); line-height: 1.3; }
+.takeoff-settings-note { margin: 2px 14px 12px; font-size: 11.5px; color: var(--muted, #5b6b7c); }

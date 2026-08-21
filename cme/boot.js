@@ -53,6 +53,11 @@ try {
     entryId: qs.get('entryId') || null,
     clientName: qs.get('clientName') || '',
     incoming,
+    fresh: qs.get('cmeFresh') === '1',
+    /* The origins a sketch may be posted to, supplied HERE rather than
+       hardcoded in cme/src - the engine stays independently deployable and a
+       different contractor's portal names its own origins at this seam. */
+    salesHubOrigins: ['https://barajas545.github.io', 'https://dcrframing.github.io'],
     returnTo: estimateId
       ? 'estimate-deck.html?id=' + encodeURIComponent(estimateId)
       : 'estimates.html',

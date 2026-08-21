@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createProjectDocument, upsertObject } from '../../core/document/project-document.js';
 import { createDeckBoundary } from '../deck-boundary/deck-boundary.js';
-import { deriveAutomaticTakeoff } from './takeoff.js';
+import { deriveAutomaticTakeoff, getTakeoffState, setTakeoffState } from './takeoff.js';
 import { createBeam, addBeam } from '../beam/beam.js';
 import { createJoist, addJoist, arrayObject } from '../joist-group/joist-group.js';
 import { createPost, addPost } from '../post-footing/post-footing.js';
@@ -58,4 +58,24 @@ test('deck screws come out at about a box per hundred square feet', () => {
   const document = upsertObject(createProjectDocument({ id: 'p' }), boundary);
   const lines = deriveAutomaticTakeoff(document);
   assert.equal(lineById(lines, 'auto:hardware:deck-screw').quantity, 3);
+});
+
+test('the shop rules live in settings, so another contractor can change them', () => {
+  /* The recipes shipped hardcoded (a box per 100 SF, three stringers a flight,
+     5% fascia waste). They are one shop's rules, and the product is for any
+     contractor - so they moved into takeoff settings, saved per project. This
+     pins that the settings actually steer the math. */
+  const boundary = createDeckBoundary([
+    { x: 0, y: 0 }, { x: 216, y: 0 }, { x: 216, y: 138 }, { x: 0, y: 138 },
+  ]);
+  const base = upsertObject(createProjectDocument({ id: 'p' }), boundary);
+  const document = setTakeoffState(base, {
+    ...getTakeoffState(base),
+    settings: { ...getTakeoffState(base).settings, screwBoxCoverageSqFt: 50 },
+  });
+  const lines = deriveAutomaticTakeoff(document);
+  // 207 sq ft at a box per 50 sq ft -> 5 boxes instead of 3
+  const screws = lineById(lines, 'auto:hardware:deck-screw');
+  assert.equal(screws.quantity, 5);
+  assert.match(screws.specification, /50 sq ft/, 'the spec text tells the reader the rule in force');
 });

@@ -58,6 +58,9 @@
       el("cmeFrame").src = "about:blank";
     }
     document.body.style.overflow = "";
+    if (active && active._handoffKey) {
+      try { sessionStorage.removeItem(active._handoffKey); } catch (e) {}
+    }
     active = null;
   }
 
@@ -71,8 +74,6 @@
     var payload = data.payload || {};
     var handlers = active;
     try {
-      if (payload.numbers && handlers.onNumbers) handlers.onNumbers(payload.numbers);
-
       var name = (handlers.entry && handlers.entry.name && /^drawing/.test(handlers.entry.name))
         ? handlers.entry.name
         : "drawing-" + Date.now() + ".png";
@@ -110,8 +111,14 @@
       if (payload.removedRecordings) {
         console.warn("[CME] " + payload.removedRecordings + " voice recording(s) were not saved with the drawing.");
       }
+      /* Numbers land only AFTER the upload succeeded - applying them first put
+         quantities on the estimate for a drawing whose save then failed. */
+      if (payload.numbers && handlers.onNumbers) handlers.onNumbers(payload.numbers);
       if (handlers.onSave) handlers.onSave(patch);
-      close();
+      /* Close only the session this save belongs to. A slow save finishing
+         after the user closed and opened a SECOND drawing used to tear the
+         second session down mid-edit. */
+      if (active === handlers) close();
     } catch (error) {
       console.error("[CME] could not save the drawing", error);
       if (DCR.alert) {
@@ -132,6 +139,7 @@
       var entry = options.entry;
       var params = new URLSearchParams();
       if (options.estimateId) params.set("estimateId", options.estimateId);
+      if (options.fresh) params.set("cmeFresh", "1");
       if (options.clientName) params.set("clientName", options.clientName);
       if (entry && entry.id) params.set("entryId", String(entry.id));
 
@@ -141,8 +149,16 @@
       if (entry && entry.cme && entry.cme.project) {
         var key = HANDOFF_PREFIX + Date.now();
         try {
+          /* Sweep strays first: a key left by an open-then-close (the iframe
+             never consumed it) would sit forever, and stale handoffs quietly
+             beat fresher saved copies on later opens. */
+          for (var i = sessionStorage.length - 1; i >= 0; i--) {
+            var k = sessionStorage.key(i);
+            if (k && k.indexOf(HANDOFF_PREFIX) === 0) sessionStorage.removeItem(k);
+          }
           sessionStorage.setItem(key, JSON.stringify(entry.cme.project));
           params.set("cmeHandoff", key);
+          options._handoffKey = key;
         } catch (e) {
           console.warn("[CME] could not hand over the existing drawing", e);
         }

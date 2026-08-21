@@ -80,7 +80,17 @@ export function describeTakeoff(document) {
   const descriptors = [];
   if (posts.length) {
     descriptors.push(
-      { kind: 'count', id: 'auto:framing:post', category: 'framing', description: '4x4x8 post', specification: '4×4×8', quantity: posts.length, sourceObjectIds: postIds },
+      /* The line name stays the old tool's, so an estimator reads down the same
+         rows - but the SPEC only claims a size somebody actually chose.
+         "Preliminary quantities must not appear more precise than the model
+         supports" is the vision's own guardrail. */
+      (() => {
+        const sizes = [...new Set(posts.map((post) => post.size).filter(Boolean))];
+        return { kind: 'count', id: 'auto:framing:post', category: 'framing', description: '4x4x8 post',
+          specification: sizes.length ? sizes.join(' · ') : 'size to confirm',
+          quantity: posts.length, sourceObjectIds: postIds,
+          ...(sizes.length ? {} : { confidence: 'preliminary' }) };
+      })(),
       { kind: 'count', id: 'auto:hardware:post-base', category: 'hardware', description: 'Post base / anchor', specification: 'One per post', quantity: posts.length, sourceObjectIds: postIds },
       // Three bags a post is the shop's flat allowance, not a footing volume, so
       // it is flagged preliminary rather than presented as a calculated figure.
@@ -88,7 +98,11 @@ export function describeTakeoff(document) {
     );
   }
   if (pillars.length) {
-    descriptors.push({ kind: 'count', id: 'auto:framing:pillar', category: 'framing', description: '6x6 pillar', specification: '6×6', quantity: pillars.length, sourceObjectIds: pillars.map((pillar) => pillar.id) });
+    // the drawn footprint is real; echo it rather than asserting a catalogue size
+    const pillarSizes = [...new Set(pillars.map((pillar) => Number(pillar.dimensions?.sizeInches) || 6))];
+    descriptors.push({ kind: 'count', id: 'auto:framing:pillar', category: 'framing', description: '6x6 pillar',
+      specification: pillarSizes.map((size) => `${size}″ square`).join(' · '),
+      quantity: pillars.length, sourceObjectIds: pillars.map((pillar) => pillar.id) });
   }
   return descriptors;
 }

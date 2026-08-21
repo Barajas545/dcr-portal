@@ -12,7 +12,7 @@
    the only portal-specific thing in the tree. */
 
 import { deriveDrawingNumbers, deriveDrawingBreakdown } from './src/core/integrations/dcr-portal-numbers.js';
-import { deriveAutomaticTakeoff, getTakeoffState } from './src/tools/takeoff/takeoff.js';
+import { getEffectiveTakeoffLines } from './src/tools/takeoff/takeoff.js';
 import { formatFeetInches } from './src/core/units/length.js';
 
 const PORTAL = window.CME_PORTAL || {};
@@ -89,11 +89,21 @@ const PAPER_STYLE = `
   .demolition-edge { stroke: #b4552d; stroke-width: 2.5; stroke-dasharray: 8 5; }
   .fascia-board { stroke: #1f6f8b; stroke-width: 3; }
   .deck-boarding-line { stroke: #9bb3ba; stroke-width: 1; }
-  .vertex, .constraint-anchor { fill: #ffffff; stroke: #167f75; stroke-width: 1.5; }
-  .railing-run, .railing-run-visible { stroke: #2f6fb5; stroke-width: 3; }
-  .railing-post { fill: #2f6fb5; }
-  .stair-tread, .stair-outline, .stair-edge { stroke: #4a5a63; stroke-width: 2; fill: none; }
-  .level-down, .level-down-marker, .level-down-fascia { stroke: #7a5ea8; stroke-width: 2; }
+  .vertex-anchor, .constraint-anchor { fill: #ffffff; stroke: #167f75; stroke-width: 1.5; }
+  .railing-run-visible { stroke: #2f6fb5; stroke-width: 3; }
+  .railing-post, .railing-run-post { fill: #2f6fb5; stroke: #1d4c80; stroke-width: 1; }
+  /* The editor fills a stair footprint dark to sit on the dark canvas; on white
+     paper that printed as a near-black box swallowing its own treads. */
+  .stair-construction-fill { fill: rgba(74,90,99,0.12); stroke: #4a5a63; stroke-width: 1.5; }
+  .stair-tread { stroke: #4a5a63; stroke-width: 1.2; }
+  .stair-side-visible { stroke: #4a5a63; stroke-width: 2; }
+  .stair-interface-visible { stroke: #167f75; stroke-width: 2; stroke-dasharray: 6 4; }
+  .stair-preview-fill, .stair-preview-tread, .stair-landing-snap, .stair-snap-node,
+  .stair-side-edit-handle, .railing-snap-marker { display: none; }
+  .level-down-region { fill: rgba(122,94,168,0.10); stroke: #7a5ea8; stroke-width: 1.5; }
+  .level-down, .level-down-marker, .level-down-fascia, .level-down-picture-frame { stroke: #7a5ea8; stroke-width: 2; }
+  .level-down-preview { display: none; }
+  .deck-level { fill: rgba(22,127,117,0.06); }
   .cat-line, .cat-measure-leg, .cat-measure-direct { stroke: #8f7712; stroke-width: 1.5; }
   .cat-guide-line { stroke: #c9b25a; stroke-width: 1; stroke-dasharray: 5 4; }
   .cat-measure-bg, .cat-note-bg { fill: #ffffff; stroke: #8f7712; }
@@ -107,6 +117,11 @@ const PAPER_STYLE = `
   .framing-post { fill: #e8edf0; stroke: #4a565d; stroke-width: 1; }
   .framing-pillar { fill: #d7dfe4; stroke: #39434a; stroke-width: 1.5; }
   .framing-draft { display: none; }
+  .gate-span { stroke: #ffffff; stroke-width: 6; }
+  .gate-tick { stroke: #2f6fb5; stroke-width: 2.5; }
+  .gate-swing { stroke: #2f6fb5; stroke-width: 1.2; fill: none; stroke-dasharray: 4 3; }
+  .count-pin { fill: #d6a13a; stroke: #7a5a12; stroke-width: 1.2; }
+  .count-seq { fill: #1b1408; font-size: 8px; font-weight: 800; }
   /* the transparent twins exist only to catch a fingertip; they carry no ink */
   [class$="-hit"], .dimension-hit, .cat-line-hit, .cat-note-hit, .level-down-hit, .framing-hit { display: none; }
   .cursor-crosshair, .snap-indicator, .cat-snap-marker, .dimension-arrow-pulse { display: none; }
@@ -124,12 +139,31 @@ function svgForPaper(source) {
   clone.querySelectorAll('[vector-effect]').forEach((node) => node.removeAttribute('vector-effect'));
   clone.querySelectorAll('[class$="-hit"]').forEach((node) => node.remove());
 
+  /* The paper shows the WHOLE drawing, not the live viewport. Inheriting the
+     on-screen viewBox meant a rep zoomed into one corner saved a paper with
+     everything else clipped off - and never knew, because the screen looked
+     right. getBBox() is measured on the LIVE element (a detached clone has no
+     layout), and the union with the current viewBox keeps a mostly-empty small
+     sketch from blowing up to fill the page. */
+  let box = (clone.getAttribute('viewBox') || '0 0 100 100').split(/\s+/).map(Number);
+  try {
+    const ink = source.getBBox();
+    if (ink && ink.width > 0 && ink.height > 0) {
+      const margin = 24;
+      const x = Math.min(box[0], ink.x - margin);
+      const y = Math.min(box[1], ink.y - margin);
+      const right = Math.max(box[0] + box[2], ink.x + ink.width + margin);
+      const bottom = Math.max(box[1] + box[3], ink.y + ink.height + margin);
+      box = [x, y, right - x, bottom - y];
+      clone.setAttribute('viewBox', box.join(' '));
+    }
+  } catch { /* an unattached or empty canvas keeps the viewport it had */ }
+
   const style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
   style.textContent = PAPER_STYLE;
   clone.insertBefore(style, clone.firstChild);
 
   const background = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-  const box = (clone.getAttribute('viewBox') || '0 0 100 100').split(/\s+/).map(Number);
   background.setAttribute('x', box[0]); background.setAttribute('y', box[1]);
   background.setAttribute('width', box[2]); background.setAttribute('height', box[3]);
   background.setAttribute('fill', '#ffffff');
@@ -138,19 +172,27 @@ function svgForPaper(source) {
 }
 
 function takeoffRows(documentModel) {
-  /* The same context the on-screen takeoff uses. Without it Wild Hog railing -
-     which is billed from resolved geometries rather than from the document -
-     would be missing from the saved drawing's table while showing on screen. */
+  /* Two rules, both learned the hard way.
+
+     The context: the same one the on-screen takeoff uses, because Wild Hog
+     railing is billed from resolved geometries rather than from the document
+     and would otherwise vanish from the saved table while showing on screen.
+
+     The lines: EFFECTIVE lines, not raw calculated ones. An estimator who
+     corrects a quantity saw the corrected number in the app while the PNG and
+     the payload carried the raw calculation - the human override was silently
+     discarded exactly where other people read it. The printed row keeps the
+     calculated figure alongside, so the adjustment stays traceable. */
   const context = typeof window.CME_TAKEOFF_CONTEXT === 'function' ? window.CME_TAKEOFF_CONTEXT() : {};
-  const lines = deriveAutomaticTakeoff(documentModel, context);
-  const state = getTakeoffState(documentModel);
-  const manual = state.manualLines || [];
-  return [...lines, ...manual]
+  return getEffectiveTakeoffLines(documentModel, context)
     .filter((line) => Number(line.quantity) > 0)
     .map((line) => [
       line.category || '',
       line.description || '',
-      `${line.quantity} ${line.unit || 'ea'}`,
+      `${line.quantity} ${line.unit || 'ea'}` +
+        (line.origin === 'adjusted' && Number.isFinite(line.calculatedQuantity) && line.calculatedQuantity !== line.quantity
+          ? ` (calc ${line.calculatedQuantity})` : '') +
+        (line.confidence && line.confidence !== 'calculated' ? ` · ${line.confidence}` : ''),
     ]);
 }
 

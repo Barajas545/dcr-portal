@@ -219,21 +219,38 @@ const slugify = (label) => label.normalize('NFKD').replace(/[^\x20-\x7e]/g, '').
    duplicate would let an edit on one row silently rewrite the other. The suffix
    comes off the sorted label list and never off drawing order, so the id a label
    holds does not move when a pin elsewhere is dropped. */
-function takeoffIds(sortedLabels) {
-  const used = new Map();
-  return new Map(sortedLabels.map((label) => {
+/* A takeoff line's id is what a user's quantity override is keyed by, so the
+   id a label holds must depend on NOTHING but that label. Two earlier schemes
+   failed this: positional -2/-3 suffixes re-issued the bare slug to a surviving
+   label when a colliding sibling was deleted, and a collision-conditional hash
+   changed the id the moment a colliding label appeared. Either way a human
+   adjustment silently landed on a differently-described material.
+
+   So the short hash of the verbatim label is ALWAYS part of the id - a pure
+   function of the label, stable whatever else is on the drawing, identical on
+   every machine. Renaming a label changes its id, which is correct: a renamed
+   tally is a different material, and its overrides should not follow. */
+function labelHash(label) {
+  let hash = 5381;
+  for (let index = 0; index < label.length; index += 1) {
+    hash = ((hash << 5) + hash + label.charCodeAt(index)) >>> 0;
+  }
+  return hash.toString(36).slice(0, 6);
+}
+
+function takeoffIds(labels) {
+  return new Map(labels.map((label) => {
     const slug = slugify(label) || 'count';
-    const taken = used.get(slug) ?? 0;
-    used.set(slug, taken + 1);
-    return [label, `auto:custom:count:${slug}${taken ? `-${taken + 1}` : ''}`];
+    return [label, `auto:custom:count:${slug}-${labelHash(label)}`];
   }));
 }
 
-/* Count markers only.
+/* Count markers, plus one count row each for gates, doors and windows.
 
-   Text labels are notes and produce nothing. Gates, doors and windows produce
-   nothing either: the old tool never billed them, and a gate matters only
-   because it shortens a railing run, which getGateOpenings hands to the railing.
+   Text labels are notes and produce nothing. Openings DO bill a count - the
+   old tool listed Gates, Doors and Windows next to Posts and Pillars, and a
+   gate is a real kit to buy. A gate's width-out-of-the-railing behaviour is
+   separate and stays in getGateOpenings.
 
    Every other line in the takeoff is a material this tool knows something about.
    These are the opposite - they are how a rep counts whatever the tool has never
@@ -242,7 +259,28 @@ function takeoffIds(sortedLabels) {
    number of pins dropped. */
 export function describeTakeoff(document) {
   const markers = getCountMarkers(document);
-  if (!markers.length) return [];
+  /* Gates, doors and windows each get a count row - the tool this replaced
+     listed those tallies next to Posts and Pillars, and a gate is a real thing
+     to buy (a kit: hinges, latch, frame), so a silent zero understates the
+     order. Their width-out-of-the-railing behaviour is separate and stays in
+     getGateOpenings. These come FIRST so they cannot be skipped when there are
+     openings but no count pins. */
+  const openingRows = [
+    { type: GATE_TYPE, id: 'auto:railing:gate', category: 'railing', description: 'Gate', spec: 'kit · priced by hand', confidence: 'review' },
+    { type: DOOR_TYPE, id: 'auto:custom:door', category: 'custom', description: 'Door', spec: 'count only' },
+    { type: WINDOW_TYPE, id: 'auto:custom:window', category: 'custom', description: 'Window', spec: 'count only' },
+  ].map((row) => {
+    const found = objectsOf(document).filter((object) => object.type === row.type);
+    if (!found.length) return null;
+    return {
+      kind: 'count', id: row.id, category: row.category, description: row.description,
+      specification: row.spec, quantity: found.length,
+      sourceObjectIds: found.map((object) => object.id),
+      ...(row.confidence ? { confidence: row.confidence } : {}),
+    };
+  }).filter(Boolean);
+
+  if (!markers.length) return openingRows;
   const groups = new Map();
   markers.forEach((marker) => {
     const label = resolveLabel(marker.label);
@@ -250,11 +288,14 @@ export function describeTakeoff(document) {
     if (group) group.push(marker.id);
     else groups.set(label, [marker.id]);
   });
-  // Alphabetical, the order the old tool listed its count rows in, and one that
-  // cannot shuffle when a pin is added or deleted elsewhere on the drawing.
-  const labels = [...groups.keys()].sort((a, b) => a.localeCompare(b));
+  // Alphabetical with a FIXED locale: the order the old tool listed count rows
+  // in, and one that is the same on every machine. The runtime's default locale
+  // could order case-variant labels differently on two devices, which mattered
+  // when ids were positional; the ids no longer depend on order, but a stable
+  // listing is still the professional behaviour.
+  const labels = [...groups.keys()].sort((a, b) => a.localeCompare(b, 'en'));
   const ids = takeoffIds(labels);
-  return labels.map((label) => ({
+  return openingRows.concat(labels.map((label) => ({
     kind: 'count',
     id: ids.get(label),
     category: 'custom',
@@ -262,5 +303,5 @@ export function describeTakeoff(document) {
     specification: 'Counted on the drawing',
     quantity: groups.get(label).length,
     sourceObjectIds: groups.get(label),
-  }));
+  })));
 }

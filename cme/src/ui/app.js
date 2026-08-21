@@ -18,8 +18,9 @@ import { parseConstructionLength } from '../core/units/parse-length.js';
 import { CommandStack, replaceDocument } from '../history/command-stack.js';
 import { adaptiveGridSpacing, createViewport, fitViewport, panViewport, zoomViewport } from '../rendering/viewport-controller.js';
 import { createBeam, addBeam, getBeams } from '../tools/beam/beam.js';
-import { createJoist, addJoist, getJoists, arrayObject, ON_CENTRE_SPACINGS, DEFAULT_SPACING_INCHES, DEFAULT_COPIES } from '../tools/joist-group/joist-group.js';
+import { createJoist, addJoist, getJoists, arrayObject, ON_CENTRE_SPACINGS, DEFAULT_SPACING_INCHES, DEFAULT_COPIES, MAX_COPIES } from '../tools/joist-group/joist-group.js';
 import { createPost, createPillar, addPost, getPosts, getPillars } from '../tools/post-footing/post-footing.js';
+import { createGate, createCountMarker, nextSequence, getGates, getCountMarkers } from '../tools/symbols/symbols.js';
 import { chamferVertex, clearEdgeOrientationConstraint, createDeckBoundary, findAdjacentMergeCandidate, getBoundaryCentroid, getBoundaryLifecycle, getEdgeOrientationConstraint, insertVertex, isEdgeLocked, isVertexLocked, markBoundaryEdited, mergeAdjacentVertices, moveVertexWithConstraints, offsetEdge, orthogonalizeBoundary, removeVertex, setEdgeLength, setEdgeLocked, setEdgeOrientationConstraint, setEdgeRole, setVertexLocked, splitEdgeIntoSegments, updateEdgeProperties, validateDeckBoundary } from '../tools/deck-boundary/deck-boundary.js';
 import { deleteDeckAssembly } from '../tools/deck-boundary/delete-deck-assembly.js';
 import { clearDeckBoardingDirection, deriveDeckBoardingSegments, getDeckBoarding, rotateDeckBoardingDirection, setDeckBoardingDirection } from '../tools/deck-boarding/deck-boarding.js';
@@ -27,7 +28,7 @@ import { CAT_LINE_TYPE, CAT_MEASUREMENT_TYPE, CAT_NOTE_TYPE, createCatLine, crea
 import { createLevelDown, deriveLevelDownDepth, deriveLevelDownRegion, orthogonalizeLevelDown, setLevelDownRiserHeight, splitLevelDownSegment, updateLevelDownProperties } from '../tools/level-down/level-down.js';
 import { attachStairToBoundary, deriveStairDragOptions, deriveStairOpeningSnap, deriveStairSideSegments, deriveStairTreads, detachStairFromBoundary, findStairBoundaryConnection, getStairInterfaceEdge, materializeStairSideJunction, mergeStairBoundaryConnection, removeStairSideJunction, resolveStairHostEdge, setStairSidePosition, setStairWidth, synchronizeConnectedStairLevels, updateStairDimensions, updateStairInterfaceEdgeProperties, validateStairPlacement } from '../tools/stairs/stair.js';
 import { analyzeRailingGeometries, createRailingLine, deriveRailingGeometry, deriveRailingLineGeometry, resolveRailingEndpointSnap, updateRailingSettings } from '../tools/railing/railing.js';
-import { TAKEOFF_CATEGORIES, addManualTakeoffLine, createTakeoffExport, getEffectiveTakeoffLines, removeManualTakeoffLine, resetTakeoffLine, updateTakeoffLine } from '../tools/takeoff/takeoff.js';
+import { TAKEOFF_CATEGORIES, addManualTakeoffLine, createTakeoffExport, getEffectiveTakeoffLines, getTakeoffState, removeManualTakeoffLine, resetTakeoffLine, setTakeoffState, updateTakeoffLine } from '../tools/takeoff/takeoff.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 /* Storage is scoped per estimate when the portal hosts this.
@@ -108,6 +109,7 @@ let projectMenuOpen = false;
 let exportMenuOpen = false;
 let pendingProjectDeleteId = null;
 let catTool = 'line';
+let lastCountLabel = 'Count';
 /* Framing is one rail button with a sub-palette rather than four more rail
    buttons: the rail is already nine deep and these four belong together. */
 let framingTool = 'joist';
@@ -148,7 +150,12 @@ function incomingPortalProject() {
 function mergeIncoming(library, incoming) {
   if (!incoming) return library;
   const local = (library.projects ?? []).find((project) => project.id === incoming.id);
-  const localIsNewer = local && String(local.updatedAt ?? '') > String(incoming.updatedAt ?? '');
+  /* >= not >: equal timestamps mean the same save-state, and the local copy
+     is a strict superset - the handed-over one has its voice recordings
+     stripped for transport. Preferring incoming on a tie deleted the local
+     recordings the moment a saved drawing was reopened on the device that
+     made it. */
+  const localIsNewer = local && String(local.updatedAt ?? '') >= String(incoming.updatedAt ?? '');
   if (localIsNewer) {
     pendingBootNotice = 'This device has newer unsaved work on this drawing — showing that. Save to the estimate to keep it.';
     return activateLibraryProject(library, local.id);
@@ -157,6 +164,19 @@ function mergeIncoming(library, incoming) {
 }
 
 function loadProjectLibrary() {
+  /* "New drawing" from the estimate means exactly that. Without this the
+     estimate-scoped library reopened its previous active project, and saving
+     produced a twin gallery entry of drawing #1 instead of a drawing #2. */
+  if (typeof window !== 'undefined' && window.CME_PORTAL?.fresh) {
+    const fresh = createProjectDocument({ name: window.CME_PORTAL?.clientName ? `${window.CME_PORTAL.clientName} deck` : 'New drawing' });
+    const savedLibrary = localStorage.getItem(PROJECT_LIBRARY_STORAGE_KEY);
+    if (savedLibrary) {
+      try {
+        return activateLibraryProject(upsertLibraryProject(parseProjectLibrary(savedLibrary), fresh), fresh.id);
+      } catch { /* fall through to a clean library */ }
+    }
+    return createProjectLibrary(fresh);
+  }
   const incoming = incomingPortalProject();
   const savedLibrary = localStorage.getItem(PROJECT_LIBRARY_STORAGE_KEY);
   if (savedLibrary) {
@@ -355,8 +375,37 @@ function renderTakeoffLine(line) {
   const sourceLabel = line.origin === 'adjusted' ? 'ADJUSTED' : line.origin === 'manual' ? 'MANUAL' : 'AUTO';
   const price = line.unitPrice == null ? '' : line.unitPrice;
   const subtotal = line.unitPrice == null ? '—' : `$${(line.quantity * line.unitPrice).toFixed(2)}`;
-  const calculation = line.calculatedQuantity == null ? '' : `<small>Calculated ${line.calculatedQuantity}${line.requiredLinearFeet ? ` · ${line.requiredLinearFeet} LF net` : ''}${line.confidence !== 'calculated' ? ' · REVIEW' : ''}</small>`;
+  /* The tiers mean different things and the vision separates them on purpose:
+     "preliminary" is a recipe that has not been through the shop, "review" is a
+     line the tool KNOWS needs a human (a hand-priced Trex kit, an over-long
+     bay). Collapsing both into REVIEW made the strong flag meaningless. */
+  const confidenceFlag = line.confidence && line.confidence !== 'calculated'
+    ? ` · ${line.confidence.toUpperCase()}` : '';
+  const calculation = line.calculatedQuantity == null ? '' : `<small>Calculated ${line.calculatedQuantity}${line.requiredLinearFeet ? ` · ${line.requiredLinearFeet} LF net` : ''}${confidenceFlag}</small>`;
   return `<div class="takeoff-line"><div class="takeoff-material"><span class="takeoff-origin ${line.origin}">${sourceLabel}</span><strong>${escapeHtml(line.description)}</strong><small>${escapeHtml(line.specification ?? '')}</small>${calculation}</div><label><span>Qty</span><input type="number" min="0" step="1" value="${line.quantity}" data-takeoff-quantity="${escapeHtml(line.id)}"></label><label class="takeoff-price"><span>Unit price</span><input type="number" min="0" step="0.01" placeholder="—" value="${price}" data-takeoff-price="${escapeHtml(line.id)}"></label><div class="takeoff-subtotal"><span>Subtotal</span><strong>${subtotal}</strong></div><div class="takeoff-line-actions">${line.origin === 'manual' ? `<button class="icon-button danger" data-action="delete-takeoff-line" data-line-id="${escapeHtml(line.id)}" aria-label="Delete material">×</button>` : line.origin === 'adjusted' ? `<button class="button ghost" data-action="reset-takeoff-line" data-line-id="${escapeHtml(line.id)}">Reset</button>` : ''}</div></div>`;
+}
+
+let takeoffSettingsOpen = false;
+
+/* The shop rules behind every AUTO line. One field per rule, saved with the
+   project - a different contractor types their numbers once and every
+   calculated quantity follows. */
+const TAKEOFF_SETTING_FIELDS = [
+  { key: 'wastePercent', label: 'Decking waste', hint: '% added to boards, fascia framing and rail stock', min: 0, max: 50, step: 1, unit: '%' },
+  { key: 'fasciaWastePercent', label: 'Fascia waste', hint: '% added to fascia only - offcuts usually reusable', min: 0, max: 50, step: 1, unit: '%' },
+  { key: 'fieldBoardWidthInches', label: 'Deck board width', hint: 'actual face width of the field board', min: 1, max: 12, step: 0.25, unit: 'in' },
+  { key: 'fieldBoardGapInches', label: 'Board gap', hint: 'spacing between field boards', min: 0, max: 1, step: 0.0625, unit: 'in' },
+  { key: 'fieldBoardStockFeet', label: 'Field stock length', hint: 'length the yard sells field boards in', min: 8, max: 24, step: 2, unit: 'ft' },
+  { key: 'squareEdgeStockFeet', label: 'Square-edge stock', hint: 'stock length for square-edge / picture-frame boards', min: 8, max: 24, step: 2, unit: 'ft' },
+  { key: 'fasciaStockFeet', label: 'Fascia stock length', hint: 'length the yard sells fascia in', min: 8, max: 24, step: 2, unit: 'ft' },
+  { key: 'screwBoxCoverageSqFt', label: 'Screw box coverage', hint: 'square feet one 5lb box of deck screws covers', min: 25, max: 400, step: 25, unit: 'SF' },
+  { key: 'stringersPerFlight', label: 'Stringers per flight', hint: 'stair stringers ordered per flight of stairs', min: 2, max: 6, step: 1, unit: 'ea' },
+];
+
+function renderTakeoffSettings() {
+  const settings = getTakeoffState(documentModel).settings;
+  const fields = TAKEOFF_SETTING_FIELDS.map((field) => `<label class="takeoff-setting"><span>${field.label} <small>· ${field.unit}</small></span><input type="number" min="${field.min}" max="${field.max}" step="${field.step}" value="${Number(settings[field.key])}" data-takeoff-setting="${field.key}"><small>${field.hint}</small></label>`).join('');
+  return `<section class="takeoff-settings ${takeoffSettingsOpen ? 'expanded' : ''}"><button class="takeoff-category-heading" data-action="toggle-takeoff-settings" aria-expanded="${takeoffSettingsOpen}"><span><b>${takeoffSettingsOpen ? '−' : '+'}</b><strong>Calculation settings</strong></span><small>your shop's rules · saved with this project</small></button>${takeoffSettingsOpen ? `<div class="takeoff-settings-body">${fields}</div><p class="takeoff-settings-note">Changing a rule recalculates every AUTO quantity. Quantities you adjusted by hand stay exactly as you set them.</p>` : ''}</section>`;
 }
 
 function renderTakeoffWorkspace() {
@@ -370,7 +419,7 @@ function renderTakeoffWorkspace() {
     const adding = takeoffAddCategory === category.id;
     return `<section class="takeoff-category ${expanded ? 'expanded' : ''}"><button class="takeoff-category-heading" data-action="toggle-takeoff-category" data-category="${category.id}" aria-expanded="${expanded}"><span><b>${expanded ? '−' : '+'}</b><strong>${category.label}</strong></span><small>${categoryLines.length} material${categoryLines.length === 1 ? '' : 's'}</small></button>${expanded ? `<div class="takeoff-category-body">${categoryLines.length ? categoryLines.map(renderTakeoffLine).join('') : '<div class="takeoff-empty">No calculated materials yet. Add a project material or keep modeling.</div>'}${adding ? `<div class="takeoff-add-form"><label><span>Material</span><input id="takeoff-new-description" placeholder="Example: Pressure treated joist"></label><label><span>Specification</span><input id="takeoff-new-specification" placeholder="Example: 2×8×16"></label><label><span>Quantity</span><input id="takeoff-new-quantity" type="number" min=".01" step="1" value="1"></label><label><span>Unit</span><select id="takeoff-new-unit"><option value="ea">pieces</option><option value="lf">LF</option><option value="sf">SF</option><option value="box">boxes</option><option value="bag">bags</option><option value="gal">gallons</option></select></label><label><span>Unit price · optional</span><input id="takeoff-new-price" type="number" min="0" step=".01" placeholder="—"></label><div class="takeoff-add-actions"><button class="button primary" data-action="save-takeoff-line" data-category="${category.id}">Add material</button><button class="button ghost" data-action="cancel-takeoff-line">Cancel</button></div></div>` : `<button class="button ghost takeoff-add" data-action="add-takeoff-line" data-category="${category.id}">+ Add material</button>`}</div>` : ''}</section>`;
   }).join('');
-  return `<section class="takeoff-overlay" role="dialog" aria-modal="true" aria-label="Project material takeoff"><header class="takeoff-header"><div><div class="eyebrow">CME material intelligence</div><h1>Project Takeoff</h1><p>${escapeHtml(documentModel.name)} · calculated from the current construction model</p></div><button class="takeoff-close" data-action="close-takeoff" aria-label="Close takeoff">×</button></header><div class="takeoff-summary"><span><small>Material lines</small><strong>${lines.length}</strong></span><span><small>Unpriced</small><strong>${unpriced}</strong></span><span class="takeoff-price"><small>Known material total</small><strong>$${knownTotal.toFixed(2)}</strong></span></div><div class="takeoff-actions"><button class="button primary" data-action="print-takeoff-quote">Export quote · no prices</button><button class="button" data-action="print-takeoff-priced">Export with prices</button><button class="button ghost" data-action="download-takeoff-json">Takeoff JSON</button></div><div class="takeoff-list">${categories}</div><footer class="takeoff-footer"><span>Quantities marked REVIEW are preliminary construction recipes and remain editable.</span><strong>${lines.filter((line) => line.origin === 'adjusted').length} adjusted · ${lines.filter((line) => line.origin === 'manual').length} manual</strong></footer></section>`;
+  return `<section class="takeoff-overlay" role="dialog" aria-modal="true" aria-label="Project material takeoff"><header class="takeoff-header"><div><div class="eyebrow">CME material intelligence</div><h1>Project Takeoff</h1><p>${escapeHtml(documentModel.name)} · calculated from the current construction model</p></div><button class="takeoff-close" data-action="close-takeoff" aria-label="Close takeoff">×</button></header><div class="takeoff-summary"><span><small>Material lines</small><strong>${lines.length}</strong></span><span><small>Unpriced</small><strong>${unpriced}</strong></span><span class="takeoff-price"><small>Known material total</small><strong>$${knownTotal.toFixed(2)}</strong></span></div><div class="takeoff-actions"><button class="button primary" data-action="print-takeoff-quote">Export quote · no prices</button><button class="button" data-action="print-takeoff-priced">Export with prices</button><button class="button ghost" data-action="download-takeoff-json">Takeoff JSON</button></div>${renderTakeoffSettings()}<div class="takeoff-list">${categories}</div><footer class="takeoff-footer"><span>PRELIMINARY = a shop recipe not yet confirmed · REVIEW = needs a human decision. Every quantity stays editable, and an edit keeps the calculated figure beside it.</span><strong>${lines.filter((line) => line.origin === 'adjusted').length} adjusted · ${lines.filter((line) => line.origin === 'manual').length} manual</strong></footer></section>`;
 }
 
 function renderContextPanel(current) {
@@ -392,7 +441,7 @@ function renderContextPanel(current) {
     if (!geometry) return '';
     const system = geometry.railing.settings?.system ?? 'wild-hog';
     const canRemovePanel = geometry.sectionCount > geometry.minimumSectionCount;
-    return `<section class="context-object-panel"><div class="context-heading"><div><div class="eyebrow">Selected railing</div><h2>${formatFeetInches(geometry.length)}</h2></div>${close}</div><div class="context-stat"><span>Panels</span><strong>${geometry.sectionCount}</strong><small>${geometry.postCount} posts</small></div><div class="context-stepper"><button class="button" data-action="remove-railing-panel" ${canRemovePanel ? '' : 'disabled'}>− Panel</button><button class="button" data-action="add-railing-panel">+ Panel</button></div><label class="context-select"><span>Railing type</span><select id="quick-railing-system"><option value="wild-hog" ${system === 'wild-hog' ? 'selected' : ''}>Wild Hog panel</option><option value="trex" ${system === 'trex' ? 'selected' : ''}>Trex railing</option></select></label><div class="context-actions"><button class="button" data-action="toggle-decking">${deckingVisible ? 'Hide all decking' : 'Show all decking'}</button><button class="button danger" data-action="remove-railing">Delete railing</button></div><div class="context-note">Panel changes preserve both endpoints and the 6 ft maximum clear span.</div></section>`;
+    return `<section class="context-object-panel"><div class="context-heading"><div><div class="eyebrow">Selected railing</div><h2>${formatFeetInches(geometry.length)}</h2></div>${close}</div><div class="context-stat"><span>Panels</span><strong>${geometry.sectionCount}</strong><small>${geometry.postCount} posts</small></div><div class="context-stepper"><button class="button" data-action="remove-railing-panel" ${canRemovePanel ? '' : 'disabled'}>− Panel</button><button class="button" data-action="add-railing-panel">+ Panel</button></div><label class="context-select"><span>Railing type</span><select id="quick-railing-system"><option value="wild-hog" ${system === 'wild-hog' ? 'selected' : ''}>Wild Hog panel</option><option value="stick-built" ${system === 'stick-built' ? 'selected' : ''}>Stick-built (wood balusters)</option><option value="trex" ${system === 'trex' ? 'selected' : ''}>Trex railing</option></select></label><div class="context-actions"><button class="button" data-action="add-gate-on-railing">Add gate · 36″</button><button class="button" data-action="toggle-decking">${deckingVisible ? 'Hide all decking' : 'Show all decking'}</button></div><div class="context-actions"><button class="button danger" data-action="remove-railing">Delete railing</button></div><div class="context-note">A gate is an opening: its width comes OUT of this run's railing material. Panel changes preserve both endpoints and the 6 ft maximum clear span.</div></section>`;
   }
   if (selected.kind === 'edge') {
     const edge = current.edges.find((entry) => entry.id === selected.id);
@@ -427,6 +476,21 @@ function renderContextPanel(current) {
     const adjacentLocked = [current.edges[index], current.edges[(index - 1 + current.edges.length) % current.edges.length]].some((edge) => isEdgeLocked(current, edge.id));
     const referenced = isVertexReferencedByAttachment(selected.id);
     return `<section class="context-object-panel"><div class="context-heading"><div><div class="eyebrow">Selected corner</div><h2>${locked ? '⚓ Locked node' : 'Boundary node'}</h2></div>${close}</div><div class="context-actions"><button class="button primary" data-action="start-45-chamfer" ${locked || adjacentLocked || referenced ? 'disabled' : ''}>45° Chamfer</button><button class="button ${locked ? 'active-constraint' : ''}" data-action="${locked ? 'unlock-vertex' : 'lock-vertex'}">${locked ? 'Unlock' : 'Lock in place'}</button></div><div class="context-actions"><button class="button" data-action="toggle-decking">${deckingVisible ? 'Hide decking' : 'Show decking'}</button><button class="button danger" data-action="delete-vertex" ${current.vertices.length <= 3 || locked || adjacentLocked || referenced ? 'disabled' : ''}>Delete node</button></div><div class="context-note">${referenced ? 'This node anchors another construction object and cannot be replaced.' : '45° Chamfer: drag anywhere to set an equal setback on both connected edges with live dimensions.'}</div></section>`;
+  }
+  if (selected.kind === 'framing') {
+    const object = documentModel.objects.find((entry) => entry.id === selected.id);
+    if (object) {
+      if (object.type === 'count-marker') {
+        const tally = getCountMarkers(documentModel).filter((marker) => marker.label === object.label).length;
+        return `<section class="context-object-panel"><div class="context-heading"><div><div class="eyebrow">Count pin</div><h2>${escapeHtml(object.label)} · ${object.seq}</h2></div>${close}</div><div class="context-stat"><span>Total for this label</span><strong>${tally}</strong><small>each label is its own takeoff line</small></div><label class="context-select"><span>What is being counted</span><div class="compound-field"><input id="count-label" value="${escapeHtml(object.label)}"><button class="button" data-action="apply-count-label">Apply</button></div></label><div class="context-actions"><button class="button danger" data-action="delete-framing">Delete pin</button></div><div class="context-note">The label reaches the estimate exactly as written. Change it before dropping the next pin to start a new tally.</div></section>`;
+      }
+      if (object.type === 'gate') {
+        return `<section class="context-object-panel"><div class="context-heading"><div><div class="eyebrow">Gate</div><h2>${formatFeetInches(Number(object.dimensions?.widthInches) || 36)}</h2></div>${close}</div><label class="context-select"><span>Opening width</span><div class="compound-field"><input id="gate-width" value="${formatFeetInches(Number(object.dimensions?.widthInches) || 36)}"><button class="button" data-action="apply-gate-width">Apply</button></div></label><div class="context-actions"><button class="button danger" data-action="delete-framing">Delete gate</button></div><div class="context-note">This width comes OUT of the railing run it sits on — the balusters and rail are not billed across the opening.</div></section>`;
+      }
+      const lengthInches = Number(object.computed?.lengthInches) || 0;
+      const kindLabel = object.type === 'joist' ? 'Joist' : object.type === 'beam' ? 'Beam' : object.type === 'pillar' ? 'Pillar' : 'Post';
+      return `<section class="context-object-panel"><div class="context-heading"><div><div class="eyebrow">${kindLabel}</div><h2>${lengthInches > 0 ? formatFeetInches(lengthInches) : escapeHtml(object.name ?? kindLabel)}</h2></div>${close}</div><label class="context-select"><span>Size label · picked, never derived</span><div class="compound-field"><input id="framing-size" value="${escapeHtml(object.size ?? '')}" placeholder="2x10, 4x4, 6x6…"><button class="button" data-action="apply-framing-size">Apply</button></div></label><div class="context-actions"><button class="button danger" data-action="delete-framing">Delete ${kindLabel.toLowerCase()}</button></div><div class="context-note">The size goes on the material line so the estimator knows which board to pull. Nothing sizes itself from the span.</div></section>`;
+    }
   }
   if (selected.kind === 'dimension') {
     const reference = resolveDimensionReference(selected.id);
@@ -500,14 +564,16 @@ function renderFramingToolbar() {
     + `<button class="button ${framingTool === 'post' ? 'primary' : 'ghost'}" data-action="framing-tool-post" aria-pressed="${framingTool === 'post'}">Post</button>`
     + `<button class="button ${framingTool === 'pillar' ? 'primary' : 'ghost'}" data-action="framing-tool-pillar" aria-pressed="${framingTool === 'pillar'}">Pillar</button>`
     + `<span class="cat-toolbar-title"><small>On centre</small></span>${chips}`
+    + `<button class="button ghost" data-action="framing-copies-less" title="Fewer copies">−</button>`
     + `<button class="button ${selectedFraming ? '' : 'ghost'}" data-action="framing-array" ${selectedFraming ? '' : 'disabled'} title="Repeat the selected member on centre">⧉ Repeat ×${framingCopies}</button>`
+    + `<button class="button ghost" data-action="framing-copies-more" title="More copies">+</button>`
     + `<button class="button ghost" data-action="close-framing-tool">Done</button></div>`;
 }
 
 function renderCatToolbar() {
   if (mode !== 'cat') return '';
   const dimensionsVisible = getCatDimensionLayer(documentModel).visible;
-  return `<div class="cat-toolbar" role="toolbar" aria-label="CAT construction tools"><div class="cat-toolbar-title"><strong>CAT CL</strong><small>${catDraft ? 'Choose the second point' : catTool === 'trim' || catTool === 'extend' ? 'Choose a CAT line' : catTool === 'note' ? 'Choose arrow point' : 'Reference geometry'}</small></div><button class="button ${catTool === 'line' ? 'primary' : 'ghost'}" data-action="cat-tool-line" aria-pressed="${catTool === 'line'}"><span>╱</span> Line</button><button class="button ${catTool === 'measure' ? 'primary' : 'ghost'}" data-action="cat-tool-measure" aria-pressed="${catTool === 'measure'}"><span>↔</span> Tape</button><button class="button ${catTool === 'trim' ? 'primary' : 'ghost'}" data-action="cat-tool-trim" aria-pressed="${catTool === 'trim'}">⌫ Trim</button><button class="button ${catTool === 'extend' ? 'primary' : 'ghost'}" data-action="cat-tool-extend" aria-pressed="${catTool === 'extend'}">⇥ Extend</button><button class="button ${catTool === 'note' ? 'primary' : 'ghost'}" data-action="cat-tool-note" aria-pressed="${catTool === 'note'}">↗ Note</button><button class="button ${dimensionsVisible ? 'active-constraint' : 'ghost'}" data-action="toggle-cat-dimensions" aria-pressed="${dimensionsVisible}">${dimensionsVisible ? '◉' : '○'} CAT dimensions</button><button class="button ghost" data-action="close-cat-tool">Done</button></div>`;
+  return `<div class="cat-toolbar" role="toolbar" aria-label="CAT construction tools"><div class="cat-toolbar-title"><strong>CAT CL</strong><small>${catDraft ? 'Choose the second point' : catTool === 'trim' || catTool === 'extend' ? 'Choose a CAT line' : catTool === 'note' ? 'Choose arrow point' : catTool === 'count' ? 'Tap to drop a numbered pin' : 'Reference geometry'}</small></div><button class="button ${catTool === 'line' ? 'primary' : 'ghost'}" data-action="cat-tool-line" aria-pressed="${catTool === 'line'}"><span>╱</span> Line</button><button class="button ${catTool === 'measure' ? 'primary' : 'ghost'}" data-action="cat-tool-measure" aria-pressed="${catTool === 'measure'}"><span>↔</span> Tape</button><button class="button ${catTool === 'trim' ? 'primary' : 'ghost'}" data-action="cat-tool-trim" aria-pressed="${catTool === 'trim'}">⌫ Trim</button><button class="button ${catTool === 'extend' ? 'primary' : 'ghost'}" data-action="cat-tool-extend" aria-pressed="${catTool === 'extend'}">⇥ Extend</button><button class="button ${catTool === 'note' ? 'primary' : 'ghost'}" data-action="cat-tool-note" aria-pressed="${catTool === 'note'}">↗ Note</button><button class="button ${catTool === 'count' ? 'primary' : 'ghost'}" data-action="cat-tool-count" aria-pressed="${catTool === 'count'}">◎ Count</button><button class="button ${dimensionsVisible ? 'active-constraint' : 'ghost'}" data-action="toggle-cat-dimensions" aria-pressed="${dimensionsVisible}">${dimensionsVisible ? '◉' : '○'} CAT dimensions</button><button class="button ghost" data-action="close-cat-tool">Done</button></div>`;
 }
 
 function renderVisibilityControls() {
@@ -872,11 +938,41 @@ function renderFramingGraphics(svg) {
   });
 
   getPillars(documentModel).forEach((pillar) => {
-    const half = (Number(pillar.sizeInches) || 6) / 2;
+    const half = (Number(pillar.dimensions?.sizeInches) || 6) / 2;
     svg.append(svgElement('rect', {
       x: pillar.at.x - half, y: pillar.at.y - half, width: half * 2, height: half * 2,
       class: 'framing-pillar' + pick(pillar.id), 'data-framing-id': pillar.id,
     }));
+  });
+
+  getGates(documentModel).forEach((gate) => {
+    const half = (Number(gate.dimensions?.widthInches) || 36) / 2;
+    const angle = Number(gate.angle) || 0;
+    const dx = Math.cos(angle) * half;
+    const dy = Math.sin(angle) * half;
+    /* Drawn as the opening it is: a cleared span with end ticks and a swing
+       arc, the way a plan reads a gate. */
+    const group = svgElement('g', { class: 'symbol-gate' + pick(gate.id), 'data-framing-id': gate.id });
+    group.append(
+      svgElement('line', { x1: gate.at.x - dx, y1: gate.at.y - dy, x2: gate.at.x + dx, y2: gate.at.y + dy, class: 'gate-span' }),
+      svgElement('line', { x1: gate.at.x - dx, y1: gate.at.y - dy, x2: gate.at.x - dx - dy * 0.35, y2: gate.at.y - dy + dx * 0.35, class: 'gate-tick' }),
+      svgElement('line', { x1: gate.at.x + dx, y1: gate.at.y + dy, x2: gate.at.x + dx - dy * 0.35, y2: gate.at.y + dy + dx * 0.35, class: 'gate-tick' }),
+      svgElement('path', { d: `M ${gate.at.x - dx} ${gate.at.y - dy} A ${half * 2} ${half * 2} 0 0 1 ${gate.at.x + dx - dy * 0.9} ${gate.at.y + dy + dx * 0.9}`, class: 'gate-swing' }),
+      svgElement('line', { x1: gate.at.x - dx, y1: gate.at.y - dy, x2: gate.at.x + dx, y2: gate.at.y + dy, class: 'framing-hit', 'data-framing-id': gate.id }),
+    );
+    svg.append(group);
+  });
+
+  getCountMarkers(documentModel).forEach((marker) => {
+    const group = svgElement('g', { class: 'symbol-count' + pick(marker.id), 'data-framing-id': marker.id });
+    group.append(
+      svgElement('circle', { cx: marker.at.x, cy: marker.at.y, r: 7, class: 'count-pin' }),
+      svgElement('text', { x: marker.at.x, y: marker.at.y + 2.6, class: 'count-seq', 'text-anchor': 'middle' }),
+      svgElement('circle', { cx: marker.at.x, cy: marker.at.y, r: 13, class: 'framing-hit', fill: 'transparent', 'data-framing-id': marker.id }),
+    );
+    group.querySelector('.count-seq').textContent = String(marker.seq ?? '');
+    group.querySelector('.count-seq').append();
+    svg.append(group);
   });
 
   if (framingDraft && pointerWorld) {
@@ -1432,6 +1528,18 @@ function bindEvents() {
     message = 'Takeoff quantity adjusted';
     commit(updateTakeoffLine(documentModel, input.dataset.takeoffQuantity, { quantity }), 'Adjust takeoff material quantity');
   }));
+  app.querySelectorAll('[data-takeoff-setting]').forEach((input) => input.addEventListener('change', () => {
+    const key = input.dataset.takeoffSetting;
+    const field = TAKEOFF_SETTING_FIELDS.find((entry) => entry.key === key);
+    const value = Number(input.value);
+    if (!field || !Number.isFinite(value) || value < field.min || value > field.max) {
+      message = field ? `${field.label} must be between ${field.min} and ${field.max}` : 'Unknown setting';
+      render(); return;
+    }
+    const state = getTakeoffState(documentModel);
+    message = `${field.label} updated - quantities recalculated`;
+    commit(setTakeoffState(documentModel, { ...state, settings: { ...state.settings, [key]: value } }), `Change ${field.label.toLowerCase()}`);
+  }));
   app.querySelectorAll('[data-takeoff-price]').forEach((input) => input.addEventListener('change', () => {
     const unitPrice = input.value === '' ? null : Number(input.value);
     if (unitPrice !== null && (!Number.isFinite(unitPrice) || unitPrice < 0)) { message = 'Enter a valid unit price'; render(); return; }
@@ -1602,6 +1710,11 @@ function canvasPointerDown(svg, event) {
     return;
   }
   if (mode === 'framing' && event.button === 0) {
+    /* A second finger means pan/zoom, not a placement - without this a pinch
+       mid-mode dropped bogus points. (The first finger of a very fast pinch can
+       still start a draft; Escape or the next tap clears it, the same known
+       trade-off the CAT tools accept.) */
+    if (event.pointerType === 'touch' && activeTouches.size > 0) return;
     event.preventDefault();
     placeFramingPoint(screenToWorld(svg, event), event.pointerType);
     return;
@@ -1919,6 +2032,18 @@ function placeCatPoint(raw, pointerType = 'mouse', pointerEvent = null, targetCa
     } catch (error) { message = error.message; render(); }
     return;
   }
+  if (catTool === 'count') {
+    /* Numbered tally pins: how a rep counts anything the tool has no idea
+       about. Each label numbers independently, so "Light" pins run 1,2,3 while
+       "Hanger" pins run their own 1,2,3, and each label becomes its own line on
+       the takeoff with the label spelled exactly as typed. */
+    const label = lastCountLabel;
+    const marker = createCountMarker({ at: raw, label, seq: nextSequence(documentModel, label) });
+    selected = { kind: 'framing', id: marker.id };
+    message = `${label} ${marker.seq} placed · rename it in the panel to start a new tally`;
+    commit(upsertObject(documentModel, marker), 'Place count marker');
+    return;
+  }
   if (catTool === 'note') {
     const note = createCatNote(raw, '');
     mode = 'select';
@@ -2206,6 +2331,13 @@ function canvasPointerMove(svg, event) {
     pointerWorld = snapState.point;
     drawCanvasRefresh();
     updateHud(event);
+  } else if (mode === 'framing' && framingDraft) {
+    /* Without this the rubber-band from the first tap never drew - pointerWorld
+       only moved in boundary-draw mode, so the preview condition was never
+       true and the second tap landed blind. */
+    const snapped = snapForPointer(raw, framingDraft.start, [], new Set(), event.pointerType);
+    pointerWorld = snapped.point;
+    drawCanvasRefresh();
   } else {
     hideHud();
   }
@@ -2767,7 +2899,8 @@ function handleAction(action, source = null) {
   if (action === 'close-project-menu') { projectMenuOpen = false; pendingProjectDeleteId = null; render(); return; }
   if (action === 'toggle-export-menu') { exportMenuOpen = !exportMenuOpen; projectMenuOpen = false; pendingProjectDeleteId = null; render(); return; }
   if (action === 'open-takeoff') { takeoffOpen = true; exportMenuOpen = false; projectMenuOpen = false; takeoffAddCategory = null; message = 'Editable project takeoff generated'; render(); return; }
-  if (action === 'close-takeoff') { takeoffOpen = false; takeoffAddCategory = null; message = 'Takeoff saved with this project'; render(); return; }
+  if (action === 'toggle-takeoff-settings') { takeoffSettingsOpen = !takeoffSettingsOpen; render(); return; }
+  if (action === 'close-takeoff') { takeoffOpen = false; takeoffAddCategory = null; takeoffSettingsOpen = false; message = 'Takeoff saved with this project'; render(); return; }
   if (action === 'toggle-takeoff-category') {
     const category = source?.dataset.category;
     if (!category) return;
@@ -2863,6 +2996,69 @@ function handleAction(action, source = null) {
     return;
   }
   if (action === 'close-framing-tool') { framingDraft = null; setMode('select'); return; }
+  if (action === 'cat-tool-count') { catTool = 'count'; catDraft = null; render(); return; }
+  if (action === 'apply-count-label') {
+    const object = documentModel.objects.find((entry) => entry.id === selected.id);
+    const input = app.querySelector('#count-label');
+    if (!object || !input) return;
+    const label = String(input.value ?? '').trim() || 'Count';
+    lastCountLabel = label;
+    message = `Counting "${label}" now`;
+    commit(upsertObject(documentModel, { ...object, label, name: label }), 'Rename count pin');
+    return;
+  }
+  if (action === 'apply-gate-width') {
+    const object = documentModel.objects.find((entry) => entry.id === selected.id);
+    const input = app.querySelector('#gate-width');
+    if (!object || !input) return;
+    const width = parseConstructionLength(input.value);
+    if (!Number.isFinite(width) || width <= 0) { message = 'Enter a valid opening width'; render(); return; }
+    message = 'Gate width updated';
+    commit(upsertObject(documentModel, { ...object, dimensions: { ...object.dimensions, widthInches: width } }), 'Resize gate');
+    return;
+  }
+  if (action === 'apply-framing-size') {
+    const object = documentModel.objects.find((entry) => entry.id === selected.id);
+    const input = app.querySelector('#framing-size');
+    if (!object || !input) return;
+    message = 'Size label updated';
+    commit(upsertObject(documentModel, { ...object, size: String(input.value ?? '').trim() }), 'Set framing size');
+    return;
+  }
+  if (action === 'add-gate-on-railing') {
+    /* Placed at the midpoint of the selected run: always ON the run, so the
+       width nets out of the right railing without asking for a second tap.
+       Field-adjust the width in the panel afterwards if 36 inches is wrong. */
+    const geometry = selected.kind === 'railing' ? findRailingGeometry(selected.id) : null;
+    if (!geometry?.start || !geometry?.end) return;
+    const gate = createGate({
+      at: { x: (geometry.start.x + geometry.end.x) / 2, y: (geometry.start.y + geometry.end.y) / 2 },
+      angle: Math.atan2(geometry.end.y - geometry.start.y, geometry.end.x - geometry.start.x),
+    });
+    selected = { kind: 'framing', id: gate.id };
+    message = 'Gate placed mid-run · its 36″ comes out of this railing';
+    commit(upsertObject(documentModel, gate), 'Add gate');
+    return;
+  }
+  if (action === 'delete-framing') {
+    if (selected.kind !== 'framing') return;
+    const target = documentModel.objects.find((object) => object.id === selected.id);
+    if (!target) return;
+    const label = target.type === 'joist' ? 'joist' : target.type === 'beam' ? 'beam'
+      : target.type === 'pillar' ? 'pillar' : target.type === 'post' ? 'post'
+      : target.type === 'gate' ? 'gate' : target.type === 'count-marker' ? 'count pin' : 'member';
+    selected = { kind: null, id: null };
+    message = `The ${label} was removed`;
+    commit({ ...documentModel, objects: documentModel.objects.filter((object) => object.id !== target.id) },
+      `Delete ${label}`);
+    return;
+  }
+  if (action === 'framing-copies-less' || action === 'framing-copies-more') {
+    const step = action === 'framing-copies-more' ? 1 : -1;
+    framingCopies = Math.max(1, Math.min(MAX_COPIES, framingCopies + step));
+    render();
+    return;
+  }
   if (action === 'framing-array') {
     if (selected.kind !== 'framing') return;
     const before = documentModel.objects.length;
@@ -3551,6 +3747,14 @@ window.addEventListener('keydown', (event) => {
   const modifier = event.ctrlKey || event.metaKey;
   const editingField = ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName);
   const numericLineMode = mode === 'draw' || (mode === 'cat' && catTool === 'line' && Boolean(catDraft?.start));
+  if (event.key === 'Escape' && framingDraft) {
+    event.preventDefault();
+    framingDraft = null;
+    pointerWorld = null;
+    message = 'Run cancelled';
+    render();
+    return;
+  }
   if (event.key === 'Escape' && takeoffOpen) {
     event.preventDefault();
     takeoffOpen = false;
@@ -3673,6 +3877,12 @@ window.addEventListener('keydown', (event) => {
     render();
   }
   if ((event.key === 'Delete' || event.key === 'Backspace') && selected.kind === 'vertex') handleAction('delete-vertex');
+  /* A member you can place, you must be able to remove. Guarded on editingField
+     so backspacing in a text box never deletes the beam behind it. */
+  if ((event.key === 'Delete' || event.key === 'Backspace') && selected.kind === 'framing' && !editingField) {
+    event.preventDefault();
+    handleAction('delete-framing');
+  }
 });
 
 function updateHudFromKeyboard() {

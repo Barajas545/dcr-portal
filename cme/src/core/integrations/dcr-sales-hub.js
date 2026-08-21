@@ -69,15 +69,18 @@ export function createSalesHubStepOneMessage(payload) {
 
    Same-origin is always permitted: hosted inside the portal, CME talks to its
    own parent and never needs postMessage at all. */
-export const SALES_HUB_ALLOWED_ORIGINS = [
-  'https://barajas545.github.io',
-  'https://dcrframing.github.io',
-];
+/* Same-origin and localhost are always safe; every DEPLOYED origin is supplied
+   by the host through window.CME_PORTAL.salesHubOrigins. Hardcoding a
+   deployment's URLs here tied the engine to one company's portal - and this
+   engine is meant to serve any contractor's. */
+export const SALES_HUB_ALLOWED_ORIGINS = [];
 
 function isAllowedOrigin(origin) {
   if (!origin) return false;
   if (typeof location !== 'undefined' && origin === location.origin) return true;
   if (SALES_HUB_ALLOWED_ORIGINS.includes(origin)) return true;
+  const supplied = (typeof window !== 'undefined' && window.CME_PORTAL?.salesHubOrigins) || [];
+  if (Array.isArray(supplied) && supplied.includes(origin)) return true;
   // localhost over http only, for development
   return /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
 }

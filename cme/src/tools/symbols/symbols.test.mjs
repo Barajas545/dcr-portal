@@ -122,7 +122,9 @@ test('count markers bill one line per label, quantity being the pins dropped', (
   assert.deepEqual(hangers.sourceObjectIds, ['count-marker-2']);
 
   assert.equal(lights.kind, 'count');
-  assert.equal(lights.id, 'auto:custom:count:lights');
+  // slug plus a stable hash of the verbatim label - never dependent on what
+  // else is on the drawing
+  assert.match(lights.id, /^auto:custom:count:lights-[a-z0-9]+$/);
   assert.equal(lights.category, 'custom');
   assert.equal(lights.description, 'Lights');
   assert.equal(lights.specification, 'Counted on the drawing');
@@ -138,7 +140,7 @@ test('the label reaches the estimator exactly as it was typed', () => {
   const document = documentWith(createCountMarker({ at: { x: 0, y: 0 }, label: 'Simpson LUS28 hangers (2x8)', seq: 1 }, sequentialIds()));
   const [line] = describeTakeoff(document);
   assert.equal(line.description, 'Simpson LUS28 hangers (2x8)');
-  assert.equal(line.id, 'auto:custom:count:simpson-lus28-hangers-2x8');
+  assert.match(line.id, /^auto:custom:count:simpson-lus28-hangers-2x8-[a-z0-9]+$/);
 });
 
 test('two labels that flatten to the same id still get one line each', () => {
@@ -153,8 +155,8 @@ test('two labels that flatten to the same id still get one line each', () => {
   assert.equal(lines.length, 2);
   assert.deepEqual([...new Set(lines.map((line) => line.description))].sort(), ['Post caps', 'post caps!']);
   assert.equal(new Set(lines.map((line) => line.id)).size, 2, 'the ids must not collide');
-  assert.ok(lines.some((line) => line.id === 'auto:custom:count:post-caps'));
   assert.ok(lines.every((line) => line.id.startsWith('auto:custom:count:post-caps')));
+  assert.equal(new Set(lines.map((line) => line.id)).size, lines.length, 'every colliding label keeps a distinct id');
 });
 
 test('a label with nothing sluggable in it still gets a usable id', () => {
@@ -188,17 +190,23 @@ test('text labels are notes and produce no material', () => {
   assert.deepEqual(describeTakeoff(document), []);
 });
 
-test('gates, doors and windows are drawn but never billed', () => {
+test('gates, doors and windows each get a count row, the way the old tool listed them', () => {
+  /* The first cut skipped these on the belief the old tool never billed them.
+     It did - cad-sketch.js put door, window and gate in the takeoff counts bag
+     next to Posts and Pillars - and a gate is a real thing to buy: a kit of
+     hinges, latch and frame. */
   const idFactory = sequentialIds();
   const document = documentWith(
     createGate({ at: { x: 0, y: 0 } }, idFactory),
     createDoor({ at: { x: 60, y: 0 } }, idFactory),
     createWindow({ at: { x: 120, y: 0 } }, idFactory),
   );
-  assert.equal(getGates(document).length, 1);
-  assert.equal(getDoors(document).length, 1);
-  assert.equal(getWindows(document).length, 1);
-  assert.deepEqual(describeTakeoff(document), [], 'the old tool did not order any of these');
+  const lines = describeTakeoff(document);
+  const byId = new Map(lines.map((line) => [line.id, line]));
+  assert.equal(byId.get('auto:railing:gate').quantity, 1);
+  assert.equal(byId.get('auto:railing:gate').confidence, 'review', 'a gate kit is priced by hand');
+  assert.equal(byId.get('auto:custom:door').quantity, 1);
+  assert.equal(byId.get('auto:custom:window').quantity, 1);
 });
 
 test('the gate openings are handed over for the railing to subtract', () => {
@@ -258,7 +266,30 @@ test('symbols live in the document and leave it when removed', () => {
   const emptied = removeSymbol(document, 'count-marker-2');
   assert.equal(getCountMarkers(document).length, 1, 'the original document is untouched');
   assert.deepEqual(getCountMarkers(emptied), []);
-  assert.deepEqual(describeTakeoff(emptied), []);
+  // the gate still bills its kit row; only the count pin's line is gone
+  assert.deepEqual(describeTakeoff(emptied).map((line) => line.id), ['auto:railing:gate']);
+});
+
+test('a count line id never moves when a colliding label is deleted', () => {
+  /* The id is what a user's quantity override is keyed by. The positional
+     -2/-3 suffix scheme re-issued the bare slug to the surviving label when a
+     colliding sibling's pins were deleted - and an override typed on the
+     deleted row silently landed on a differently-described material. Ids are
+     now a function of their own label alone. */
+  const idFactory = sequentialIds();
+  const both = documentWith(
+    createCountMarker({ at: { x: 0, y: 0 }, label: 'Post caps', seq: 1 }, idFactory),
+    createCountMarker({ at: { x: 12, y: 0 }, label: 'post caps!', seq: 1 }, idFactory),
+  );
+  const bothIds = new Map(describeTakeoff(both).map((line) => [line.description, line.id]));
+  assert.notEqual(bothIds.get('Post caps'), bothIds.get('post caps!'), 'colliding labels get distinct ids');
+
+  const survivorOnly = documentWith(
+    createCountMarker({ at: { x: 12, y: 0 }, label: 'post caps!', seq: 1 }, sequentialIds()),
+  );
+  const aloneId = describeTakeoff(survivorOnly).find((line) => line.description === 'post caps!').id;
+  assert.equal(aloneId, bothIds.get('post caps!'),
+    'the survivor keeps ITS OWN id rather than inheriting the deleted label\'s - and its overrides');
 });
 
 test('remove only ever touches symbols', () => {

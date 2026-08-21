@@ -256,7 +256,7 @@ const GATE_ON_RUN_TOLERANCE_INCHES = 12;
    A run is never taken below zero: two gates mistakenly dropped on a short run
    should read as no railing left, not as negative footage quietly cancelling
    another run's material. */
-function netGateOpenings(measured, openings) {
+export function netGateOpenings(measured, openings) {
   if (!openings.length) return measured;
   const remaining = openings.slice();
   return measured.map((entry) => {

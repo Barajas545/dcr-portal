@@ -5,7 +5,8 @@ import { describeTakeoff as describeBeams } from '../beam/beam.js';
 import { describeTakeoff as describeJoists } from '../joist-group/joist-group.js';
 import { describeTakeoff as describePosts } from '../post-footing/post-footing.js';
 import { describeTakeoff as describeSymbols } from '../symbols/symbols.js';
-import { describeTakeoff as describeRailingSystems } from '../railing/railing-systems.js';
+import { describeTakeoff as describeRailingSystems, netGateOpenings } from '../railing/railing-systems.js';
+import { getGateOpenings } from '../symbols/symbols.js';
 
 export const TAKEOFF_SCHEMA_VERSION = 1;
 
@@ -31,6 +32,10 @@ const round = (value, precision = 2) => Number(Number(value ?? 0).toFixed(precis
 export function createTakeoffState(overrides = {}) {
   return {
     schemaVersion: TAKEOFF_SCHEMA_VERSION,
+    /* These ARE the shop's recipes, shipped with one contractor's numbers as
+       the defaults. They live in settings - per document, editable, saved with
+       the project - because a different contractor runs different rules, and a
+       rule a user cannot see or change is a hardcode wearing a hat. */
     settings: {
       wastePercent: 10,
       fieldBoardWidthInches: 5.5,
@@ -38,6 +43,10 @@ export function createTakeoffState(overrides = {}) {
       fieldBoardStockFeet: 16,
       squareEdgeStockFeet: 16,
       fasciaStockFeet: 12,
+      // fascia offcuts are mostly reusable, so it runs leaner than the field
+      fasciaWastePercent: 5,
+      screwBoxCoverageSqFt: 100,
+      stringersPerFlight: 3,
       ...overrides.settings,
     },
     overrides: { ...overrides.overrides },
@@ -119,7 +128,7 @@ export function deriveAutomaticTakeoff(document, options = {}) {
   if (pictureFrameLF > 0) lines.push(purchaseLine({ id: 'auto:decking:square-picture-frame', category: 'decking', description: 'Square-edge picture frame', specification: `${settings.squareEdgeStockFeet} ft board`, requiredLinearFeet: pictureFrameLF, stockLengthFeet: settings.squareEdgeStockFeet, sourceObjectIds: boundaries.map((boundary) => boundary.id) }, settings));
 
   const fasciaLF = boundaries.reduce((sum, boundary) => sum + boundary.edges.filter((edge) => edge.properties?.finishes?.fascia).reduce((edgeSum, edge) => edgeSum + boundaryEdgeLength(boundary, edge), 0), 0) / 12;
-  if (fasciaLF > 0) lines.push(purchaseLine({ id: 'auto:decking:fascia', category: 'decking', description: 'Fascia board', specification: `${settings.fasciaStockFeet} ft fascia`, requiredLinearFeet: fasciaLF, stockLengthFeet: settings.fasciaStockFeet, sourceObjectIds: boundaries.map((boundary) => boundary.id) }, { ...settings, wastePercent: FASCIA_WASTE_PERCENT }));
+  if (fasciaLF > 0) lines.push(purchaseLine({ id: 'auto:decking:fascia', category: 'decking', description: 'Fascia board', specification: `${settings.fasciaStockFeet} ft fascia`, requiredLinearFeet: fasciaLF, stockLengthFeet: settings.fasciaStockFeet, sourceObjectIds: boundaries.map((boundary) => boundary.id) }, { ...settings, wastePercent: Number(settings.fasciaWastePercent ?? FASCIA_WASTE_PERCENT) }));
 
   const stairTreadLF = stairs.reduce((sum, stair) => sum + Number(stair.dimensions?.width ?? 0) * Number(stair.dimensions?.treadCount ?? 0), 0) / 12;
   const stairRiserLF = stairs.reduce((sum, stair) => sum + Number(stair.dimensions?.width ?? 0) * Number(stair.dimensions?.riserCount ?? 0), 0) / 12;
@@ -134,7 +143,14 @@ export function deriveAutomaticTakeoff(document, options = {}) {
      analysed across every run in the project, so once stick-built and Trex
      started billing their own posts this line was adding theirs a second time. */
   const wildHog = (options.railingGeometries ?? []).filter((geometry) => (geometry.railing?.settings?.system ?? 'wild-hog') === 'wild-hog');
-  const railLengthInches = wildHog.reduce((sum, geometry) => sum + Number(geometry.length ?? 0), 0);
+  /* A gate is a hole in this railing too. Stick-built and Trex runs were netted
+     while Wild Hog - the DEFAULT system - billed its track and handrail straight
+     across the opening. Panels and posts stay as laid out: a gate interrupts
+     footage, not the post pattern. */
+  const wildHogNet = netGateOpenings(
+    wildHog.map((geometry) => ({ railing: geometry.railing, geometry, lengthInches: Number(geometry.length ?? 0) })),
+    getGateOpenings(document));
+  const railLengthInches = wildHogNet.reduce((sum, entry) => sum + entry.lengthInches, 0);
   const panelCount = wildHog.reduce((sum, geometry) => sum + Number(geometry.sectionCount ?? 0), 0);
   const railingIds = wildHog.map((geometry) => geometry.railing.id);
   if (panelCount > 0) {
@@ -167,8 +183,8 @@ export function deriveAutomaticTakeoff(document, options = {}) {
   if (deckSquareFeet > 0) {
     lines.push(countLine({
       id: 'auto:hardware:deck-screw', category: 'hardware',
-      description: '3" deck screw (5lb)', specification: 'about one box per 100 sq ft',
-      quantity: Math.ceil(deckSquareFeet / 100),
+      description: '3" deck screw (5lb)', specification: `about one box per ${Number(settings.screwBoxCoverageSqFt) || 100} sq ft`,
+      quantity: Math.ceil(deckSquareFeet / (Number(settings.screwBoxCoverageSqFt) || 100)),
       sourceObjectIds: boundaries.map((boundary) => boundary.id),
     }));
   }
@@ -177,8 +193,8 @@ export function deriveAutomaticTakeoff(document, options = {}) {
   if (stairs.length) {
     lines.push(countLine({
       id: 'auto:stairs:stringer', category: 'stairs',
-      description: 'Stair stringer (2x12)', specification: 'three per flight',
-      quantity: stairs.length * 3, sourceObjectIds: stairs.map((stair) => stair.id),
+      description: 'Stair stringer (2x12)', specification: `${Number(settings.stringersPerFlight) || 3} per flight`,
+      quantity: stairs.length * (Number(settings.stringersPerFlight) || 3), sourceObjectIds: stairs.map((stair) => stair.id),
     }));
   }
 

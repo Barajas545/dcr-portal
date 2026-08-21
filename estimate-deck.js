@@ -712,6 +712,26 @@
           scopeJson: JSON.stringify(p), notes: p.notes || "",
           mediaJson: JSON.stringify(state.media),
         };
+        /* The MediaJson column holds EVERY drawing and photo on this estimate
+           and refuses past 2,097,152 characters (measured; Graph 400s rather
+           than truncating). The per-drawing guard in CME cannot see its
+           siblings, so the whole-column check lives here - past the ceiling
+           every future auto-save of this estimate fails, which reads as "my
+           work stopped saving" with no visible reason. */
+        if (fields.mediaJson.length > 1900000) {
+          var biggest = (state.media.photos || [])
+            .map(function (m) { return { name: m.name || "item", size: JSON.stringify(m).length }; })
+            .sort(function (a, b) { return b.size - a.size; })
+            .slice(0, 3)
+            .map(function (m) { return m.name + " (" + Math.round(m.size / 1024) + " KB)"; })
+            .join(", ");
+          autoMsg("too much media to save — remove something");
+          if (DCR.alert) DCR.alert(
+            "This estimate's drawings and photos are close to the 2 MB storage ceiling, so nothing new can be saved. " +
+            "Delete something from the gallery first. Largest items: " + biggest,
+            { title: "Storage full for this estimate" });
+          return;
+        }
         var res = await DCR.api("/api/portal?action=sales&part=estimates", {
           method: state.estimateId ? "PATCH" : "POST",
           body: state.estimateId ? { id: state.estimateId, fields: fields } : { fields: fields },
@@ -747,7 +767,15 @@
           if (entry.cme) {
             DCRCme.open({
               entry: entry,
-              estimateId: state.project && state.project.id,
+              /* state.estimateRef, never state.project.id - the latter does not exist,
+                 so every drawing quietly scoped itself to "standalone" and the
+                 shared-tablet protection (one estimate = one drawing library)
+                 never activated. estimateRef is minted once and saved with the
+                 row, so it is stable across sessions and across the SharePoint
+                 id appearing only after the first save; changing the scope key
+                 later would strand a device's local drawings, so it is chosen
+                 once, deliberately, here. */
+              estimateId: (state.estimateRef || (state.estimateRef = "EST-" + Date.now())),
               clientName: state.project && state.project.clientName,
               title: (state.project.clientName || "Site") + " — drawing",
               getPathParts: mediaPathParts,
@@ -790,12 +818,34 @@
     el("edNewDrawing").onclick = function () {
       DCRCme.open({
         entry: null,
-        estimateId: state.project && state.project.id,
+        fresh: true,
+        /* state.estimateRef, never state.project.id - the latter does not exist,
+                 so every drawing quietly scoped itself to "standalone" and the
+                 shared-tablet protection (one estimate = one drawing library)
+                 never activated. estimateRef is minted once and saved with the
+                 row, so it is stable across sessions and across the SharePoint
+                 id appearing only after the first save; changing the scope key
+                 later would strand a device's local drawings, so it is chosen
+                 once, deliberately, here. */
+              estimateId: (state.estimateRef || (state.estimateRef = "EST-" + Date.now())),
         clientName: state.project && state.project.clientName,
         title: (state.project.clientName || "Site") + " — new drawing",
         getPathParts: mediaPathParts,
         onNumbers: applyDrawingNumbers,
         onSave: function (patch) {
+          /* One project, one gallery entry. If this project was saved before
+             (a reopen, or a fresh flag that failed to reach the iframe), the
+             existing entry is updated instead of gaining a twin. */
+          var existing = (state.media.photos || []).find(function (m) {
+            return m.cme && patch.cme && m.cme.project && patch.cme.project &&
+              m.cme.project.id === patch.cme.project.id;
+          });
+          if (existing) {
+            Object.assign(existing, patch);
+            state._gal.refresh ? state._gal.refresh() : null;
+            autoSaveMedia();
+            return;
+          }
           state._gal.add(patch); // fires onChange → auto-save
         },
       });
