@@ -74,14 +74,18 @@
     var payload = data.payload || {};
     var handlers = active;
     try {
-      var name = (handlers.entry && handlers.entry.name && /^drawing/.test(handlers.entry.name))
-        ? handlers.entry.name
-        : "drawing-" + Date.now() + ".png";
+      /* One drawing, one file. Naming the PNG after the project id means a
+         re-save replaces it rather than stranding the previous render, and it
+         keeps the image and its saved model addressable as a pair. */
+      var projectId = payload.project && payload.project.id;
+      var stable = Boolean(projectId) && /^[0-9a-zA-Z-]{8,64}$/.test(String(projectId));
+      var name = stable ? "cme-" + projectId + ".png" : "drawing-" + Date.now() + ".png";
 
       var up = await DCR.api("/api/portal?action=sales&part=image", {
         method: "POST",
         body: {
           name: name,
+          stableName: stable,
           dataBase64: payload.png,
           pathParts: handlers.getPathParts ? handlers.getPathParts() : [],
         },
