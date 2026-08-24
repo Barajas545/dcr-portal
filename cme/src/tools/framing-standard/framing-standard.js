@@ -11,8 +11,9 @@
    standard rather than a verified structural design. */
 
 import { distance } from '../../core/geometry/vector.js';
-import { beamBoards, isSecondFloor, postLayout } from '../../core/standards/dcr-construction-standard.js';
+import { beamBoards, isSecondFloor } from '../../core/standards/dcr-construction-standard.js';
 import { getBeams } from '../beam/beam.js';
+import { deriveBeamGeometry } from '../beam/beam-geometry.js';
 
 const feet = (inches) => Math.round((inches / 12) * 10) / 10;
 
@@ -58,18 +59,22 @@ export function ledgerLengthInches(document) {
     }, 0);
 }
 
-/* One beam run resolved into what gets bought and what holds it up. */
+/* One beam run resolved into what gets bought and what holds it up.
+
+   The layout comes from deriveBeamGeometry — the SAME function the canvas
+   draws from — so the posts on the drawing and the posts on the order can
+   never disagree, and an estimator who added a post gets charged for it. */
 export function planBeam(beam, settings) {
-  const length = Number(beam.computed?.lengthInches) || 0;
-  const layout = postLayout(length, settings.beamMaxPostSpacingFeet);
-  const boards = beamBoards(length, layout.spacingInches, settings.beamStockFeet);
-  return { beam, length, layout, boards };
+  const geometry = deriveBeamGeometry(beam, settings);
+  if (!geometry) return null;
+  const boards = beamBoards(geometry.length, geometry.spacingInches, settings.beamStockFeet);
+  return { beam, geometry, length: geometry.length, layout: geometry, boards, system: geometry.system };
 }
 
 export function describeTakeoff(document, settings) {
   if (!standardApplies(document)) return [];
   const beams = getBeams(document);
-  const plans = beams.map((beam) => planBeam(beam, settings));
+  const plans = beams.map((beam) => planBeam(beam, settings)).filter(Boolean);
   const descriptors = [];
 
   /* Beams, grouped by the commercial length actually bought. A run is spliced
@@ -81,6 +86,14 @@ export function describeTakeoff(document, settings) {
     return map;
   }, {});
   const beamIds = beams.map((beam) => beam.id);
+  /* Where the joists MEET a beam is the whole difference between the systems,
+     and it is hardware, not a drawing style: dropped joists bear on top and get
+     tied down, flush joists stop at the face and hang off it. That hardware
+     cannot be counted until joists are modelled, so none is claimed here — but
+     the beam line says which system it was framed to, because on a mixed deck
+     that is the difference between two different orders. */
+  const systems = [...new Set(plans.map((plan) => plan.system))];
+  const systemLabel = systems.length > 1 ? 'mixed: ' + systems.join(' + ') : systems[0] ?? 'dropped';
   const totalOffcutInches = plans.reduce((sum, plan) => sum + plan.boards.leftoverInches, 0);
   const totalRunInches = plans.reduce((sum, plan) => sum + plan.length, 0);
   Object.entries(boardCounts)
@@ -91,7 +104,7 @@ export function describeTakeoff(document, settings) {
         id: `auto:framing:dcrcs-beam-${lengthFeet}`,
         category: 'framing',
         description: `${settings.beamSize}x${lengthFeet} beam`,
-        specification: 'DCR standard · spliced over a post',
+        specification: `DCR standard · spliced over a post · ${systemLabel}`,
         quantity: count,
         sourceObjectIds: beamIds,
         confidence: 'preliminary',
