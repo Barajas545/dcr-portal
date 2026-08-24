@@ -5,6 +5,7 @@ import { describeTakeoff as describeBeams } from '../beam/beam.js';
 import { describeTakeoff as describeJoists } from '../joist-group/joist-group.js';
 import { describeTakeoff as describePosts } from '../post-footing/post-footing.js';
 import { describeTakeoff as describeSymbols } from '../symbols/symbols.js';
+import { describeTakeoff as describeStandardFraming } from '../framing-standard/framing-standard.js';
 import { describeTakeoff as describeRailingSystems, netGateOpenings } from '../railing/railing-systems.js';
 import { getGateOpenings } from '../symbols/symbols.js';
 
@@ -54,6 +55,24 @@ export function createTakeoffState(overrides = {}) {
          need into whole boards. */
       railingPostCutFeet: 5,
       railingPostStockFeet: 10,
+      /* DCR Construction Standard — the shop's standard framing for a deck at
+         or near grade. These are DCR's standard details, NOT an engineering
+         calculation: nothing here verifies a span or checks a load, which is
+         why every line derived from them reaches the takeoff 'preliminary'.
+         A different jurisdiction or load changes them, so they are settings. */
+      beamSize: '4x6',
+      beamMaxPostSpacingFeet: 6,
+      beamStockFeet: [8, 10, 12, 16, 20],
+      postSize: '4x4',
+      dcrcsPostCutFeet: 4,
+      dcrcsPostStockFeet: 8,
+      footingSizeInches: 16,
+      concreteBagsPerFooting: 3,
+      joistSize: '2x6',
+      joistSpacingInches: 12,
+      joistMaxSpanFeet: 6,
+      ledgerScrewsPerFoot: 5,
+      ledgerFlashingStockFeet: 10,
       ...overrides.settings,
     },
     overrides: { ...overrides.overrides },
@@ -140,7 +159,11 @@ function countLine({ id, category, description, specification, quantity, sourceO
    one place that turns them into takeoff lines. */
 function fromDescriptors(descriptors, settings) {
   return descriptors.map((descriptor) => {
-    if (descriptor.kind === 'count') return countLine(descriptor);
+    if (descriptor.kind === 'count') {
+      const line = countLine(descriptor);
+      // countLine builds a fixed shape, so anything the note needs rides along
+      return descriptor.beamPlan ? { ...line, beamPlan: descriptor.beamPlan } : line;
+    }
     /* A module names the STANDARD it cuts from ('railingPost') rather than the
        numbers, so one edit in settings moves every line that uses it. */
     if (descriptor.kind === 'yield') {
@@ -226,6 +249,9 @@ export function deriveAutomaticTakeoff(document, options = {}) {
   /* Count pins are how a rep tallies anything this tool has no idea about, so
      their labels reach the estimator verbatim. */
   lines.push(...fromDescriptors(describeSymbols(document), settings));
+  /* The DCR framing standard, dormant until a primary deck level is set so no
+     existing drawing's quantities move on its own. */
+  lines.push(...fromDescriptors(describeStandardFraming(document, settings), settings));
   /* Stick-built and Trex only. Wild Hog is billed above and must not be billed
      twice. */
   lines.push(...fromDescriptors(describeRailingSystems(document, options), settings));
@@ -262,6 +288,12 @@ export function deriveAutomaticTakeoff(document, options = {}) {
    changes, and can be worded differently without touching the engine. */
 export function calculationNote(line) {
   if (line.origin === 'manual') return 'Added by hand — no calculation behind it.';
+  const plan = line.beamPlan;
+  if (plan) {
+    return `${plan.runFeet} lf of beam across ${plan.runs} run${plan.runs === 1 ? '' : 's'} · `
+      + `posts every ${plan.spacingFeet} ft · spliced over a post`
+      + (plan.offcutFeet > 0 ? ` · ${plan.offcutFeet} ft of offcut left over` : ' · no offcut');
+  }
   const cut = line.cutPlan;
   if (cut && cut.piecesNeeded) {
     return `${cut.piecesNeeded} × ${cut.cutFeet} ft cuts needed · ${cut.piecesPerStock} per ${cut.stockFeet} ft board · `

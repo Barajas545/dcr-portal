@@ -14,6 +14,11 @@ export function createProjectDocument(options = {}) {
       detailLevel: 1,
       stageChangedAt: now,
     },
+    /* The primary deck level — the height of the first deck above grade, and
+       the datum every level-down measures back from. null means nobody has set
+       one, which is NOT zero: the DCR framing standard stays dormant until it
+       is set, so a drawing made before the standard existed keeps its numbers. */
+    construction: { deckLevelInches: options.deckLevelInches ?? null },
     createdAt: now,
     updatedAt: now,
     objects: [],
