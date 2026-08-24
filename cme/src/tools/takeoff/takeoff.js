@@ -71,6 +71,8 @@ export function createTakeoffState(overrides = {}) {
       joistSize: '2x6',
       joistSpacingInches: 12,
       joistMaxSpanFeet: 6,
+      // the project default; each beam may override it (a deck can mix)
+      framingSystem: 'bottom',
       ledgerScrewsPerFoot: 5,
       ledgerFlashingStockFeet: 10,
       ...overrides.settings,

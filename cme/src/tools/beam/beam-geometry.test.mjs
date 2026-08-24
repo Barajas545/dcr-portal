@@ -57,13 +57,13 @@ test('the framing system is per beam, with a project default, so a deck can mix'
   assert.equal(framingSystem(run(12)), DEFAULT_FRAMING_SYSTEM, 'unset falls back');
   assert.equal(framingSystem(run(12), 'flush'), 'flush', 'the project default applies');
   const flush = { ...run(12), settings: { framingSystem: 'flush' } };
-  assert.equal(framingSystem(flush, 'dropped'), 'flush', 'the beam overrides the project');
+  assert.equal(framingSystem(flush, 'bottom'), 'flush', 'the beam overrides the project');
   assert.equal(framingSystem({ settings: { framingSystem: 'nonsense' } }), DEFAULT_FRAMING_SYSTEM);
 
   // the mix: two beams on one deck, each framed its own way
-  const dropped = deriveBeamGeometry(run(12), { ...STANDARD, framingSystem: 'dropped' });
-  const hung = deriveBeamGeometry(flush, { ...STANDARD, framingSystem: 'dropped' });
-  assert.equal(dropped.system, 'dropped');
+  const dropped = deriveBeamGeometry(run(12), { ...STANDARD, framingSystem: 'bottom' });
+  const hung = deriveBeamGeometry(flush, { ...STANDARD, framingSystem: 'bottom' });
+  assert.equal(dropped.system, 'bottom');
   assert.equal(hung.system, 'flush');
 });
 

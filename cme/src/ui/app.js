@@ -24,6 +24,8 @@ import { createGate, createCountMarker, nextSequence, getGates, getCountMarkers 
 import { chamferVertex, clearEdgeOrientationConstraint, createDeckBoundary, findAdjacentMergeCandidate, getBoundaryCentroid, getBoundaryLifecycle, getEdgeOrientationConstraint, insertVertex, isEdgeLocked, isVertexLocked, markBoundaryEdited, mergeAdjacentVertices, moveVertexWithConstraints, offsetEdge, orthogonalizeBoundary, removeVertex, setEdgeLength, setEdgeLocked, setEdgeOrientationConstraint, setEdgeRole, setVertexLocked, splitEdgeIntoSegments, updateEdgeProperties, validateDeckBoundary } from '../tools/deck-boundary/deck-boundary.js';
 import { deleteDeckAssembly } from '../tools/deck-boundary/delete-deck-assembly.js';
 import { clearDeckBoardingDirection, deriveDeckBoardingSegments, getDeckBoarding, rotateDeckBoardingDirection, setDeckBoardingDirection } from '../tools/deck-boarding/deck-boarding.js';
+import { deriveBeamGeometry, framingSystem } from '../tools/beam/beam-geometry.js';
+import { standardApplies } from '../tools/framing-standard/framing-standard.js';
 import { CAT_LINE_TYPE, CAT_MEASUREMENT_TYPE, CAT_NOTE_TYPE, createCatLine, createCatMeasurement, createCatNote, deriveCatMeasurement, extendCatLine, getCatLines, getCatMeasurements, getCatNotes, getCatSnapObjects, resolveCatLineEndpoint, trimCatLine, updateCatNote } from '../tools/cat-cl/cat-cl.js';
 import { createLevelDown, deriveLevelDownDepth, deriveLevelDownRegion, orthogonalizeLevelDown, setLevelDownRiserHeight, splitLevelDownSegment, updateLevelDownProperties } from '../tools/level-down/level-down.js';
 import { attachStairToBoundary, deriveStairDragOptions, deriveStairOpeningSnap, deriveStairSideSegments, deriveStairTreads, detachStairFromBoundary, findStairBoundaryConnection, getStairInterfaceEdge, materializeStairSideJunction, mergeStairBoundaryConnection, removeStairSideJunction, resolveStairHostEdge, setStairSidePosition, setStairWidth, synchronizeConnectedStairLevels, updateStairDimensions, updateStairInterfaceEdgeProperties, validateStairPlacement } from '../tools/stairs/stair.js';
@@ -507,7 +509,32 @@ function renderContextPanel(current) {
       }
       const lengthInches = Number(object.computed?.lengthInches) || 0;
       const kindLabel = object.type === 'joist' ? 'Joist' : object.type === 'beam' ? 'Beam' : object.type === 'pillar' ? 'Pillar' : 'Post';
-      return `<section class="context-object-panel"><div class="context-heading"><div><div class="eyebrow">${kindLabel}</div><h2>${lengthInches > 0 ? formatFeetInches(lengthInches) : escapeHtml(object.name ?? kindLabel)}</h2></div>${close}</div><label class="context-select"><span>Size label · picked, never derived</span><div class="compound-field"><input id="framing-size" value="${escapeHtml(object.size ?? '')}" placeholder="2x10, 4x4, 6x6…"><button class="button" data-action="apply-framing-size">Apply</button></div></label><div class="context-actions"><button class="button danger" data-action="delete-framing">Delete ${kindLabel.toLowerCase()}</button></div><div class="context-note">The size goes on the material line so the estimator knows which board to pull. Nothing sizes itself from the span.</div></section>`;
+      /* A beam carries the one decision that changes what happens wherever a
+         joist crosses it. It lives per beam, not per deck, because a real deck
+         often runs one flush beam (headroom, a door threshold) among bottom
+         ones - the same shape railingSystem() already uses per run. */
+      const beamExtras = object.type === 'beam' ? (() => {
+        const system = framingSystem(object, getTakeoffState(documentModel).settings.framingSystem);
+        const geometry = standardApplies(documentModel)
+          ? deriveBeamGeometry(object, getTakeoffState(documentModel).settings) : null;
+        const toggle = `<label class="context-select"><span>Framing system</span><div class="ed-toggle">` +
+          ['bottom', 'flush'].map((option) => `<button class="framing-system-option${system === option ? ' on' : ''}" data-action="set-framing-system" data-system="${option}">` +
+            (option === 'bottom' ? 'Bottom beam' : 'Flush beam') + '</button>').join('') +
+          `</div><small>${system === 'flush'
+            ? 'Joists stop at the beam face and hang off it.'
+            : 'Joists bear on top of the beam and run over it.'}</small></label>`;
+        const derived = geometry
+          ? `<div class="context-stat"><span>Posts under this beam</span><strong>${geometry.postCount}</strong>` +
+            `<small>every ${formatFeetInches(geometry.spacingInches)} \u00b7 ${geometry.footingSizeInches}\u2033 footings` +
+            `${geometry.postCountAdjusted ? ' \u00b7 you added posts' : ''}</small></div>` +
+            `<label class="context-select"><span>Posts \u00b7 the standard sets the minimum</span><div class="compound-field">` +
+            `<input id="beam-post-count" type="number" min="${geometry.minimumPostCount}" value="${geometry.postCount}">` +
+            `<button class="button" data-action="apply-beam-posts">Apply</button></div>` +
+            `<small>You can add posts. Asking for fewer than ${geometry.minimumPostCount} is refused \u2014 that is the ${formatFeetInches((getTakeoffState(documentModel).settings.beamMaxPostSpacingFeet || 6) * 12)} limit.</small></label>`
+          : '<div class="context-note">Set a primary deck level to lay out posts and footings under this beam.</div>';
+        return toggle + derived;
+      })() : '';
+      return `<section class="context-object-panel"><div class="context-heading"><div><div class="eyebrow">${kindLabel}</div><h2>${lengthInches > 0 ? formatFeetInches(lengthInches) : escapeHtml(object.name ?? kindLabel)}</h2></div>${close}</div>${beamExtras}<label class="context-select"><span>Size label \u00b7 picked, never derived</span><div class="compound-field"><input id="framing-size" value="${escapeHtml(object.size ?? '')}" placeholder="2x10, 4x4, 6x6\u2026"><button class="button" data-action="apply-framing-size">Apply</button></div></label><div class="context-actions"><button class="button danger" data-action="delete-framing">Delete ${kindLabel.toLowerCase()}</button></div><div class="context-note">The size goes on the material line so the estimator knows which board to pull. Nothing sizes itself from the span.</div></section>`;
     }
   }
   if (selected.kind === 'dimension') {
@@ -934,6 +961,11 @@ function renderFramingGraphics(svg) {
       x1: beam.start.x, y1: beam.start.y, x2: beam.end.x, y2: beam.end.y,
       class: 'framing-hit', 'data-framing-id': beam.id,
     }));
+    // only when the standard is in force — an unset deck level derives nothing
+    if (standardApplies(documentModel)) {
+      const geometry = deriveBeamGeometry(beam, getTakeoffState(documentModel).settings);
+      if (geometry) renderBeamGeometry(svg, geometry, false);
+    }
   });
 
   getJoists(documentModel).forEach((joist) => {
@@ -998,6 +1030,16 @@ function renderFramingGraphics(svg) {
       x1: framingDraft.start.x, y1: framingDraft.start.y,
       x2: pointerWorld.x, y2: pointerWorld.y, class: 'framing-draft',
     }));
+    /* Posts, footings and the span limit appear WHILE the run is being drawn,
+       so the layout is a decision made with the answer in view rather than one
+       discovered after committing. Same derivation as the placed run. */
+    if (framingTool === 'beam' && standardApplies(documentModel)) {
+      const settings = getTakeoffState(documentModel).settings;
+      renderBeamSpanGuide(svg, framingDraft.start, pointerWorld, settings.beamMaxPostSpacingFeet);
+      const preview = deriveBeamGeometry(
+        { id: 'preview', start: framingDraft.start, end: pointerWorld }, settings);
+      if (preview) renderBeamGeometry(svg, preview, true);
+    }
   }
 }
 
@@ -1217,6 +1259,47 @@ function renderRailingGraphics(svg) {
       transform: `rotate(45 ${anchor.point.x} ${anchor.point.y})`,
     }));
   });
+}
+
+/* A beam's posts and footings, drawn from the SAME derivation the takeoff
+   orders from. Nothing here is stored: this is a picture of what the standard
+   makes of the run, and it redraws itself the instant the run changes.
+   Deliberately shaped like renderRailingGeometry, because it is the same idea. */
+function renderBeamGeometry(svg, geometry, preview) {
+  const selectedClass = !preview && selected.kind === 'framing' && selected.id === geometry.beam.id ? 'selected' : '';
+  const footing = geometry.footingSizeInches;
+  geometry.posts.forEach((post) => {
+    // the footing pad first, so the post reads on top of it
+    svg.append(svgElement('rect', {
+      x: post.x - footing / 2, y: post.y - footing / 2, width: footing, height: footing,
+      class: `framing-footing ${preview ? 'preview' : ''} ${selectedClass}`,
+    }));
+    const size = preview ? 4 : 4.5;
+    svg.append(svgElement('rect', {
+      x: post.x - size / 2, y: post.y - size / 2, width: size, height: size, rx: .5,
+      class: `framing-derived-post ${preview ? 'preview' : ''} ${selectedClass}`,
+    }));
+  });
+}
+
+/* The standard's limit, shown while a run is being drawn so the estimator can
+   see where the next post is going to land before committing to the length. */
+function renderBeamSpanGuide(svg, start, toward, maxSpacingFeet) {
+  const span = (Number(maxSpacingFeet) || 6) * 12;
+  const dx = toward.x - start.x;
+  const dy = toward.y - start.y;
+  const magnitude = Math.hypot(dx, dy);
+  if (magnitude < 1e-6) return;
+  const ux = dx / magnitude;
+  const uy = dy / magnitude;
+  for (let mark = span; mark <= Math.max(magnitude, span); mark += span) {
+    const x = start.x + ux * mark;
+    const y = start.y + uy * mark;
+    svg.append(svgElement('line', {
+      x1: x - uy * 7, y1: y + ux * 7, x2: x + uy * 7, y2: y - ux * 7,
+      class: 'framing-span-guide',
+    }));
+  }
 }
 
 function renderRailingGeometry(svg, geometry, preview) {
@@ -2943,7 +3026,7 @@ function handleAction(action, source = null) {
   if (action === 'toggle-export-menu') { exportMenuOpen = !exportMenuOpen; projectMenuOpen = false; pendingProjectDeleteId = null; render(); return; }
   if (action === 'open-takeoff') { takeoffOpen = true; exportMenuOpen = false; projectMenuOpen = false; takeoffAddCategory = null; message = 'Editable project takeoff generated'; render(); return; }
   if (action === 'toggle-takeoff-note') {
-    const id = button?.dataset.lineId;
+    const id = source?.dataset.lineId;
     takeoffNoteOpen = takeoffNoteOpen === id ? null : id;
     render();
     return;
@@ -3064,6 +3147,30 @@ function handleAction(action, source = null) {
     if (!Number.isFinite(width) || width <= 0) { message = 'Enter a valid opening width'; render(); return; }
     message = 'Gate width updated';
     commit(upsertObject(documentModel, { ...object, dimensions: { ...object.dimensions, widthInches: width } }), 'Resize gate');
+    return;
+  }
+  if (action === 'set-framing-system') {
+    const object = documentModel.objects.find((entry) => entry.id === selected.id);
+    if (!object) return;
+    const system = source?.dataset.system === 'flush' ? 'flush' : 'bottom';
+    message = system === 'flush' ? 'Joists will hang off this beam' : 'Joists will bear on top of this beam';
+    commit(upsertObject(documentModel, { ...object, settings: { ...object.settings, framingSystem: system } }), 'Set framing system');
+    return;
+  }
+  if (action === 'apply-beam-posts') {
+    const object = documentModel.objects.find((entry) => entry.id === selected.id);
+    const input = app.querySelector('#beam-post-count');
+    if (!object || !input) return;
+    const wanted = Math.floor(Number(input.value));
+    if (!Number.isFinite(wanted) || wanted < 2) { message = 'A beam needs at least two posts'; render(); return; }
+    const next = upsertObject(documentModel, { ...object, settings: { ...object.settings, postCountOverride: wanted } });
+    // the derivation clamps to the standard, so report what actually happened
+    const applied = deriveBeamGeometry(next.objects.find((entry) => entry.id === object.id),
+      getTakeoffState(documentModel).settings);
+    message = applied && applied.postCount > wanted
+      ? `Kept at ${applied.postCount} posts \u2014 fewer would exceed the span limit`
+      : `Beam laid out with ${applied ? applied.postCount : wanted} posts`;
+    commit(next, 'Set beam post count');
     return;
   }
   if (action === 'apply-framing-size') {

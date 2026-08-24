@@ -563,3 +563,21 @@ button { color: inherit; }
 .takeoff-note-foot { font-size: 11px; color: var(--muted, #5b6b7c); }
 .takeoff-notes-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 12px;
   color: var(--muted, #5b6b7c); cursor: pointer; padding: 0 4px; }
+
+/* ── derived beam support: posts and footings, never stored ── */
+.framing-footing { fill: none; stroke: var(--framing, #b06a2c); stroke-width: .8;
+  stroke-dasharray: 3 2.5; opacity: .75; }
+.framing-footing.preview { opacity: .45; }
+.framing-footing.selected { stroke: var(--accent, #2f80d8); opacity: 1; }
+.framing-derived-post { fill: var(--framing, #b06a2c); stroke: none; opacity: .95; }
+.framing-derived-post.preview { opacity: .6; }
+.framing-derived-post.selected { fill: var(--accent, #2f80d8); }
+/* the standard's maximum span, ticked along the run as it is drawn */
+.framing-span-guide { stroke: var(--framing, #b06a2c); stroke-width: 1.2; opacity: .55;
+  stroke-dasharray: 2 2; }
+.ed-toggle { display: flex; gap: 0; border: 1px solid var(--line, #d8dee6); border-radius: 9px; overflow: hidden; }
+.framing-system-option { flex: 1; padding: 8px 10px; font-size: 12px; font-weight: 600; border: none;
+  background: transparent; color: inherit; cursor: pointer; min-height: 40px; }
+.framing-system-option + .framing-system-option { border-left: 1px solid var(--line, #d8dee6); }
+.framing-system-option:hover { background: var(--panel-2, rgba(127,140,160,.1)); }
+.framing-system-option.on { background: var(--accent, #2f80d8); color: #fff; }

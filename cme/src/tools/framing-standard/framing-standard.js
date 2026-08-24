@@ -87,13 +87,13 @@ export function describeTakeoff(document, settings) {
   }, {});
   const beamIds = beams.map((beam) => beam.id);
   /* Where the joists MEET a beam is the whole difference between the systems,
-     and it is hardware, not a drawing style: dropped joists bear on top and get
+     and it is hardware, not a drawing style: bottom-beam joists bear on top and get
      tied down, flush joists stop at the face and hang off it. That hardware
      cannot be counted until joists are modelled, so none is claimed here — but
      the beam line says which system it was framed to, because on a mixed deck
      that is the difference between two different orders. */
   const systems = [...new Set(plans.map((plan) => plan.system))];
-  const systemLabel = systems.length > 1 ? 'mixed: ' + systems.join(' + ') : systems[0] ?? 'dropped';
+  const systemLabel = systems.length > 1 ? 'mixed: ' + systems.join(' + ') : systems[0] ?? 'bottom';
   const totalOffcutInches = plans.reduce((sum, plan) => sum + plan.boards.leftoverInches, 0);
   const totalRunInches = plans.reduce((sum, plan) => sum + plan.length, 0);
   Object.entries(boardCounts)

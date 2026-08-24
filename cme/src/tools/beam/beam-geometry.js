@@ -18,12 +18,12 @@
 import { distance } from '../../core/geometry/vector.js';
 import { postLayout } from '../../core/standards/dcr-construction-standard.js';
 
-export const FRAMING_SYSTEMS = ['dropped', 'flush'];
-export const DEFAULT_FRAMING_SYSTEM = 'dropped';
+export const FRAMING_SYSTEMS = ['bottom', 'flush'];
+export const DEFAULT_FRAMING_SYSTEM = 'bottom';
 
 /* Which system a beam is framed to, per beam with a project default — the same
    shape railingSystem() uses, and the reason a deck can freely mix the two.
-   'dropped' is the standard: joists bear ON TOP of the beam.
+   'bottom' is the standard: joists bear ON TOP of the beam.
    'flush'  : joists meet the beam in plane and hang off its face. */
 export function framingSystem(beam, fallback = DEFAULT_FRAMING_SYSTEM) {
   const system = beam?.settings?.framingSystem;
