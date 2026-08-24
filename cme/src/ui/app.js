@@ -28,7 +28,7 @@ import { CAT_LINE_TYPE, CAT_MEASUREMENT_TYPE, CAT_NOTE_TYPE, createCatLine, crea
 import { createLevelDown, deriveLevelDownDepth, deriveLevelDownRegion, orthogonalizeLevelDown, setLevelDownRiserHeight, splitLevelDownSegment, updateLevelDownProperties } from '../tools/level-down/level-down.js';
 import { attachStairToBoundary, deriveStairDragOptions, deriveStairOpeningSnap, deriveStairSideSegments, deriveStairTreads, detachStairFromBoundary, findStairBoundaryConnection, getStairInterfaceEdge, materializeStairSideJunction, mergeStairBoundaryConnection, removeStairSideJunction, resolveStairHostEdge, setStairSidePosition, setStairWidth, synchronizeConnectedStairLevels, updateStairDimensions, updateStairInterfaceEdgeProperties, validateStairPlacement } from '../tools/stairs/stair.js';
 import { analyzeRailingGeometries, createRailingLine, deriveRailingGeometry, deriveRailingLineGeometry, resolveRailingEndpointSnap, updateRailingSettings } from '../tools/railing/railing.js';
-import { TAKEOFF_CATEGORIES, addManualTakeoffLine, createTakeoffExport, getEffectiveTakeoffLines, getTakeoffState, removeManualTakeoffLine, resetTakeoffLine, setTakeoffState, updateTakeoffLine } from '../tools/takeoff/takeoff.js';
+import { TAKEOFF_CATEGORIES, addManualTakeoffLine, createTakeoffExport, getEffectiveTakeoffLines, getTakeoffState, removeManualTakeoffLine, resetTakeoffLine, setTakeoffNote, setTakeoffState, updateTakeoffLine } from '../tools/takeoff/takeoff.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 /* Storage is scoped per estimate when the portal hosts this.
@@ -384,10 +384,26 @@ function renderTakeoffLine(line) {
   const calculation = line.calculatedQuantity == null ? '' : `<small>Calculated ${line.calculatedQuantity}${line.requiredLinearFeet ? ` · ${line.requiredLinearFeet} LF net` : ''}${confidenceFlag}</small>`;
   const renamed = line.calculatedDescription && line.calculatedDescription !== line.description
     ? `<small>Named by the tool: ${escapeHtml(line.calculatedDescription)}</small>` : '';
-  return `<div class="takeoff-line"><div class="takeoff-material"><span class="takeoff-origin ${line.origin}">${sourceLabel}</span><input class="takeoff-desc" value="${escapeHtml(line.description)}" data-takeoff-description="${escapeHtml(line.id)}" aria-label="Material description"><small>${escapeHtml(line.specification ?? '')}</small>${renamed}${calculation}</div><label><span>Qty</span><input type="number" min="0" step="1" value="${line.quantity}" data-takeoff-quantity="${escapeHtml(line.id)}"></label><label class="takeoff-price"><span>Unit price</span><input type="number" min="0" step="0.01" placeholder="—" value="${price}" data-takeoff-price="${escapeHtml(line.id)}"></label><div class="takeoff-subtotal"><span>Subtotal</span><strong>${subtotal}</strong></div><div class="takeoff-line-actions">${line.origin === 'manual' ? `<button class="icon-button danger" data-action="delete-takeoff-line" data-line-id="${escapeHtml(line.id)}" aria-label="Delete material">×</button>` : line.origin === 'adjusted' ? `<button class="button ghost" data-action="reset-takeoff-line" data-line-id="${escapeHtml(line.id)}">Reset</button>` : ''}</div></div>`;
+  return `<div class="takeoff-line"><div class="takeoff-material"><span class="takeoff-origin ${line.origin}">${sourceLabel}</span><input class="takeoff-desc" value="${escapeHtml(line.description)}" data-takeoff-description="${escapeHtml(line.id)}" aria-label="Material description"><small>${escapeHtml(line.specification ?? '')}</small>${renamed}${calculation}</div><label><span>Qty</span><input type="number" min="0" step="1" value="${line.quantity}" data-takeoff-quantity="${escapeHtml(line.id)}"></label><label class="takeoff-price"><span>Unit price</span><input type="number" min="0" step="0.01" placeholder="—" value="${price}" data-takeoff-price="${escapeHtml(line.id)}"></label><div class="takeoff-subtotal"><span>Subtotal</span><strong>${subtotal}</strong></div><button class="icon-button takeoff-note-btn${line.note ? ' has-note' : ''}" data-action="toggle-takeoff-note" data-line-id="${escapeHtml(line.id)}" aria-label="${line.note ? 'Edit the note on this material' : 'Add a note to this material'}" title="${line.note ? 'Note attached' : 'Add a note'}">${line.note ? '📝' : '🗒'}</button><div class="takeoff-line-actions">${line.origin === 'manual' ? `<button class="icon-button danger" data-action="delete-takeoff-line" data-line-id="${escapeHtml(line.id)}" aria-label="Delete material">×</button>` : line.origin === 'adjusted' ? `<button class="button ghost" data-action="reset-takeoff-line" data-line-id="${escapeHtml(line.id)}">Reset</button>` : ''}</div>${takeoffNoteOpen === line.id ? renderTakeoffNote(line) : ''}</div>`;
+}
+
+/* Two notes, and they are never the same kind of thing.
+
+   The calculation note is DERIVED on every read - change the stock length and
+   it re-words itself - so it is shown plainly and cannot be edited. The
+   estimator's note is authored: stored verbatim, keyed by the line id, and
+   nothing regenerates it. Same bargain as the calculated quantity beside an
+   adjusted one: the machine's version and the human's coexist. */
+function renderTakeoffNote(line) {
+  return `<div class="takeoff-note"><div class="takeoff-note-calc"><b>How this number was reached</b><span>${escapeHtml(line.calcNote ?? '')}</span></div>` +
+    `<label class="takeoff-note-mine"><span>Your note${line.note ? '' : ' · optional'}</span>` +
+    `<textarea rows="2" data-takeoff-note="${escapeHtml(line.id)}" placeholder="Cuts, who supplies it, what to confirm on site…">${escapeHtml(line.note ?? '')}</textarea></label>` +
+    `<div class="takeoff-note-foot">Notes stay off the takeoff list. Tick <b>Include notes</b> when exporting to print them.</div></div>`;
 }
 
 let takeoffSettingsOpen = false;
+let takeoffNoteOpen = null;
+let takeoffExportNotes = false;
 
 /* The shop rules behind every AUTO line. One field per rule, saved with the
    project - a different contractor types their numbers once and every
@@ -421,7 +437,7 @@ function renderTakeoffWorkspace() {
     const adding = takeoffAddCategory === category.id;
     return `<section class="takeoff-category ${expanded ? 'expanded' : ''}"><button class="takeoff-category-heading" data-action="toggle-takeoff-category" data-category="${category.id}" aria-expanded="${expanded}"><span><b>${expanded ? '−' : '+'}</b><strong>${category.label}</strong></span><small>${categoryLines.length} material${categoryLines.length === 1 ? '' : 's'}</small></button>${expanded ? `<div class="takeoff-category-body">${categoryLines.length ? categoryLines.map(renderTakeoffLine).join('') : '<div class="takeoff-empty">No calculated materials yet. Add a project material or keep modeling.</div>'}${adding ? `<div class="takeoff-add-form"><label><span>Material</span><input id="takeoff-new-description" placeholder="Example: Pressure treated joist"></label><label><span>Specification</span><input id="takeoff-new-specification" placeholder="Example: 2×8×16"></label><label><span>Quantity</span><input id="takeoff-new-quantity" type="number" min=".01" step="1" value="1"></label><label><span>Unit</span><select id="takeoff-new-unit"><option value="ea">pieces</option><option value="lf">LF</option><option value="sf">SF</option><option value="box">boxes</option><option value="bag">bags</option><option value="gal">gallons</option></select></label><label><span>Unit price · optional</span><input id="takeoff-new-price" type="number" min="0" step=".01" placeholder="—"></label><div class="takeoff-add-actions"><button class="button primary" data-action="save-takeoff-line" data-category="${category.id}">Add material</button><button class="button ghost" data-action="cancel-takeoff-line">Cancel</button></div></div>` : `<button class="button ghost takeoff-add" data-action="add-takeoff-line" data-category="${category.id}">+ Add material</button>`}</div>` : ''}</section>`;
   }).join('');
-  return `<section class="takeoff-overlay" role="dialog" aria-modal="true" aria-label="Project material takeoff"><header class="takeoff-header"><div><div class="eyebrow">CME material intelligence</div><h1>Project Takeoff</h1><p>${escapeHtml(documentModel.name)} · calculated from the current construction model</p></div><button class="takeoff-close" data-action="close-takeoff" aria-label="Close takeoff">×</button></header><div class="takeoff-summary"><span><small>Material lines</small><strong>${lines.length}</strong></span><span><small>Unpriced</small><strong>${unpriced}</strong></span><span class="takeoff-price"><small>Known material total</small><strong>$${knownTotal.toFixed(2)}</strong></span></div><div class="takeoff-actions"><button class="button primary" data-action="print-takeoff-quote">Export quote · no prices</button><button class="button" data-action="print-takeoff-priced">Export with prices</button><button class="button ghost" data-action="download-takeoff-json">Takeoff JSON</button></div>${renderTakeoffSettings()}<div class="takeoff-list">${categories}</div><footer class="takeoff-footer"><span>PRELIMINARY = a shop recipe not yet confirmed · REVIEW = needs a human decision. Every quantity stays editable, and an edit keeps the calculated figure beside it.</span><strong>${lines.filter((line) => line.origin === 'adjusted').length} adjusted · ${lines.filter((line) => line.origin === 'manual').length} manual</strong></footer></section>`;
+  return `<section class="takeoff-overlay" role="dialog" aria-modal="true" aria-label="Project material takeoff"><header class="takeoff-header"><div><div class="eyebrow">CME material intelligence</div><h1>Project Takeoff</h1><p>${escapeHtml(documentModel.name)} · calculated from the current construction model</p></div><button class="takeoff-close" data-action="close-takeoff" aria-label="Close takeoff">×</button></header><div class="takeoff-summary"><span><small>Material lines</small><strong>${lines.length}</strong></span><span><small>Unpriced</small><strong>${unpriced}</strong></span><span class="takeoff-price"><small>Known material total</small><strong>$${knownTotal.toFixed(2)}</strong></span></div><div class="takeoff-actions"><button class="button primary" data-action="print-takeoff-quote">Export quote · no prices</button><button class="button" data-action="print-takeoff-priced">Export with prices</button><button class="button ghost" data-action="download-takeoff-json">Takeoff JSON</button><label class="takeoff-notes-toggle"><input type="checkbox" id="takeoff-export-notes"${takeoffExportNotes ? ' checked' : ''}> Include notes</label></div>${renderTakeoffSettings()}<div class="takeoff-list">${categories}</div><footer class="takeoff-footer"><span>PRELIMINARY = a shop recipe not yet confirmed · REVIEW = needs a human decision. Every quantity stays editable, and an edit keeps the calculated figure beside it.</span><strong>${lines.filter((line) => line.origin === 'adjusted').length} adjusted · ${lines.filter((line) => line.origin === 'manual').length} manual</strong></footer></section>`;
 }
 
 function renderContextPanel(current) {
@@ -1541,6 +1557,17 @@ function bindEvents() {
     const state = getTakeoffState(documentModel);
     message = `${field.label} updated - quantities recalculated`;
     commit(setTakeoffState(documentModel, { ...state, settings: { ...state.settings, [key]: value } }), `Change ${field.label.toLowerCase()}`);
+  }));
+  const notesToggle = app.querySelector('#takeoff-export-notes');
+  if (notesToggle) notesToggle.addEventListener('change', () => {
+    takeoffExportNotes = notesToggle.checked;
+    message = takeoffExportNotes ? 'Notes will be included in the export' : 'Notes stay off the export';
+    render();
+  });
+  app.querySelectorAll('[data-takeoff-note]').forEach((area) => area.addEventListener('change', () => {
+    const text = String(area.value ?? '');
+    message = text.trim() ? 'Note saved with this material' : 'Note cleared';
+    commit(setTakeoffNote(documentModel, area.dataset.takeoffNote, text), 'Note a takeoff material');
   }));
   app.querySelectorAll('[data-takeoff-description]').forEach((input) => input.addEventListener('change', () => {
     const description = String(input.value ?? '').trim();
@@ -2907,6 +2934,12 @@ function handleAction(action, source = null) {
   if (action === 'close-project-menu') { projectMenuOpen = false; pendingProjectDeleteId = null; render(); return; }
   if (action === 'toggle-export-menu') { exportMenuOpen = !exportMenuOpen; projectMenuOpen = false; pendingProjectDeleteId = null; render(); return; }
   if (action === 'open-takeoff') { takeoffOpen = true; exportMenuOpen = false; projectMenuOpen = false; takeoffAddCategory = null; message = 'Editable project takeoff generated'; render(); return; }
+  if (action === 'toggle-takeoff-note') {
+    const id = button?.dataset.lineId;
+    takeoffNoteOpen = takeoffNoteOpen === id ? null : id;
+    render();
+    return;
+  }
   if (action === 'toggle-takeoff-settings') { takeoffSettingsOpen = !takeoffSettingsOpen; render(); return; }
   if (action === 'close-takeoff') { takeoffOpen = false; takeoffAddCategory = null; takeoffSettingsOpen = false; message = 'Takeoff saved with this project'; render(); return; }
   if (action === 'toggle-takeoff-category') {
@@ -2935,7 +2968,7 @@ function handleAction(action, source = null) {
   }
   if (action === 'delete-takeoff-line') { message = 'Manual material removed'; commit(removeManualTakeoffLine(documentModel, source?.dataset.lineId), 'Remove manual takeoff material'); return; }
   if (action === 'reset-takeoff-line') { message = 'Calculated material quantity restored'; commit(resetTakeoffLine(documentModel, source?.dataset.lineId), 'Reset takeoff material calculation'); return; }
-  if (action === 'download-takeoff-json') { downloadJson(createTakeoffExport(documentModel, { ...takeoffContext(), includePrices: true }), 'takeoff'); message = 'Editable Takeoff JSON downloaded'; render(); return; }
+  if (action === 'download-takeoff-json') { downloadJson(createTakeoffExport(documentModel, { ...takeoffContext(), includePrices: true, includeNotes: takeoffExportNotes }), 'takeoff'); message = 'Editable Takeoff JSON downloaded'; render(); return; }
   if (action === 'print-takeoff-quote') { printTakeoff(false); return; }
   if (action === 'print-takeoff-priced') { printTakeoff(true); return; }
   if (action === 'rename-project') {

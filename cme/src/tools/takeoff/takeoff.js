@@ -57,6 +57,12 @@ export function createTakeoffState(overrides = {}) {
       ...overrides.settings,
     },
     overrides: { ...overrides.overrides },
+    /* The estimator's own words, keyed by line id. Kept apart from the
+       calculation note, which is DERIVED on every read: change the stock
+       length and the arithmetic note follows, while this text never moves
+       unless a person edits it. Line ids are pure functions of content, so a
+       note cannot drift onto a different material. */
+    notes: { ...overrides.notes },
     manualLines: [...(overrides.manualLines ?? [])],
   };
 }
@@ -251,6 +257,38 @@ export function deriveAutomaticTakeoff(document, options = {}) {
   return lines;
 }
 
+/* The audit trail of a quantity, composed from the numbers the line already
+   carries rather than stored as a sentence — so it stays true when a setting
+   changes, and can be worded differently without touching the engine. */
+export function calculationNote(line) {
+  if (line.origin === 'manual') return 'Added by hand — no calculation behind it.';
+  const cut = line.cutPlan;
+  if (cut && cut.piecesNeeded) {
+    return `${cut.piecesNeeded} × ${cut.cutFeet} ft cuts needed · ${cut.piecesPerStock} per ${cut.stockFeet} ft board · `
+      + `${cut.boards} board${cut.boards === 1 ? '' : 's'} to buy`
+      + (cut.leftoverCuts ? ` · ${cut.leftoverCuts} cut${cut.leftoverCuts === 1 ? '' : 's'} left over` : ' · no offcut');
+  }
+  if (line.requiredLinearFeet != null && line.stockLengthFeet) {
+    const withWaste = Math.round(line.requiredLinearFeet * (1 + line.wastePercent / 100) * 10) / 10;
+    return `${line.requiredLinearFeet} lf needed`
+      + (line.wastePercent ? ` + ${line.wastePercent}% waste = ${withWaste} lf` : '')
+      + ` ÷ ${line.stockLengthFeet} ft stock = ${line.calculatedQuantity} board${line.calculatedQuantity === 1 ? '' : 's'}`;
+  }
+  return line.specification ? `Counted from the drawing · ${line.specification}` : 'Counted from the drawing.';
+}
+
+export function getTakeoffNote(document, lineId) {
+  return getTakeoffState(document).notes[lineId] ?? '';
+}
+
+export function setTakeoffNote(document, lineId, text) {
+  const state = getTakeoffState(document);
+  const notes = { ...state.notes };
+  const trimmed = String(text ?? '').trim();
+  if (trimmed) notes[lineId] = trimmed; else delete notes[lineId];
+  return setTakeoffState(document, { ...state, notes });
+}
+
 export function getEffectiveTakeoffLines(document, options = {}) {
   const state = getTakeoffState(document);
   const automatic = deriveAutomaticTakeoff(document, options).map((line) => {
@@ -260,14 +298,18 @@ export function getEffectiveTakeoffLines(document, options = {}) {
        wording, and the calculated figure is preserved either way so the
        original is never lost. */
     const touched = override.quantity !== undefined || override.description !== undefined;
-    return {
+    const merged = {
       ...line, ...override,
       calculatedQuantity: line.calculatedQuantity,
       calculatedDescription: line.description,
       origin: touched ? 'adjusted' : 'auto',
     };
+    return { ...merged, calcNote: calculationNote(merged), note: state.notes[line.id] ?? '' };
   });
-  return [...automatic, ...state.manualLines.map((line) => ({ ...line, origin: 'manual', calculatedQuantity: null }))];
+  return [...automatic, ...state.manualLines.map((line) => ({
+    ...line, origin: 'manual', calculatedQuantity: null,
+    calcNote: calculationNote({ ...line, origin: 'manual' }), note: state.notes[line.id] ?? '',
+  }))];
 }
 
 export function updateTakeoffLine(document, lineId, patch) {
@@ -319,6 +361,7 @@ export function createTakeoffExport(document, options = {}) {
   const lines = getEffectiveTakeoffLines(document, options).map((line) => {
     const exported = { id: line.id, category: line.category, description: line.description, specification: line.specification, calculatedQuantity: line.calculatedQuantity, quantity: line.quantity, unit: line.unit, requiredLinearFeet: line.requiredLinearFeet, origin: line.origin, confidence: line.confidence, sourceObjectIds: line.sourceObjectIds };
     if (includePrices) { exported.unitPrice = line.unitPrice; exported.subtotal = line.unitPrice == null ? null : round(line.quantity * line.unitPrice); }
+    if (options.includeNotes === true) { exported.calcNote = line.calcNote; exported.note = line.note; }
     return exported;
   });
   return { schema: 'com.dcr.cme.takeoff', schemaVersion: 1, project: { id: document.id, name: document.name }, generatedAt: options.now ?? new Date().toISOString(), pricingIncluded: includePrices, summary: { materialLineCount: lines.length, adjustedLineCount: lines.filter((line) => line.origin === 'adjusted').length, manualLineCount: lines.filter((line) => line.origin === 'manual').length }, lines };
