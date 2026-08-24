@@ -2007,8 +2007,11 @@ function catCuttingSegments(excludedLineId = null) {
 /* Beams and joists are two taps; posts and pillars are one. Snapping runs
    through the same engine every other tool uses, so a joist lands on the beam
    it sits on rather than near it. */
-function placeFramingPoint(raw, pointerType = 'mouse') {
-  const snapped = snapForPointer(raw, framingDraft?.start ?? null, [], new Set(), pointerType);
+function placeFramingPoint(raw, pointerType = 'mouse', exact = false) {
+  /* A typed length is a stated fact, so it is used verbatim. Re-snapping it
+     nudged the far end onto the nearest grid node and turned an exact 16' into
+     16'-0 1/8" - which defeats the entire point of typing it. */
+  const snapped = exact ? { point: raw } : snapForPointer(raw, framingDraft?.start ?? null, [], new Set(), pointerType);
   const point = snapped.point;
 
   if (framingTool === 'post' || framingTool === 'pillar') {
@@ -2371,7 +2374,12 @@ function canvasPointerMove(svg, event) {
        only moved in boundary-draw mode, so the preview condition was never
        true and the second tap landed blind. */
     const snapped = snapForPointer(raw, framingDraft.start, [], new Set(), event.pointerType);
+    /* The snap was already being applied - it just was not being SHOWN. Ortho
+       and endpoint locks were happening silently, so a run looked freehand
+       while the engine was squaring it, and there was no way to tell which. */
+    snapState = snapped;
     pointerWorld = snapped.point;
+    updateHud(event);
     drawCanvasRefresh();
   } else {
     hideHud();
@@ -3625,12 +3633,14 @@ function updateHud(event) {
   const hud = app.querySelector('.cursor-hud');
   const drawingBoundary = mode === 'draw' && draft.length && pointerWorld;
   const drawingCatLine = mode === 'cat' && catTool === 'line' && catDraft?.start && catPointer;
-  if (!hud || (!drawingBoundary && !drawingCatLine)) { hideHud(); return; }
+  // a framing run reads the same way: length, angle, what it snapped to
+  const drawingFraming = mode === 'framing' && framingDraft?.start && pointerWorld;
+  if (!hud || (!drawingBoundary && !drawingCatLine && !drawingFraming)) { hideHud(); return; }
   const panel = app.querySelector('.canvas-panel').getBoundingClientRect();
   hud.style.left = `${Math.min(panel.width - 180, event.clientX - panel.left + 18)}px`;
   hud.style.top = `${Math.min(panel.height - 120, event.clientY - panel.top + 18)}px`;
   hud.classList.add('visible');
-  const anchor = drawingCatLine ? catDraft.start : draft[draft.length - 1];
+  const anchor = drawingCatLine ? catDraft.start : drawingFraming ? framingDraft.start : draft[draft.length - 1];
   const activePoint = drawingCatLine ? catPointer : pointerWorld;
   const activeSnap = drawingCatLine ? catSnapState : snapState;
   const dx = activePoint.x - anchor.x;
@@ -3734,9 +3744,22 @@ function stopCatNoteRecording() {
 
 function acceptNumericLength() {
   const catLineActive = mode === 'cat' && catTool === 'line' && catDraft?.start;
-  if ((!draft.length && !catLineActive) || !numericBuffer) return false;
+  const framingActive = mode === 'framing' && framingDraft?.start;
+  if ((!draft.length && !catLineActive && !framingActive) || !numericBuffer) return false;
   const length = parseConstructionLength(numericBuffer);
   if (!length || length <= 0) { message = 'Use a length such as 12\', 144 in, or 3658 mm'; render(); return true; }
+  /* A framing run takes its direction from wherever the pointer is - which the
+     snap engine has already squared - and its length from the keyboard. Same
+     bargain the boundary and CAT line already offer. */
+  if (framingActive) {
+    const from = framingDraft.start;
+    const aim = pointerWorld ?? { x: from.x + 1, y: from.y };
+    const exact = resolveCatLineEndpoint(from, aim, length);
+    numericBuffer = '';
+    lastLength = length;
+    placeFramingPoint(exact, 'keyboard', true);
+    return true;
+  }
   const anchor = catLineActive ? catDraft.start : draft[draft.length - 1];
   const toward = catLineActive ? catPointer : pointerWorld;
   const exactPoint = resolveCatLineEndpoint(anchor, toward ?? { x: anchor.x + 1, y: anchor.y }, length);
@@ -3787,7 +3810,9 @@ function repeatLastCatSegment() {
 window.addEventListener('keydown', (event) => {
   const modifier = event.ctrlKey || event.metaKey;
   const editingField = ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName);
-  const numericLineMode = mode === 'draw' || (mode === 'cat' && catTool === 'line' && Boolean(catDraft?.start));
+  const numericLineMode = mode === 'draw'
+    || (mode === 'cat' && catTool === 'line' && Boolean(catDraft?.start))
+    || (mode === 'framing' && Boolean(framingDraft?.start));
   if (event.key === 'Escape' && framingDraft) {
     event.preventDefault();
     framingDraft = null;
