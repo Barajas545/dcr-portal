@@ -25,7 +25,8 @@ import { chamferVertex, clearEdgeOrientationConstraint, createDeckBoundary, find
 import { deleteDeckAssembly } from '../tools/deck-boundary/delete-deck-assembly.js';
 import { clearDeckBoardingDirection, deriveDeckBoardingSegments, getDeckBoarding, rotateDeckBoardingDirection, setDeckBoardingDirection } from '../tools/deck-boarding/deck-boarding.js';
 import { deriveBeamGeometry, framingSystem } from '../tools/beam/beam-geometry.js';
-import { standardApplies } from '../tools/framing-standard/framing-standard.js';
+import { getDeckLevelInches, setDeckLevelInches, standardApplies } from '../tools/framing-standard/framing-standard.js';
+import { SECOND_FLOOR_LEVEL_INCHES, isSecondFloor } from '../core/standards/dcr-construction-standard.js';
 import { CAT_LINE_TYPE, CAT_MEASUREMENT_TYPE, CAT_NOTE_TYPE, createCatLine, createCatMeasurement, createCatNote, deriveCatMeasurement, extendCatLine, getCatLines, getCatMeasurements, getCatNotes, getCatSnapObjects, resolveCatLineEndpoint, trimCatLine, updateCatNote } from '../tools/cat-cl/cat-cl.js';
 import { createLevelDown, deriveLevelDownDepth, deriveLevelDownRegion, orthogonalizeLevelDown, setLevelDownRiserHeight, splitLevelDownSegment, updateLevelDownProperties } from '../tools/level-down/level-down.js';
 import { attachStairToBoundary, deriveStairDragOptions, deriveStairOpeningSnap, deriveStairSideSegments, deriveStairTreads, detachStairFromBoundary, findStairBoundaryConnection, getStairInterfaceEdge, materializeStairSideJunction, mergeStairBoundaryConnection, removeStairSideJunction, resolveStairHostEdge, setStairSidePosition, setStairWidth, synchronizeConnectedStairLevels, updateStairDimensions, updateStairInterfaceEdgeProperties, validateStairPlacement } from '../tools/stairs/stair.js';
@@ -236,7 +237,18 @@ function commit(next, label) {
 
 function commitBoundary(nextBoundary, label) {
   activeBoundaryId = nextBoundary.id;
-  commit(upsertObject(documentModel, nextBoundary), label);
+  let next = upsertObject(documentModel, nextBoundary);
+  /* Finishing the FIRST deck area sets the datum to the 4 ft standard, so the
+     common job is laid out without anyone hunting for a setting. Strictly on
+     creation and strictly when no level exists: a drawing made before the
+     standard did must keep its numbers, and editing a boundary must never
+     re-assert a level the user cleared on purpose. */
+  const hadBoundary = documentModel.objects.some((entry) => entry.type === 'deck-boundary');
+  if (!hadBoundary && getDeckLevelInches(documentModel) === null) {
+    next = setDeckLevelInches(next, 48);
+    message = 'Deck boundary created · primary deck level set to 4 ft';
+  }
+  commit(next, label);
 }
 
 /* Saving locally must never take the editor down with it.
@@ -405,6 +417,8 @@ function renderTakeoffNote(line) {
 
 let takeoffSettingsOpen = false;
 let takeoffNoteOpen = null;
+// what the standard commits to, in the words an estimator would use
+const DCRCS_SUMMARY = 'posts every 6 ft under each beam, 16\u2033 footings, 3 bags a footing';
 let takeoffExportNotes = false;
 
 /* The shop rules behind every AUTO line. One field per rule, saved with the
@@ -547,7 +561,29 @@ function renderContextPanel(current) {
       const assemblyLocked = localBoundary.vertices.some((vertex) => vertex.locked) || localBoundary.edges.some((edge) => edge.properties?.custom?.locked);
       const deleting = pendingDeckDeleteId === localBoundary.id;
       const boardingActive = boardingDirectionMode?.boundaryId === localBoundary.id;
-      return `<section class="context-object-panel"><div class="context-heading"><div><div class="eyebrow">Selected deck area</div><h2>${formatSquareFeet(localBoundary.computed.areaSquareInches)}${levelDown > 0 ? ` · ↓ ${formatInches(levelDown)}` : ''}</h2></div>${close}</div><label class="context-select"><span>Down level · local deck</span><div class="compound-field"><input id="boundary-level-down" value="${formatInches(levelDown)}"><button class="button" data-action="apply-boundary-level">Apply</button></div></label><div class="context-actions"><button class="button primary ${moveBoundaryMode?.boundaryId === localBoundary.id ? 'active-constraint' : ''}" data-action="move-deck-area" ${assemblyLocked ? 'disabled' : ''}>Move deck area</button><button class="button" data-action="toggle-decking">${deckingVisible ? 'Hide all decking' : 'Show all decking'}</button></div><div class="context-actions"><button class="button" data-action="make-boundary-90">Make 90° corners</button><button class="button" data-action="start-level-down">Add level down</button></div><div class="context-actions"><button class="button ${localBoundary.metadata?.excludeFromDeckArea ? 'active-constraint' : ''}" data-action="toggle-bill-area" aria-pressed="${Boolean(localBoundary.metadata?.excludeFromDeckArea)}">${localBoundary.metadata?.excludeFromDeckArea ? '✗ Not billed' : '✓ Billed'}</button></div><div class="context-note">${localBoundary.metadata?.excludeFromDeckArea ? 'This area is drawn but kept OUT of the square footage the estimate prices. Use it for a shed pad, a roof outline, or anything you are not charging for.' : 'This area counts toward the square footage the estimate prices.'}</div><div class="context-actions context-actions-3"><button class="button ${boardingActive ? 'active-constraint' : ''}" data-action="set-board-direction">${boardingActive ? '✓ Select line' : boarding ? 'Change direction' : 'Board direction'}</button><button class="button" data-action="rotate-board-direction" ${boarding ? '' : 'disabled'}>Rotate 90°</button><button class="button" data-action="clear-board-direction" ${boarding ? '' : 'disabled'}>Clear boards</button></div><div class="context-actions"><button class="button ${dimensionLeaderMode?.referenceId === selected.id ? 'active-constraint' : ''}" data-action="reposition-dimension-arrow">Reposition arrow</button><button class="button" data-action="reset-dimension-arrow">Reset arrow</button></div><div class="context-actions"><button class="button danger" data-action="toggle-selected-dimension">Delete dimension</button><button class="button" data-action="reset-dimension-position">Reset area position</button></div>${deleting ? '<div class="delete-confirmation"><strong>Delete this complete deck area?</strong><span>Attached stairs, railings, Level Down objects, and local dimensions will also be removed.</span><div class="context-actions"><button class="button danger" data-action="confirm-delete-deck">Confirm delete</button><button class="button" data-action="cancel-delete-deck">Cancel</button></div></div>' : '<button class="button danger context-full" data-action="request-delete-deck">Delete deck area</button>'}<div class="context-note">${assemblyLocked ? 'Unlock local nodes and edges before moving this deck.' : boarding ? `Boarding follows a ${formatInches(boarding.boardWidth)} board with a ${formatInches(boarding.gap)} gap.` : 'Select Board direction, then touch any construction line. Deck objects remain above the subtle board pattern.'}</div></section>`;
+      /* The datum. It belongs to the PROJECT, not to this shape - a deck's
+         height above grade is one fact, and every Down Level measures back
+         from it - but it is edited here, on the first deck area, because that
+         is the thing a user points at when they mean "the deck".
+         Only the first area offers it; the rest get their height from Down
+         Level, and the panel says so rather than showing a control that would
+         quietly fight the first one. */
+      const primaryBoundary = documentModel.objects.find((entry) => entry.type === 'deck-boundary');
+      const isPrimary = primaryBoundary?.id === localBoundary.id;
+      const deckLevel = getDeckLevelInches(documentModel);
+      const secondFloor = isSecondFloor(deckLevel);
+      const levelControl = isPrimary
+        ? `<label class="context-select"><span>Primary deck level \u00b7 height above grade</span><div class="compound-field"><input id="primary-deck-level" value="${deckLevel === null ? '' : formatFeetInches(deckLevel)}" placeholder="not set"><button class="button" data-action="apply-deck-level">Apply</button></div></label>` +
+          `<div class="context-actions context-actions-3"><button class="button ${deckLevel !== null && !secondFloor ? 'active-constraint' : ''}" data-action="deck-level-standard">4 ft standard</button>` +
+          `<button class="button ${secondFloor ? 'active-constraint' : ''}" data-action="deck-level-second-floor">Second floor</button>` +
+          `<button class="button" data-action="deck-level-clear" ${deckLevel === null ? 'disabled' : ''}>Clear</button></div>` +
+          `<div class="context-note">${deckLevel === null
+            ? 'No level set, so no framing is laid out. Set one and beams get their posts, footings and material automatically.'
+            : secondFloor
+              ? 'At second-floor height the DCR standard stands down: you choose the beam spacing and the sizes yourself.'
+              : `DCR standard framing is in force: ${DCRCS_SUMMARY}.`}</div>`
+        : `<div class="context-note">This area takes its height from the Down Level below, measured from the primary deck level${deckLevel === null ? '' : ` of ${formatFeetInches(deckLevel)}`}.</div>`;
+      return `<section class="context-object-panel"><div class="context-heading"><div><div class="eyebrow">Selected deck area</div><h2>${formatSquareFeet(localBoundary.computed.areaSquareInches)}${levelDown > 0 ? ` \u00b7 \u2193 ${formatInches(levelDown)}` : ''}</h2></div>${close}</div>${levelControl}<label class="context-select"><span>Down level \u00b7 local deck</span><div class="compound-field"><input id="boundary-level-down" value="${formatInches(levelDown)}"><button class="button" data-action="apply-boundary-level">Apply</button></div></label><div class="context-actions"><button class="button primary ${moveBoundaryMode?.boundaryId === localBoundary.id ? 'active-constraint' : ''}" data-action="move-deck-area" ${assemblyLocked ? 'disabled' : ''}>Move deck area</button><button class="button" data-action="toggle-decking">${deckingVisible ? 'Hide all decking' : 'Show all decking'}</button></div><div class="context-actions"><button class="button" data-action="make-boundary-90">Make 90° corners</button><button class="button" data-action="start-level-down">Add level down</button></div><div class="context-actions"><button class="button ${localBoundary.metadata?.excludeFromDeckArea ? 'active-constraint' : ''}" data-action="toggle-bill-area" aria-pressed="${Boolean(localBoundary.metadata?.excludeFromDeckArea)}">${localBoundary.metadata?.excludeFromDeckArea ? '✗ Not billed' : '✓ Billed'}</button></div><div class="context-note">${localBoundary.metadata?.excludeFromDeckArea ? 'This area is drawn but kept OUT of the square footage the estimate prices. Use it for a shed pad, a roof outline, or anything you are not charging for.' : 'This area counts toward the square footage the estimate prices.'}</div><div class="context-actions context-actions-3"><button class="button ${boardingActive ? 'active-constraint' : ''}" data-action="set-board-direction">${boardingActive ? '✓ Select line' : boarding ? 'Change direction' : 'Board direction'}</button><button class="button" data-action="rotate-board-direction" ${boarding ? '' : 'disabled'}>Rotate 90°</button><button class="button" data-action="clear-board-direction" ${boarding ? '' : 'disabled'}>Clear boards</button></div><div class="context-actions"><button class="button ${dimensionLeaderMode?.referenceId === selected.id ? 'active-constraint' : ''}" data-action="reposition-dimension-arrow">Reposition arrow</button><button class="button" data-action="reset-dimension-arrow">Reset arrow</button></div><div class="context-actions"><button class="button danger" data-action="toggle-selected-dimension">Delete dimension</button><button class="button" data-action="reset-dimension-position">Reset area position</button></div>${deleting ? '<div class="delete-confirmation"><strong>Delete this complete deck area?</strong><span>Attached stairs, railings, Level Down objects, and local dimensions will also be removed.</span><div class="context-actions"><button class="button danger" data-action="confirm-delete-deck">Confirm delete</button><button class="button" data-action="cancel-delete-deck">Cancel</button></div></div>' : '<button class="button danger context-full" data-action="request-delete-deck">Delete deck area</button>'}<div class="context-note">${assemblyLocked ? 'Unlock local nodes and edges before moving this deck.' : boarding ? `Boarding follows a ${formatInches(boarding.boardWidth)} board with a ${formatInches(boarding.gap)} gap.` : 'Select Board direction, then touch any construction line. Deck objects remain above the subtle board pattern.'}</div></section>`;
     }
     if (reference?.kind === 'level-down-area') return renderLevelDownContext(reference.levelDown, reference.region, deckingVisible, close, true);
     return `<section class="context-object-panel"><div class="context-heading"><div><div class="eyebrow">Selected annotation</div><h2>Dimension</h2></div>${close}</div><div class="context-actions"><button class="button primary" data-action="edit-dimension">Edit object</button><button class="button" data-action="reset-dimension-position">Reset position</button></div><div class="context-actions"><button class="button ${dimensionLeaderMode?.referenceId === selected.id ? 'active-constraint' : ''}" data-action="reposition-dimension-arrow">Reposition arrow</button><button class="button" data-action="reset-dimension-arrow">Reset arrow</button></div><button class="button danger context-full" data-action="toggle-selected-dimension">Delete dimension</button></section>`;
@@ -3147,6 +3183,27 @@ function handleAction(action, source = null) {
     if (!Number.isFinite(width) || width <= 0) { message = 'Enter a valid opening width'; render(); return; }
     message = 'Gate width updated';
     commit(upsertObject(documentModel, { ...object, dimensions: { ...object.dimensions, widthInches: width } }), 'Resize gate');
+    return;
+  }
+  if (action === 'apply-deck-level' || action === 'deck-level-standard'
+      || action === 'deck-level-second-floor' || action === 'deck-level-clear') {
+    if (action === 'deck-level-clear') {
+      message = 'Deck level cleared \u2014 no framing is laid out';
+      commit(setDeckLevelInches(documentModel, null), 'Clear primary deck level');
+      return;
+    }
+    const inches = action === 'deck-level-standard' ? 48
+      : action === 'deck-level-second-floor' ? SECOND_FLOOR_LEVEL_INCHES
+      : parseConstructionLength(app.querySelector('#primary-deck-level')?.value);
+    if (!Number.isFinite(inches) || inches <= 0) {
+      message = 'Enter a height such as 4\', 48 in, or 1220 mm';
+      render();
+      return;
+    }
+    message = isSecondFloor(inches)
+      ? `Primary deck level ${formatFeetInches(inches)} \u2014 second floor, so you set the framing`
+      : `Primary deck level ${formatFeetInches(inches)} \u2014 DCR standard framing is in force`;
+    commit(setDeckLevelInches(documentModel, inches), 'Set primary deck level');
     return;
   }
   if (action === 'set-framing-system') {
