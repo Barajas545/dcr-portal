@@ -47,6 +47,13 @@ export function createTakeoffState(overrides = {}) {
       fasciaWastePercent: 5,
       screwBoxCoverageSqFt: 100,
       stringersPerFlight: 3,
+      /* DCR construction standards — a CUT length is not a PURCHASE length.
+         A railing post is a 5 ft cut, but no yard sells a 5 ft 4x4: you buy a
+         4x4x10 and get two posts out of it. Ordering "7 posts" is not
+         orderable and 3.5 boards is not a thing, so the takeoff resolves the
+         need into whole boards. */
+      railingPostCutFeet: 5,
+      railingPostStockFeet: 10,
       ...overrides.settings,
     },
     overrides: { ...overrides.overrides },
@@ -89,6 +96,35 @@ function purchaseLine({ id, category, description, specification, requiredLinear
   };
 }
 
+/* Cut-from-stock. Distinct from purchaseLine, which spreads linear feet across
+   boards on the assumption that one board's offcut becomes the next run — true
+   for decking, false for a post. Here each board yields a whole number of cuts
+   and the remainder is an offcut, never half a board on the order. */
+function yieldLine({ id, category, description, specification, piecesNeeded, cutFeet, stockFeet, sourceObjectIds = [], confidence = 'calculated' }) {
+  const cut = Number(cutFeet) || 0;
+  const stock = Number(stockFeet) || 0;
+  const perStock = cut > 0 && stock >= cut ? Math.floor(stock / cut) : 1;
+  const needed = Math.max(0, Math.ceil(Number(piecesNeeded) || 0));
+  const boards = Math.ceil(needed / perStock);
+  const leftover = boards * perStock - needed;
+  return {
+    id, category, description,
+    specification: specification ?? `${stock} ft stock · ${perStock} cut${perStock === 1 ? '' : 's'} each`,
+    stockLengthFeet: stock,
+    calculatedQuantity: boards,
+    quantity: boards,
+    unit: 'ea',
+    unitPrice: null,
+    requiredLinearFeet: null,
+    wastePercent: 0,
+    origin: 'auto',
+    confidence,
+    sourceObjectIds,
+    // what the note pane explains, kept as data rather than a sentence
+    cutPlan: { piecesNeeded: needed, cutFeet: cut, stockFeet: stock, piecesPerStock: perStock, boards, leftoverCuts: leftover },
+  };
+}
+
 function countLine({ id, category, description, specification, quantity, sourceObjectIds = [], confidence = 'calculated' }) {
   return { id, category, description, specification, stockLengthFeet: null, calculatedQuantity: Math.ceil(quantity), quantity: Math.ceil(quantity), unit: 'ea', unitPrice: null, requiredLinearFeet: null, wastePercent: 0, origin: 'auto', confidence, sourceObjectIds };
 }
@@ -97,11 +133,21 @@ function countLine({ id, category, description, specification, quantity, sourceO
    so they never have to import from here - that would be circular. This is the
    one place that turns them into takeoff lines. */
 function fromDescriptors(descriptors, settings) {
-  return descriptors.map((descriptor) => (descriptor.kind === 'count'
-    ? countLine(descriptor)
-    : purchaseLine(descriptor, descriptor.wastePercent === undefined
+  return descriptors.map((descriptor) => {
+    if (descriptor.kind === 'count') return countLine(descriptor);
+    /* A module names the STANDARD it cuts from ('railingPost') rather than the
+       numbers, so one edit in settings moves every line that uses it. */
+    if (descriptor.kind === 'yield') {
+      return yieldLine({
+        ...descriptor,
+        cutFeet: descriptor.cutFeet ?? settings[`${descriptor.standard}CutFeet`],
+        stockFeet: descriptor.stockFeet ?? settings[`${descriptor.standard}StockFeet`],
+      });
+    }
+    return purchaseLine(descriptor, descriptor.wastePercent === undefined
       ? settings
-      : { ...settings, wastePercent: descriptor.wastePercent })));
+      : { ...settings, wastePercent: descriptor.wastePercent });
+  });
 }
 
 export function deriveAutomaticTakeoff(document, options = {}) {
@@ -158,8 +204,12 @@ export function deriveAutomaticTakeoff(document, options = {}) {
     lines.push(purchaseLine({ id: 'auto:railing:wild-hog-track', category: 'railing', description: 'Wild Hog aluminum track', specification: '8 ft track', requiredLinearFeet: railLengthInches / 12 * 2, stockLengthFeet: 8, sourceObjectIds: railingIds, confidence: 'review' }, { ...settings, wastePercent: 0 }));
     lines.push(purchaseLine({ id: 'auto:railing:wild-hog-handrail', category: 'railing', description: '2×6 DW handrail', specification: '2×6×8', requiredLinearFeet: railLengthInches / 12, stockLengthFeet: 8, sourceObjectIds: railingIds }, { ...settings, wastePercent: 0 }));
     lines.push(countLine({ id: 'auto:railing:wild-hog-support', category: 'railing', description: 'Panel support', specification: '2×4×8 · top and bottom', quantity: panelCount * 2, sourceObjectIds: railingIds }));
-    lines.push(countLine({ id: 'auto:railing:wild-hog-post', category: 'railing', description: 'Railing post', specification: '4×4×5', quantity: analyzeRailingGeometries(wildHog).estimatedPostCount
-        || wildHog.reduce((sum, geometry) => sum + Number(geometry.postCount ?? 0), 0), sourceObjectIds: railingIds }));
+    lines.push(yieldLine({ id: 'auto:railing:wild-hog-post', category: 'railing',
+      description: `4x4x${settings.railingPostStockFeet} railing post stock`,
+      piecesNeeded: analyzeRailingGeometries(wildHog).estimatedPostCount
+        || wildHog.reduce((sum, geometry) => sum + Number(geometry.postCount ?? 0), 0),
+      cutFeet: settings.railingPostCutFeet, stockFeet: settings.railingPostStockFeet,
+      sourceObjectIds: railingIds }));
   }
   /* Framing: counted pieces, straight from the drawing. See the READMEs in
      tools/beam and tools/joist-group for why these are counts and not a
@@ -205,7 +255,17 @@ export function getEffectiveTakeoffLines(document, options = {}) {
   const state = getTakeoffState(document);
   const automatic = deriveAutomaticTakeoff(document, options).map((line) => {
     const override = state.overrides[line.id] ?? {};
-    return { ...line, ...override, calculatedQuantity: line.calculatedQuantity, origin: override.quantity !== undefined ? 'adjusted' : 'auto' };
+    /* ANY human edit makes the line 'adjusted', not just a quantity. A
+       renamed line that still read AUTO would claim the tool chose that
+       wording, and the calculated figure is preserved either way so the
+       original is never lost. */
+    const touched = override.quantity !== undefined || override.description !== undefined;
+    return {
+      ...line, ...override,
+      calculatedQuantity: line.calculatedQuantity,
+      calculatedDescription: line.description,
+      origin: touched ? 'adjusted' : 'auto',
+    };
   });
   return [...automatic, ...state.manualLines.map((line) => ({ ...line, origin: 'manual', calculatedQuantity: null }))];
 }

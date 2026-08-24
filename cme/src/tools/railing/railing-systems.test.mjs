@@ -48,12 +48,13 @@ test('a straight stick-built run bills posts, rails and balusters', () => {
     'auto:railing:stick-rail',
     'auto:railing:stick-baluster',
   ]);
-  assert.ok(descriptors.every((descriptor) => descriptor.kind === 'count' && descriptor.category === 'railing'));
+  // posts are bought as stock to cut from; rail and baluster are counted pieces
+  assert.ok(descriptors.every((descriptor) => ['count', 'yield'].includes(descriptor.kind) && descriptor.category === 'railing'));
   assert.ok(descriptors.every((descriptor) => descriptor.sourceObjectIds.length === 1 && descriptor.sourceObjectIds[0] === 'railing-1'));
 
   const posts = lineById(descriptors, 'auto:railing:stick-post');
-  assert.equal(posts.description, 'Rail post (4x4)');
-  assert.equal(posts.quantity, 5, 'the layout posts, not floor(20 / 6) + 1 = 4');
+  assert.equal(posts.description, 'Rail post stock (4x4)');
+  assert.equal(posts.piecesNeeded, 5, 'the layout posts, not floor(20 / 6) + 1 = 4');
 
   const rails = lineById(descriptors, 'auto:railing:stick-rail');
   assert.equal(rails.description, 'Rail (2x4)');
@@ -90,7 +91,7 @@ test('an L-shaped deck shares its corner post once and adds a corner post', () =
   /* Six posts: three per run, the post they share at (120, 0) counted once, plus
      one for the exterior corner. The old floor(railLF / 6) + 1 said four for the
      same 20 ft - it could not see either the joint or the corner. */
-  assert.equal(posts.quantity, 6);
+  assert.equal(posts.piecesNeeded, 6);
   assert.deepEqual(posts.sourceObjectIds, ['railing-1', 'railing-2']);
   assert.equal(lineById(descriptors, 'auto:railing:stick-rail').quantity, 8, 'two bays per run, two rails per bay');
   assert.equal(lineById(descriptors, 'auto:railing:stick-baluster').quantity, 54, 'the run total, ceil once');
@@ -153,7 +154,7 @@ test('a run reaches the material list even when the caller resolved no geometry'
   const idFactory = sequentialIds();
   const document = documentWith(run([0, 0], [240, 0], { system: STICK_BUILT_SYSTEM }, idFactory));
   const descriptors = describeTakeoff(document);
-  assert.equal(lineById(descriptors, 'auto:railing:stick-post').quantity, 5, 'measured from its stored anchor points');
+  assert.equal(lineById(descriptors, 'auto:railing:stick-post').piecesNeeded, 5, 'measured from its stored anchor points');
   assert.equal(lineById(descriptors, 'auto:railing:stick-baluster').quantity, 54);
 });
 

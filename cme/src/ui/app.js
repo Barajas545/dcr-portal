@@ -382,7 +382,9 @@ function renderTakeoffLine(line) {
   const confidenceFlag = line.confidence && line.confidence !== 'calculated'
     ? ` · ${line.confidence.toUpperCase()}` : '';
   const calculation = line.calculatedQuantity == null ? '' : `<small>Calculated ${line.calculatedQuantity}${line.requiredLinearFeet ? ` · ${line.requiredLinearFeet} LF net` : ''}${confidenceFlag}</small>`;
-  return `<div class="takeoff-line"><div class="takeoff-material"><span class="takeoff-origin ${line.origin}">${sourceLabel}</span><strong>${escapeHtml(line.description)}</strong><small>${escapeHtml(line.specification ?? '')}</small>${calculation}</div><label><span>Qty</span><input type="number" min="0" step="1" value="${line.quantity}" data-takeoff-quantity="${escapeHtml(line.id)}"></label><label class="takeoff-price"><span>Unit price</span><input type="number" min="0" step="0.01" placeholder="—" value="${price}" data-takeoff-price="${escapeHtml(line.id)}"></label><div class="takeoff-subtotal"><span>Subtotal</span><strong>${subtotal}</strong></div><div class="takeoff-line-actions">${line.origin === 'manual' ? `<button class="icon-button danger" data-action="delete-takeoff-line" data-line-id="${escapeHtml(line.id)}" aria-label="Delete material">×</button>` : line.origin === 'adjusted' ? `<button class="button ghost" data-action="reset-takeoff-line" data-line-id="${escapeHtml(line.id)}">Reset</button>` : ''}</div></div>`;
+  const renamed = line.calculatedDescription && line.calculatedDescription !== line.description
+    ? `<small>Named by the tool: ${escapeHtml(line.calculatedDescription)}</small>` : '';
+  return `<div class="takeoff-line"><div class="takeoff-material"><span class="takeoff-origin ${line.origin}">${sourceLabel}</span><input class="takeoff-desc" value="${escapeHtml(line.description)}" data-takeoff-description="${escapeHtml(line.id)}" aria-label="Material description"><small>${escapeHtml(line.specification ?? '')}</small>${renamed}${calculation}</div><label><span>Qty</span><input type="number" min="0" step="1" value="${line.quantity}" data-takeoff-quantity="${escapeHtml(line.id)}"></label><label class="takeoff-price"><span>Unit price</span><input type="number" min="0" step="0.01" placeholder="—" value="${price}" data-takeoff-price="${escapeHtml(line.id)}"></label><div class="takeoff-subtotal"><span>Subtotal</span><strong>${subtotal}</strong></div><div class="takeoff-line-actions">${line.origin === 'manual' ? `<button class="icon-button danger" data-action="delete-takeoff-line" data-line-id="${escapeHtml(line.id)}" aria-label="Delete material">×</button>` : line.origin === 'adjusted' ? `<button class="button ghost" data-action="reset-takeoff-line" data-line-id="${escapeHtml(line.id)}">Reset</button>` : ''}</div></div>`;
 }
 
 let takeoffSettingsOpen = false;
@@ -1539,6 +1541,12 @@ function bindEvents() {
     const state = getTakeoffState(documentModel);
     message = `${field.label} updated - quantities recalculated`;
     commit(setTakeoffState(documentModel, { ...state, settings: { ...state.settings, [key]: value } }), `Change ${field.label.toLowerCase()}`);
+  }));
+  app.querySelectorAll('[data-takeoff-description]').forEach((input) => input.addEventListener('change', () => {
+    const description = String(input.value ?? '').trim();
+    if (!description) { message = 'A material needs a description'; render(); return; }
+    message = 'Material description updated';
+    commit(updateTakeoffLine(documentModel, input.dataset.takeoffDescription, { description }), 'Rename takeoff material');
   }));
   app.querySelectorAll('[data-takeoff-price]').forEach((input) => input.addEventListener('change', () => {
     const unitPrice = input.value === '' ? null : Number(input.value);

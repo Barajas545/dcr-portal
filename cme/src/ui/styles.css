@@ -537,3 +537,9 @@ button { color: inherit; }
 .takeoff-setting input { padding: 7px 9px; border: 1px solid var(--line, #cfd6df); border-radius: 8px; font-size: 14px; min-height: 40px; }
 .takeoff-setting > small { color: var(--muted, #5b6b7c); line-height: 1.3; }
 .takeoff-settings-note { margin: 2px 14px 12px; font-size: 11.5px; color: var(--muted, #5b6b7c); }
+
+/* an editable material name sits inline, reading as text until you touch it */
+.takeoff-desc { font-weight: 700; font-size: 14px; border: 1px solid transparent; background: transparent;
+  color: inherit; padding: 3px 6px; margin: -3px -6px 0; border-radius: 6px; width: 100%; min-width: 0; }
+.takeoff-desc:hover { border-color: var(--line, #d8dee6); }
+.takeoff-desc:focus { border-color: var(--accent, #2f80d8); background: var(--panel, #fff); outline: none; }

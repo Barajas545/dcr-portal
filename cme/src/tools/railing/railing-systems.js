@@ -142,14 +142,16 @@ function describeStickBuilt(measured) {
   const railFootage = `${Math.round(railFeet * 2 * 10) / 10} lf of rail`;
   return [
     {
-      kind: 'count',
+      /* Same lumber and the same cut as a Wild Hog post, so it is bought the
+         same way: whole 4x4 boards, several posts out of each. Trex posts are
+         deliberately NOT here — that is a proprietary assembly with a sleeve,
+         cap and skirt, not a board anybody cuts. */
+      kind: 'yield',
+      standard: 'railingPost',
       id: 'auto:railing:stick-post',
       category: 'railing',
-      // The old tool's own line names, kept word for word so an estimator can hold
-      // this list against a historical one and read down the same rows.
-      description: 'Rail post (4x4)',
-      specification: '4×4 · from the run layout · corner posts included',
-      quantity: estimatedPostCount(measured),
+      description: 'Rail post stock (4x4)',
+      piecesNeeded: estimatedPostCount(measured),
       sourceObjectIds,
     },
     /* Rail and baluster are the rules of the tool being replaced
