@@ -1152,6 +1152,9 @@
         (q.vendorTrade ? ' <span class="pm-sub">' + esc(q.vendorTrade) + "</span>" : "") +
         (q._ambiguous ? ' <span class="pm-sub" title="Matched by grouping name only">≈</span>' : "") +
         '<div class="pm-sub">' + esc([q.quoteRequestDate ? "req " + q.quoteRequestDate : "",
+          q.quoteFollowUpDate
+            ? "chased " + q.quoteFollowUpDate + (Number(q.quoteFollowUpCount) > 1 ? " ×" + q.quoteFollowUpCount : "")
+            : "",
           q.quoteReceivedDate ? "rec " + q.quoteReceivedDate : ""].filter(Boolean).join(" · ")) + "</div>" +
         (q.documentUrl && /^https:\/\//i.test(q.documentUrl) ? '<a href="' + esc(q.documentUrl) + '" target="_blank" rel="noopener noreferrer">📎 quote doc</a>' : "") +
         menu + invStrip + "</td>" +
@@ -1345,14 +1348,31 @@
       };
     });
     d.querySelectorAll(".qtChase").forEach(function (b) {
-      b.onclick = function () {
+      b.onclick = async function () {
         var q = l.quotes.filter(function (x) { return String(x.id) === String(b.dataset.q); })[0];
         if (!q) return;
+        /* Record the chase FIRST, then open the mail client.
+
+           This used to append "Follow-up sent <date>" to the free-text notes,
+           which nothing could read — so the chart went on warning that the
+           quote was 61 days old however many times you had chased it. It now
+           writes a real date, and the overdue clock restarts from there.
+
+           It also used to navigate the window to mailto: BEFORE saving.
+           Navigating can stop a pending write from ever running — the same
+           trap qtAdd was fixed for — which would leave a follow-up looking
+           logged when it was not. */
+        b.disabled = true;
+        try { await write({ op: "qtFollowUp", itemId: b.dataset.q }); }
+        finally { b.disabled = false; }
         var subj = "Follow-up: quote request — " + (state.model.project.internalIDNumber || "") + " " +
           (state.model.project.projectName || "") + " — " + l.groupingName;
-        location.href = "mailto:" + encodeURIComponent(q.vendorEmail) + "?subject=" + encodeURIComponent(subj);
-        var notes = (q.quoteNotes ? q.quoteNotes + "\n" : "") + "Follow-up sent " + new Date().toISOString().slice(0, 10);
-        write({ op: "qtUpdate", itemId: b.dataset.q, fields: { quoteNotes: notes } });
+        var mail = document.createElement("a");
+        mail.href = "mailto:" + encodeURIComponent(q.vendorEmail) + "?subject=" + encodeURIComponent(subj);
+        mail.style.display = "none";
+        document.body.appendChild(mail);
+        mail.click();
+        mail.remove();
       };
     });
     // Money on an awarded row saves itself, like the rest of the app. On blur,

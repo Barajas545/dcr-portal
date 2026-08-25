@@ -13,7 +13,11 @@
 (function () {
   "use strict";
 
-  var SEP = "¦"; // ¦ — the item key separator the backend uses
+  var SEP = "\u00a6"; // \u00a6 \u2014 the item key separator the backend uses
+  /* How long a quote may sit unanswered before the chart asks about it. Two
+     weeks is a starting point, not a rule of the trade - it is one number in
+     one place so it can be argued with. */
+  var QUOTE_CHASE_DAYS = 14;
 
   /* ── status → milestone index (literal SharePoint values; typos load-bearing) ── */
   var STATUS_IDX = {
@@ -254,11 +258,22 @@
       var awardedRows = qs.filter(function (q) { return q.quoteStatus === "Awarded"; });
       var selfOnly = hasSelf && !awardedRows.length;
       var nReceived = requests.filter(received).length;
+    /* The clock runs from the last time somebody CHASED the vendor, not from
+       when the request first went out. Sending a follow-up is the answer to
+       "this has gone quiet", so it should be what quiets the warning - and
+       because it restarts a clock rather than dismissing a flag, a quote that
+       is still ignored two weeks after the chase starts shouting again on its
+       own. A dismiss button could never do that. */
+    function lastChasedFrom(q) { return q.quoteFollowUpDate || q.quoteRequestDate; }
+    function waitingDays(q) {
+      if (received(q) || q.quoteStatus === "Declined") return null;
+      return daysAgo(lastChasedFrom(q));
+    }
       var overdue = requests.some(function (q) {
-        if (received(q) || q.quoteStatus === "Declined") return false;
-        var d = daysAgo(q.quoteRequestDate);
-        return d != null && d > 14;
+        var d = waitingDays(q);
+        return d != null && d > QUOTE_CHASE_DAYS;
       });
+      var chases = requests.reduce(function (n, q) { return n + (Number(q.quoteFollowUpCount) || 0); }, 0);
       var awarded = 0, inv = 0, paid = 0, awardedNames = [];
       awardedRows.forEach(function (q) {
         awarded += Number(q.quoteAmount) || 0;
@@ -321,16 +336,19 @@
           var dated = requests.filter(function (q) { return q.quoteRequestDate; });
           var names = requests.map(vendorShort).filter(Boolean);
           var who = names.length ? " \u00b7 " + names[0] + (names.length > 1 ? " +" + (names.length - 1) : "") : "";
+          var chased = chases ? " \u00b7 chased" + (chases > 1 ? " \u00d7" + chases : "") : "";
           if (overdue) {
             var waited = 0;
             requests.forEach(function (q) {
-              if (received(q) || q.quoteStatus === "Declined") return;
-              var d = daysAgo(q.quoteRequestDate);
+              var d = waitingDays(q);
               if (d != null && d > waited) waited = d;
             });
-            return { s: "attention", chip: requests.length + " sent \u00b7 " + waited + "d" };
+            // after a chase the number is days since the CHASE, so say which
+            return { s: "attention", chip: requests.length + " sent" + chased + " \u00b7 " + waited + "d" };
           }
-          if (dated.length >= requests.length) return { s: "done", chip: requests.length + " sent" + who };
+          if (dated.length >= requests.length) {
+            return { s: "done", chip: requests.length + " sent" + (chased || who) };
+          }
           return { s: "inProgress", chip: dated.length + " of " + requests.length + " sent" };
         }
         // A1 quotes in
@@ -464,10 +482,12 @@
         }
       }
       if (flag && flag.state === "complete") { pctA = 100; pctB = 100; }
-      var attention = (!flag || flag.state !== "complete") &&
+      // Boolean(), not the raw expression: the last term yields null when there
+      // is no flag, and a field named `attention` should never answer null.
+      var attention = Boolean((!flag || flag.state !== "complete") &&
         (overdue || nodes.B2.s === "attention" || nodes.B3.s === "attention" ||
           nodes.B4.s === "attention" ||
-          (flag && (flag.state === "blocked" || flag.state === "important")));
+          (flag && (flag.state === "blocked" || flag.state === "important"))));
 
       var assignees = it.assignees || [];
       var initials = "";
