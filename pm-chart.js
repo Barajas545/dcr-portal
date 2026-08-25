@@ -33,6 +33,37 @@
     { n: 6, label: "Accepted" },         // region B hangs here
     { n: 7, label: "Complete" },
   ];
+  /* The tiles each region fans into.
+
+     This is the whole vocabulary of the chart, in one place. The span, the x
+     positions, the labels, the drawing and the drawer all read it, so adding a
+     tile is one entry rather than four edits that can drift out of step.
+
+     `kind` is WHAT A TILE IS; the node's own state is HOW IT IS GOING. Keeping
+     them separate is what lets a reader tell a quote from an invoice at a
+     glance without first decoding whether it is late. */
+  var A_NODES = [
+    { key: "A0", label: "Requested", kind: "quote" },
+    { key: "A1", label: "Quotes in", kind: "quote" },
+    { key: "A2", label: "Priced", kind: "price" },
+  ];
+  var B_NODES = [
+    { key: "B1", label: "Awarded", kind: "award" },
+    { key: "B2", label: "Billed to us", kind: "cost" },
+    { key: "B3", label: "Approved", kind: "cost" },
+    { key: "B4", label: "Paid out", kind: "cost" },
+    { key: "B5", label: "Invoiced", kind: "income" },
+    { key: "B6", label: "Collected", kind: "income" },
+  ];
+  var NODE_DEFS = {};
+  A_NODES.concat(B_NODES).forEach(function (d) { NODE_DEFS[d.key] = d; });
+  /* Money out is not the same colour as money in, and neither is the same as
+     asking a vendor what something costs. */
+  var KIND_COLOR = {
+    quote: "#8e6fd8", price: "#2f80d8", award: "#d6a13a",
+    cost: "#d9614f", income: "#2fa679",
+  };
+
   var STAGE_COLORS = {
     "Recived": "#2f80d8", "Estimating": "#d6a13a", "Sent": "#8e6fd8",
     "Aproved": "#2fa679", "In Progress": "#1f6fc8", "Completed": "#6b7c6f", "On Hold": "#d9614f",
@@ -190,7 +221,31 @@
       unlinkedBills.push(b);
     });
 
+    /* Money IN attaches to a scope item by the same three-step match: the task
+       row id, then the exact estimate+group pair, then the group name alone.
+       An invoice matching nothing is money owed to us on this project that is
+       not tied to a scope item - kept and surfaced at the top, never dropped. */
+    var invoicesBy = {}, unlinkedInvoices = [];
+    items.forEach(function (it) { invoicesBy[it.key] = []; });
+    (payload.invoices || []).forEach(function (iv) {
+      var tid = iv.taskItemID != null && iv.taskItemID !== "" ? String(iv.taskItemID) : "";
+      if (tid) {
+        for (var i = 0; i < items.length; i++) {
+          if (items[i].rowIds.indexOf(tid) !== -1) { invoicesBy[items[i].key].push(iv); return; }
+        }
+      }
+      var est = String(iv.taskEstimateName || ""), grp = String(iv.taskGroupingName || "");
+      var exact = items.filter(function (it) { return it.estimateName === est && it.groupingName === grp; });
+      if (exact.length) { invoicesBy[exact[0].key].push(iv); return; }
+      var byGrp = items.filter(function (it) { return it.groupingName === grp; });
+      if (byGrp.length) { iv._ambiguous = byGrp.length > 1; invoicesBy[byGrp[0].key].push(iv); return; }
+      unlinkedInvoices.push(iv);
+    });
+
     function received(q) { return !!(q.quoteReceivedDate || Number(q.quoteAmount) > 0); }
+    function vendorShort(q) {
+      return String(q.vendorCompany || q.vendorName || "").split(/\s+/)[0] || "";
+    }
 
     var lanes = items.map(function (it) {
       var qs = matched[it.key] || [];
@@ -220,6 +275,18 @@
          authorized, `paidOut` what has left. Bills are the real record; the
          amounts typed on an awarded quote are the older, coarser one, used only
          when this lane has no bills at all. */
+      /* Money in for this scope item. `billedOut` is what we asked the client
+         for, `collected` what actually arrived, and an invoice past its due
+         date with nothing against it is the one a PM has to chase. */
+      var laneInvoices = invoicesBy[it.key] || [];
+      var billedOut = 0, collected = 0, invSentN = 0, invOverdue = false;
+      laneInvoices.forEach(function (iv) {
+        var amt = Number(iv.invoiceAmount) || 0;
+        if (iv.invoiceSent) { billedOut += amt; invSentN += 1; }
+        if (iv.invoicePaid) collected += amt;
+        else if (iv.invoiceSent && iv.invoiceDueDate && String(iv.invoiceDueDate) < todayISO()) invOverdue = true;
+      });
+
       var laneBills = billsBy[it.key] || [];
       var billed = 0, approvedAmt = 0, paidOut = 0, waiting = 0, owed = 0, overdueBill = false;
       var todayStr = todayISO();
@@ -240,6 +307,32 @@
       var hasBills = laneBills.length > 0;
 
       function st(node) {
+        /* A0 - the request went out. Until now a lane showed "no quotes" whether
+           nobody had been asked or three vendors had been asked and none had
+           answered, which are opposite problems: one is your move, the other is
+           theirs. This tile is the asking; A1 stays the answering. */
+        if (node === "A0") {
+          if (quotes === null) return { s: "na", chip: "\u2014" };
+          if (!requests.length) {
+            if (hasSelf) return { s: "skipped", chip: "Self" };
+            if (it.priced) return { s: "skipped", chip: "" };
+            return { s: "notStarted", chip: "none sent" };
+          }
+          var dated = requests.filter(function (q) { return q.quoteRequestDate; });
+          var names = requests.map(vendorShort).filter(Boolean);
+          var who = names.length ? " \u00b7 " + names[0] + (names.length > 1 ? " +" + (names.length - 1) : "") : "";
+          if (overdue) {
+            var waited = 0;
+            requests.forEach(function (q) {
+              if (received(q) || q.quoteStatus === "Declined") return;
+              var d = daysAgo(q.quoteRequestDate);
+              if (d != null && d > waited) waited = d;
+            });
+            return { s: "attention", chip: requests.length + " sent \u00b7 " + waited + "d" };
+          }
+          if (dated.length >= requests.length) return { s: "done", chip: requests.length + " sent" + who };
+          return { s: "inProgress", chip: dated.length + " of " + requests.length + " sent" };
+        }
         // A1 quotes in
         if (node === "A1") {
           if (quotes === null) return { s: "na", chip: "—" };
@@ -312,13 +405,37 @@
           if (owed > 0) return { s: "inProgress", chip: money(owed, true) + " due" };
           return { s: "notStarted", chip: "" };
         }
+        /* B5 - what we asked the client for on this scope item. Separate from
+           everything above it, which is all money going OUT. */
+        if (node === "B5") {
+          if (payload.invoices == null) return { s: "na", chip: "\u2014" };
+          if (!laneInvoices.length) return { s: "notStarted", chip: "" };
+          if (!invSentN) return { s: "inProgress", chip: laneInvoices.length + " draft" };
+          return { s: "done", chip: hidden ? invSentN + " sent" : money(billedOut, true) };
+        }
+        /* B6 - what actually arrived. An invoice past due with nothing against
+           it is the one a PM chases, so it is the only thing that raises a flag
+           on the money-in side. */
+        if (node === "B6") {
+          if (payload.invoices == null) return { s: "na", chip: "\u2014" };
+          if (!laneInvoices.length || !invSentN) return { s: "notStarted", chip: "" };
+          if (billedOut > 0 && collected >= 0.999 * billedOut) {
+            return { s: "done", chip: hidden ? "collected" : money(collected, true) };
+          }
+          if (invOverdue) {
+            return { s: "attention", chip: hidden ? "overdue" : money(billedOut - collected, true) + " overdue" };
+          }
+          if (collected > 0) return { s: "inProgress", chip: hidden ? "part paid" : money(collected, true) + " of " + money(billedOut, true) };
+          return { s: "inProgress", chip: hidden ? "unpaid" : money(billedOut, true) + " out" };
+        }
         return { s: "notStarted", chip: "" };
       }
 
-      var nodes = { A1: st("A1"), A2: st("A2"), B1: st("B1"), B2: st("B2"), B3: st("B3"), B4: st("B4") };
+      var nodes = { A0: st("A0"), A1: st("A1"), A2: st("A2"),
+        B1: st("B1"), B2: st("B2"), B3: st("B3"), B4: st("B4"), B5: st("B5"), B6: st("B6") };
       var flag = it.flag || null;
       if (flag && flag.state === "complete") {
-        ["A1", "A2", "B1", "B2", "B3", "B4"].forEach(function (k) {
+        ["A0", "A1", "A2", "B1", "B2", "B3", "B4", "B5", "B6"].forEach(function (k) {
           if (nodes[k].s !== "skipped") nodes[k] = { s: "done", chip: nodes[k].chip };
         });
       }
@@ -437,6 +554,7 @@
       overall: overall, pulseAt: pulseAt,
       quotesReady: !!payload.quotesReady, pricesHidden: hidden,
       unlinkedQuotes: unlinkedQuotes, unlinkedBills: unlinkedBills,
+      unlinkedInvoices: unlinkedInvoices,
       invoices: payload.invoices || null, bills: bills,
       unassignedCosts: unassignedCosts, unassignedRows: unassignedRows,
       statusDates: statusDates,
@@ -464,8 +582,9 @@
     var lanes = opts.lanes || model.lanes;
     var n = lanes.length;
     var expA = model.regions.expandedA, expB = model.regions.expandedB;
-    var spanA = expA ? LEAD + 2 * NODE_W + GAP : 210;
-    var spanB = expB ? LEAD + 4 * NODE_W + 3 * GAP : 210;
+    var spanOf = function (count) { return LEAD + count * NODE_W + (count - 1) * GAP; };
+    var spanA = expA ? spanOf(A_NODES.length) : 210;
+    var spanB = expB ? spanOf(B_NODES.length) : 210;
     var x = {};
     x.M1 = 40; x.M2 = 150; x.M3 = 260;
     x.Astart = x.M3 + 46;
@@ -477,8 +596,8 @@
     // node columns, computed once so the combs and the nodes can never disagree
     var nodeX = { A: [], B: [] };
     var ax = x.Astart + LEAD, bx = x.Bstart + LEAD;
-    nodeX.A = [ax, ax + NODE_W + GAP];
-    nodeX.B = [bx, bx + NODE_W + GAP, bx + 2 * (NODE_W + GAP), bx + 3 * (NODE_W + GAP)];
+    nodeX.A = A_NODES.map(function (_, i) { return ax + i * (NODE_W + GAP); });
+    nodeX.B = B_NODES.map(function (_, i) { return bx + i * (NODE_W + GAP); });
     var cy = 58, y0 = 168;   // room for the milestone label + date at body size
     var showLanes = (expA || expB) && n > 0;
     var H = showLanes ? y0 + n * LANE_H + 40 : y0 + 40;
@@ -609,8 +728,7 @@
       var GLYPH = { done: "✓", inProgress: "●", attention: "⚠", notStarted: "◌", skipped: "·", na: "—" };
       var STROKE = { done: "var(--ok)", inProgress: "var(--acc)", attention: "var(--gold)", notStarted: "var(--border)", skipped: "var(--border)", na: "var(--border)" };
       var FILL = { done: "rgba(47,166,121,.10)", inProgress: "var(--tint)", attention: "rgba(214,161,58,.14)", notStarted: "transparent", skipped: "transparent", na: "transparent" };
-      var A_LABELS = { A1: "Quotes", A2: "Priced" };
-      var B_LABELS = { B1: "Awarded", B2: "Billed to us", B3: "Approved", B4: "Paid" };
+
 
       // Item identity, drawn at the head of each region's lane: the color slot,
       // who it's assigned to, the group name, its labor/material scope and any
@@ -680,8 +798,9 @@
 
       lanes.forEach(function (l, i) {
         var y = L.laneY(i);
-        function node(nx, kind) {
-          var stt = l.nodes[kind], st = stt.s;
+        function node(nx, def) {
+          var kind = def.key;
+          var stt = l.nodes[kind] || { s: "notStarted", chip: "" }, st = stt.s;
           if (st === "skipped") {
             s.push('<circle cx="' + (nx + L.NODE_W / 2) + '" cy="' + y + '" r="4" fill="var(--border)"/>');
             return;
@@ -690,24 +809,32 @@
           s.push('<g' + attr("lane:" + l.key + ":" + kind) + ">");
           s.push('<rect x="' + nx + '" y="' + (y - L.NODE_H / 2) + '" width="' + L.NODE_W + '" height="' + L.NODE_H +
             '" rx="7" fill="' + FILL[st] + '" stroke="' + STROKE[st] + '" stroke-width="1.5"' + dash + "/>");
-          var lbl = (A_LABELS[kind] || B_LABELS[kind]);
+          /* The type bar. State already owns the border and the glyph, so the
+             kind gets its own channel rather than fighting for the same one. */
+          if (KIND_COLOR[def.kind]) {
+            s.push('<rect x="' + (nx + 1.5) + '" y="' + (y - L.NODE_H / 2 + 5) + '" width="3" height="' + (L.NODE_H - 10) +
+              '" rx="1.5" fill="' + KIND_COLOR[def.kind] + '" opacity="' + (st === "notStarted" || st === "na" ? ".35" : ".95") + '"/>');
+          }
+          var lbl = def.label;
           var glyph = GLYPH[st] || "";
           if (L.compact) {
             s.push('<text x="' + (nx + L.NODE_W / 2) + '" y="' + (y + 4.5) + '" text-anchor="middle" font-size="12" fill="var(--text)">' +
               glyph + " " + esc(clip(stt.chip || lbl, L.NODE_W - 18, 12)) + "</text>");
           } else {
-            s.push('<text x="' + (nx + 10) + '" y="' + (y - 3) + '" font-size="12" font-weight="700" fill="var(--text-muted)">' +
+            s.push('<text x="' + (nx + 12) + '" y="' + (y - 3) + '" font-size="12" font-weight="700" fill="var(--text-muted)">' +
               glyph + " " + esc(lbl) + "</text>");
-            s.push('<text x="' + (nx + 10) + '" y="' + (y + 13) + '" font-size="12.5" fill="var(--text)" style="font-variant-numeric:tabular-nums">' +
-              esc(clip(stt.chip || "", L.NODE_W - 18, 12.5)) + "</text>");
+            s.push('<text x="' + (nx + 12) + '" y="' + (y + 13) + '" font-size="12.5" fill="var(--text)" style="font-variant-numeric:tabular-nums">' +
+              esc(clip(stt.chip || "", L.NODE_W - 22, 12.5)) + "</text>");
           }
           s.push("</g>");
         }
-        if (expA) { if (L.LABEL_W) laneLabel(x.Astart, y, l); node(L.nodeX.A[0], "A1"); node(L.nodeX.A[1], "A2"); }
+        if (expA) {
+          if (L.LABEL_W) laneLabel(x.Astart, y, l);
+          A_NODES.forEach(function (d, i) { node(L.nodeX.A[i], d); });
+        }
         if (expB) {
           if (L.LABEL_W) laneLabel(x.Bstart, y, l);
-          node(L.nodeX.B[0], "B1"); node(L.nodeX.B[1], "B2");
-          node(L.nodeX.B[2], "B3"); node(L.nodeX.B[3], "B4");
+          B_NODES.forEach(function (d, i) { node(L.nodeX.B[i], d); });
         }
       });
     }
@@ -718,6 +845,7 @@
 
   window.PMChart = {
     derive: derive, layout: layout, svg: svg,
+    A_NODES: A_NODES, B_NODES: B_NODES, NODE_DEFS: NODE_DEFS, KIND_COLOR: KIND_COLOR,
     money: money, fmtDay: fmtDay, daysAgo: daysAgo, esc: esc, groupSlot: groupSlot,
     STAGE_COLORS: STAGE_COLORS, SEP: SEP,
   };

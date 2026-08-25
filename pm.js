@@ -691,7 +691,22 @@
         '<button class="pm-chip" id="pmDensity">' + (compact ? "Comfortable view" : "Compact view") + "</button>" +
         '<button class="pm-chip" id="pmFs" title="Use the whole monitor">' +
           (document.fullscreenElement ? "✕ Exit full screen" : "⛶ Full screen") + "</button>" +
-        '<span class="pm-legend">✓ Done · ● In progress · ⚠ Waiting · ◌ Not started</span>' +
+        '<span class="pm-legend">\u2713 Done \u00b7 \u25cf In progress \u00b7 \u26a0 Waiting \u00b7 \u25cc Not started</span>' +
+      "</div>" +
+      /* Two channels, said out loud: the glyph is how a tile is GOING, the bar
+         down its left edge is WHAT IT IS. A reader should not have to infer
+         that a quote and an invoice are different kinds of thing. */
+      '<div class="pm-bar pm-kindbar">' +
+        '<span class="pm-legend">Tiles:</span>' +
+        (C.A_NODES || []).concat(C.B_NODES || []).reduce(function (acc, d) {
+          if (acc.seen[d.kind]) return acc;
+          acc.seen[d.kind] = 1;
+          acc.html += '<span class="pm-kind"><i style="background:' + C.KIND_COLOR[d.kind] + '"></i>' +
+            esc(d.kind === "quote" ? "Quote requests" : d.kind === "price" ? "Our price"
+              : d.kind === "award" ? "Awarded" : d.kind === "cost" ? "Money out \u00b7 subs & bills"
+              : "Money in \u00b7 client") + "</span>";
+          return acc;
+        }, { seen: {}, html: "" }).html +
       "</div>" +
       chart + moneyPanel() + extrasPanel() + tasksPanel() + empty;
 
@@ -739,7 +754,7 @@
         var sel = g.getAttribute("data-pm");
         if (sel.indexOf("lane:") === 0) {
           var parts = sel.split(":");
-          openDrawer(parts.slice(1, -1).join(":"));
+          openDrawer(parts.slice(1, -1).join(":"), parts[parts.length - 1]);
         } else if (sel.indexOf("ms:") === 0) {
           openPopover(g, Number(sel.slice(3)));
         } else if (sel.indexOf("band:") === 0) {
@@ -989,7 +1004,14 @@
     for (var i = 0; i < state.model.lanes.length; i++) if (state.model.lanes[i].key === key) return state.model.lanes[i];
     return null;
   }
-  function openDrawer(key) {
+  /* A tile is a view of one part of an item, so clicking it should land on
+     that part. Without this every tile opened the same drawer at the same
+     scroll position and the reader had to find the section themselves. */
+  var KIND_SECTION = { quote: "quotes", price: "fin", award: "quotes", cost: "costs", income: "costs" };
+
+  function openDrawer(key, nodeKey) {
+    var def = nodeKey && C.NODE_DEFS ? C.NODE_DEFS[nodeKey] : null;
+    if (def && KIND_SECTION[def.kind]) secSet(KIND_SECTION[def.kind], true);
     state.drawerKey = key;
     history.replaceState(null, "", "pm.html?id=" + encodeURIComponent(PID) + "&item=" + encodeURIComponent(key));
     renderDrawer();
