@@ -18,6 +18,30 @@ import { getGateOpenings } from '../symbols/symbols.js';
 
 export const TAKEOFF_SCHEMA_VERSION = 1;
 
+const WILD_HOG_HANDRAIL_STOCK_FEET = Object.freeze([8, 10, 12, 16, 20]);
+
+export function planWildHogHandrailStock(geometry, stockLengths = WILD_HOG_HANDRAIL_STOCK_FEET) {
+  const panelCount = Math.max(0, Math.floor(Number(geometry?.sectionCount ?? 0)));
+  const runFeet = Math.max(0, Number(geometry?.length ?? 0)) / 12;
+  if (!panelCount || !runFeet) return [];
+  const panelSpanFeet = runFeet / panelCount;
+  const lengths = [...new Set(stockLengths.map(Number).filter((length) => Number.isFinite(length) && length > 0))].sort((a, b) => a - b);
+  const plans = Array(panelCount + 1).fill(null);
+  plans[0] = { pieces: [], purchasedFeet: 0 };
+  for (let covered = 1; covered <= panelCount; covered += 1) {
+    for (let previous = 0; previous < covered; previous += 1) {
+      const requiredFeet = panelSpanFeet * (covered - previous);
+      const stockLength = lengths.find((length) => length + 1e-8 >= requiredFeet);
+      if (!stockLength || !plans[previous]) continue;
+      const candidate = { pieces: [...plans[previous].pieces, stockLength], purchasedFeet: plans[previous].purchasedFeet + stockLength };
+      const current = plans[covered];
+      if (!current || candidate.purchasedFeet < current.purchasedFeet - 1e-8 || (Math.abs(candidate.purchasedFeet - current.purchasedFeet) < 1e-8 && candidate.pieces.length < current.pieces.length)) plans[covered] = candidate;
+    }
+  }
+  return plans[panelCount]?.pieces ?? [];
+}
+
+
 /* Fascia is cut to length off the board and the offcuts are mostly usable, so
    the tool being replaced allowed 5% here against 10% everywhere else
    (cad-sketch.js:900). Keeping the difference rather than rounding it into the
@@ -54,6 +78,9 @@ export function createTakeoffState(overrides = {}) {
       // fascia offcuts are mostly reusable, so it runs leaner than the field
       fasciaWastePercent: 5,
       screwBoxCoverageSqFt: 100,
+      // a box of SDWS screws, so the order is in boxes rather than loose pieces
+      ledgerScrewBoxQuantity: 50,
+      ledgerFlashingStockFeet: 10,
       stringersPerFlight: 3,
       /* DCR construction standards — a CUT length is not a PURCHASE length.
          A railing post is a 5 ft cut, but no yard sells a 5 ft 4x4: you buy a
@@ -195,6 +222,66 @@ function fromDescriptors(descriptors, settings) {
    framing-standard with no dedup between them, which double-ordered every
    shared location. Upstream solved it by keying locations on a 1-inch grid,
    and that solution comes across whole. */
+/* An edge is a ledger line when it runs against the house and has not been
+   opted out - the same test the ledger module itself applies, so the board and
+   its fasteners can never disagree about which edges count. */
+function isLedgerEdge(edge) {
+  const relationship = edge.properties?.classification?.relationship;
+  const houseAttachment = edge.role === 'house' || relationship === 'house-attachment';
+  return houseAttachment && edge.properties?.attachments?.ledger !== false;
+}
+
+function ledgerRunInches(document) {
+  return (document.objects ?? [])
+    .filter((object) => object.type === 'deck-boundary')
+    .reduce((total, boundary) => {
+      const byId = new Map((boundary.vertices ?? []).map((vertex) => [vertex.id, vertex]));
+      return total + (boundary.edges ?? []).reduce((sum, edge) => {
+        if (!isLedgerEdge(edge)) return sum;
+        const start = byId.get(edge.startVertexId);
+        const end = byId.get(edge.endVertexId);
+        return sum + (start && end ? distance(start, end) : 0);
+      }, 0);
+    }, 0);
+}
+
+function ledgerFastenerLines(document, settings) {
+  const inches = ledgerRunInches(document);
+  if (inches <= 0) return [];
+  const feet = inches / 12;
+  const perFoot = Number(settings.ledgerScrewsPerFoot) || 0;
+  const boxOf = Number(settings.ledgerScrewBoxQuantity) || 0;
+  const out = [];
+  if (perFoot > 0) {
+    const screws = Math.ceil(feet * perFoot);
+    // ordered in whole boxes, with the loose count kept in the specification
+    const boxes = boxOf > 0 ? Math.ceil(screws / boxOf) : screws;
+    out.push(countLine({
+      id: 'auto:hardware:ledger-sdws-5',
+      category: 'hardware',
+      description: 'Simpson Strong-Tie SDWS Timber Screw 5\u2033',
+      specification: boxOf > 0
+        ? `${perFoot} per ft \u00b7 ${screws} needed \u00b7 ${boxOf} per box \u00b7 ${Math.round(feet * 10) / 10} lf of ledger`
+        : `${perFoot} per ft \u00b7 ${Math.round(feet * 10) / 10} lf of ledger`,
+      quantity: boxes,
+      unit: boxOf > 0 ? 'box' : 'ea',
+      sourceObjectIds: [],
+      confidence: 'preliminary',
+    }));
+  }
+  out.push(purchaseLine({
+    id: 'auto:protection:ledger-j-flashing',
+    category: 'protection',
+    description: 'J flashing',
+    specification: `${settings.ledgerFlashingStockFeet} ft length \u00b7 full ledger run`,
+    requiredLinearFeet: feet,
+    stockLengthFeet: settings.ledgerFlashingStockFeet,
+    sourceObjectIds: [],
+    confidence: 'preliminary',
+  }, { ...settings, wastePercent: 0 }));
+  return out;
+}
+
 function pointKey(point, tolerance = 1) {
   return `${Math.round(point.x / tolerance)}:${Math.round(point.y / tolerance)}`;
 }
@@ -230,6 +317,7 @@ function deriveFramingTakeoff(document, settings) {
   ] : [];
   return [
     ...descriptorLines(describeLedgerTakeoff(document)),
+    ...ledgerFastenerLines(document, settings),
     ...beams, ...joists,
     ...descriptorLines(describeJoistBlockingTakeoff(document)),
     ...descriptorLines(explicitDescriptors),
@@ -292,8 +380,33 @@ export function deriveAutomaticTakeoff(document, options = {}) {
   const railingIds = wildHog.map((geometry) => geometry.railing.id);
   if (panelCount > 0) {
     lines.push(countLine({ id: 'auto:railing:wild-hog-panel', category: 'railing', description: 'Wild Hog panel', specification: 'Panel', quantity: panelCount, sourceObjectIds: railingIds }));
-    lines.push(purchaseLine({ id: 'auto:railing:wild-hog-track', category: 'railing', description: 'Wild Hog aluminum track', specification: '8 ft track', requiredLinearFeet: railLengthInches / 12 * 2, stockLengthFeet: 8, sourceObjectIds: railingIds, confidence: 'review' }, { ...settings, wastePercent: 0 }));
-    lines.push(purchaseLine({ id: 'auto:railing:wild-hog-handrail', category: 'railing', description: '2×6 DW handrail', specification: '2×6×8', requiredLinearFeet: railLengthInches / 12, stockLengthFeet: 8, sourceObjectIds: railingIds }, { ...settings, wastePercent: 0 }));
+    /* Sold as a complete 6 ft kit, one per panel - billing aluminium by the
+       foot matched no SKU a supplier could quote against. */
+    lines.push(countLine({ id: 'auto:railing:wild-hog-track', category: 'railing',
+      description: '6 ft. Wild Hog Black Aluminum Hog Track Kit',
+      specification: 'Complete 6 ft kit \u00b7 1 kit per railing panel',
+      quantity: panelCount, sourceObjectIds: railingIds }));
+    /* Planned per RUN rather than pooled off total footage, so joints land at
+       posts: a 9'4" two-panel run buys one 10-footer, where pooling bought
+       two 8-footers and cut both. */
+    const handrailStock = new Map();
+    wildHog.forEach((geometry) => {
+      planWildHogHandrailStock(geometry).forEach((lengthFeet) => {
+        const group = handrailStock.get(lengthFeet) ?? { quantity: 0, sourceObjectIds: [] };
+        group.quantity += 1;
+        group.sourceObjectIds.push(geometry.railing.id);
+        handrailStock.set(lengthFeet, group);
+      });
+    });
+    lines.push(...[...handrailStock.entries()].sort(([a], [b]) => a - b).map(([lengthFeet, group]) => countLine({
+      id: `auto:railing:wild-hog-handrail:${lengthFeet}`,
+      category: 'railing',
+      description: '2\u00d76 DW handrail',
+      specification: `2\u00d76\u00d7${lengthFeet} \u00b7 continuous across panels; joints land at posts`,
+      quantity: group.quantity,
+      stockLengthFeet: lengthFeet,
+      sourceObjectIds: [...new Set(group.sourceObjectIds)],
+    })));
     lines.push(countLine({ id: 'auto:railing:wild-hog-support', category: 'railing', description: 'Panel support', specification: '2×4×8 · top and bottom', quantity: panelCount * 2, sourceObjectIds: railingIds }));
     lines.push(yieldLine({ id: 'auto:railing:wild-hog-post', category: 'railing',
       description: `4x4x${settings.railingPostStockFeet} railing post stock`,
@@ -461,4 +574,87 @@ export function createTakeoffExport(document, options = {}) {
     return exported;
   });
   return { schema: 'com.dcr.cme.takeoff', schemaVersion: 1, project: { id: document.id, name: document.name }, generatedAt: options.now ?? new Date().toISOString(), pricingIncluded: includePrices, summary: { materialLineCount: lines.length, adjustedLineCount: lines.filter((line) => line.origin === 'adjusted').length, manualLineCount: lines.filter((line) => line.origin === 'manual').length }, lines };
+}
+
+function constructionRole(description = '') {
+  const text = String(description).toLowerCase();
+  if (text.includes('stair stringer')) return 'Stair stringer';
+  if (text.includes('stair ledger') || text.includes('stair header')) return 'Stair ledger / header';
+  if (text.includes('joist blocking')) return 'Joist blocking';
+  if (text.includes('rim joist') || text.includes('flush beam')) return 'Rim / flush';
+  if (text.includes('ledger')) return 'Ledger';
+  if (text.includes('joist')) return 'Joist';
+  if (text.includes('beam')) return 'Beam';
+  return null;
+}
+
+function lumberBase(description = '') {
+  return String(description)
+    .replace(/\bstair ledger\s*\/\s*header\b|\bstair stringer\b|\bjoist blocking\b|\brim joist\s*\/\s*flush beam\b|\brim joist\b|\bflush beam\b|\bledger\b|\bjoist\b|\bbeam\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Produces a purchasing view: identical stock is grouped regardless of the
+ * construction role that generated it. The detailed Takeoff remains unchanged.
+ */
+export function consolidateTakeoffLines(lines = []) {
+  const groups = new Map();
+  lines.forEach((line) => {
+    const role = constructionRole(line.description);
+    const base = role && line.stockLengthFeet ? lumberBase(line.description) : String(line.description ?? '').trim();
+    const stock = Number(line.stockLengthFeet) || null;
+    const key = [base.toLowerCase(), stock ?? '', String(line.unit ?? 'ea').toLowerCase(), stock ? '' : String(line.specification ?? '').trim().toLowerCase()].join('|');
+    const group = groups.get(key) ?? {
+      ...line,
+      id: `consolidated:${groups.size + 1}`,
+      category: role && stock ? 'framing' : line.category,
+      description: role && stock ? `${base} lumber` : line.description,
+      specification: stock ? `${stock} ft stock` : line.specification,
+      calculatedQuantity: 0,
+      quantity: 0,
+      requiredLinearFeet: 0,
+      origin: 'consolidated',
+      sourceObjectIds: [],
+      sourceRoles: [],
+      allCalculated: true,
+      allRequiredLinearFeet: true,
+      allPriced: true,
+      pricedSubtotal: 0,
+    };
+    const quantity = Number(line.quantity) || 0;
+    group.quantity += quantity;
+    if (line.calculatedQuantity != null && Number.isFinite(Number(line.calculatedQuantity))) group.calculatedQuantity += Number(line.calculatedQuantity);
+    else group.allCalculated = false;
+    if (line.requiredLinearFeet != null && Number.isFinite(Number(line.requiredLinearFeet))) group.requiredLinearFeet += Number(line.requiredLinearFeet);
+    else group.allRequiredLinearFeet = false;
+    if (line.unitPrice == null) group.allPriced = false;
+    else group.pricedSubtotal += quantity * Number(line.unitPrice);
+    group.sourceObjectIds.push(...(line.sourceObjectIds ?? []));
+    if (role) group.sourceRoles.push(role);
+    groups.set(key, group);
+  });
+  return [...groups.values()].map((group) => {
+    const sourceRoles = [...new Set(group.sourceRoles)];
+    const specification = sourceRoles.length
+      ? `${group.specification} · combined: ${sourceRoles.join(', ')}`
+      : group.specification;
+    const result = {
+      ...group,
+      specification,
+      quantity: round(group.quantity),
+      calculatedQuantity: group.allCalculated ? round(group.calculatedQuantity) : null,
+      requiredLinearFeet: group.allRequiredLinearFeet ? round(group.requiredLinearFeet) : null,
+      unitPrice: group.allPriced && group.quantity ? round(group.pricedSubtotal / group.quantity) : null,
+      sourceObjectIds: [...new Set(group.sourceObjectIds)],
+      confidence: group.confidence === 'calculated' ? 'calculated' : 'preliminary',
+    };
+    delete result.sourceRoles;
+    delete result.allCalculated;
+    delete result.allRequiredLinearFeet;
+    delete result.allPriced;
+    delete result.pricedSubtotal;
+    return result;
+  });
 }
