@@ -16,7 +16,7 @@ import { nearestPointOnSegment } from '../core/geometry/vector.js';
 import { formatFeetInches, formatInches, formatSquareFeet } from '../core/units/length.js';
 import { parseConstructionLength } from '../core/units/parse-length.js';
 import { CommandStack, replaceDocument } from '../history/command-stack.js';
-import { adaptiveGridSpacing, createViewport, fitViewport, panViewport, zoomViewport } from '../rendering/viewport-controller.js';
+import { adaptiveGridSpacing, createViewport, fitViewport, matchViewportAspect, panViewport, zoomViewport } from '../rendering/viewport-controller.js';
 import { createBeam, addBeam, getBeams } from '../tools/beam/beam.js';
 import { createJoist, addJoist, getJoists, arrayObject, ON_CENTRE_SPACINGS, DEFAULT_SPACING_INCHES, DEFAULT_COPIES, MAX_COPIES } from '../tools/joist-group/joist-group.js';
 import { createPost, createPillar, addPost, getPosts, getPillars } from '../tools/post-footing/post-footing.js';
@@ -299,6 +299,36 @@ function screenToWorld(svg, event) {
   return point.matrixTransform(svg.getScreenCTM().inverse());
 }
 
+/* One observer, re-pointed after every render.
+
+   render() replaces everything inside #app, so an observer attached to the
+   canvas is watching a detached node a moment later - and one attached to #app
+   only ever sees WINDOW resizes, missing a panel that changes shape on its own
+   (the inspector opening, a flex reflow). Re-observing the live canvas covers
+   both. No loop: a redraw rewrites the canvas contents, never its size. */
+/* Debounced with a timer, NOT requestAnimationFrame.
+
+   rAF is the usual choice and it is wrong here: it is tied to the compositor,
+   so in any context that is not painting - a background tab, an automation
+   browser - it never fires and the canvas silently stops following its
+   container. A redraw is not an animation; it does not need a frame. */
+let resizePending = 0;
+function scheduleCanvasReflow() {
+  clearTimeout(resizePending);
+  resizePending = setTimeout(drawCanvasRefresh, 60);
+}
+
+const canvasResize = typeof ResizeObserver === 'function'
+  ? new ResizeObserver(scheduleCanvasReflow)
+  : null;
+
+function observeCanvas() {
+  if (!canvasResize) return;
+  canvasResize.disconnect();
+  const canvas = app.querySelector('.model-canvas');
+  if (canvas) canvasResize.observe(canvas);
+}
+
 function render() {
   const current = boundary();
   const validation = current ? validateDeckBoundary(current) : null;
@@ -360,6 +390,7 @@ function render() {
     </main>`;
   bindEvents();
   drawCanvas(app.querySelector('.model-canvas'), current, validation);
+  observeCanvas();
 }
 
 function renderProjectMenu() {
@@ -960,6 +991,11 @@ function renderStairInspector(current, edge) {
 }
 
 function drawCanvas(svg, current, validation) {
+  /* The visible world takes the shape of the element showing it. Without this
+     the viewBox kept its own ratio and SVG letterboxed it, which is what left
+     a gridless band down each side of a wide screen. */
+  const box = svg.getBoundingClientRect();
+  if (box.width > 0 && box.height > 0) viewport = matchViewportAspect(viewport, box.width / box.height);
   svg.setAttribute('viewBox', `${viewport.x} ${viewport.y} ${viewport.width} ${viewport.height}`);
   const visibleGrid = gridSetting === 'auto' ? adaptiveGridSpacing(viewport.width, svg.clientWidth || 1000) : Number(gridSetting);
   const majorGrid = visibleGrid * 4;
@@ -4150,5 +4186,22 @@ function updateHudFromKeyboard() {
   input.textContent = numericBuffer || 'Type a length · Enter';
   input.classList.toggle('active', Boolean(numericBuffer));
 }
+
+/* Keep the drawing surface matched to the window.
+
+   There was no resize handling at all: the viewBox kept whatever shape it was
+   born with, so widening the window just added letterboxed dark bands rather
+   than more drawing. Redrawing on resize reshapes it, and the observer is
+   cheap because drawCanvasRefresh only rebuilds the canvas, not the panels. */
+/* A window resize always redraws, ResizeObserver or not.
+
+   The observer above catches a panel that changes shape on its own; this
+   catches the case the grid was actually reported for - somebody widening the
+   window on a large monitor. It is deliberately NOT conditional on
+   ResizeObserver being missing: RO turned out not to fire at all in some
+   environments (not even its mandatory initial callback), and a dark band
+   down the side of the drawing is too visible a failure to leave resting on
+   one mechanism. Redrawing twice costs a frame; not redrawing costs the grid. */
+window.addEventListener('resize', scheduleCanvasReflow);
 
 render();
