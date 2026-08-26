@@ -100,3 +100,4 @@ test('nothing is derived from a run with no length or no standard', () => {
   assert.deepEqual(beamBoards(240, 0, STOCK).boards, []);
   assert.deepEqual(beamBoards(240, 60, []).boards, []);
 });
+

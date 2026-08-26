@@ -43,6 +43,15 @@ export function translateDeckAssembly(document, boundaryId, delta) {
       if (object.type === 'level-down' && object.host?.boundaryId === boundaryId) {
         return { ...object, vertices: object.vertices.map((vertex) => ({ ...vertex, x: vertex.x + dx, y: vertex.y + dy })) };
       }
+      if (object.type === 'stair' && object.host?.boundaryId === boundaryId && object.geometry?.ownership === 'stair') {
+        return {
+          ...object,
+          geometry: {
+            ...object.geometry,
+            vertices: object.geometry.vertices.map((vertex) => ({ ...vertex, x: vertex.x + dx, y: vertex.y + dy })),
+          },
+        };
+      }
       if (object.type !== 'railing-run') return object;
       const anchors = Object.fromEntries(Object.entries(object.anchors ?? {}).map(([key, anchor]) => {
         if (anchor.boundaryId !== boundaryId) return [key, anchor];

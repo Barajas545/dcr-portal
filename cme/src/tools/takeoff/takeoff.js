@@ -5,7 +5,14 @@ import { describeTakeoff as describeBeams } from '../beam/beam.js';
 import { describeTakeoff as describeJoists } from '../joist-group/joist-group.js';
 import { describeTakeoff as describePosts } from '../post-footing/post-footing.js';
 import { describeTakeoff as describeSymbols } from '../symbols/symbols.js';
-import { describeTakeoff as describeStandardFraming } from '../framing-standard/framing-standard.js';
+import { getFramingLayer } from '../../core/annotations/framing-layer.js';
+import { DCR_DEFAULT_POST_BASE } from '../../core/standards/dcr-construction-standard.js';
+import { deriveAllBeamGeometries } from '../beam/beam-geometry.js';
+import { describeJoistBlockingTakeoff } from '../joist-blocking/joist-blocking.js';
+import { describeLedgerTakeoff } from '../ledger/ledger.js';
+import { describeRimJoistTakeoff } from '../rim-joist/rim-joist.js';
+import { describeStairFramingTakeoff } from '../stair-framing/stair-framing.js';
+import { getPosts } from '../post-footing/post-footing.js';
 import { describeTakeoff as describeRailingSystems, netGateOpenings } from '../railing/railing-systems.js';
 import { getGateOpenings } from '../symbols/symbols.js';
 
@@ -152,8 +159,8 @@ function yieldLine({ id, category, description, specification, piecesNeeded, cut
   };
 }
 
-function countLine({ id, category, description, specification, quantity, sourceObjectIds = [], confidence = 'calculated' }) {
-  return { id, category, description, specification, stockLengthFeet: null, calculatedQuantity: Math.ceil(quantity), quantity: Math.ceil(quantity), unit: 'ea', unitPrice: null, requiredLinearFeet: null, wastePercent: 0, origin: 'auto', confidence, sourceObjectIds };
+function countLine({ id, category, description, specification, quantity, unit = 'ea', stockLengthFeet = null, sourceObjectIds = [], confidence = 'calculated' }) {
+  return { id, category, description, specification, stockLengthFeet, calculatedQuantity: Math.ceil(quantity), quantity: Math.ceil(quantity), unit, unitPrice: null, requiredLinearFeet: null, wastePercent: 0, origin: 'auto', confidence, sourceObjectIds };
 }
 
 /* The framing modules hand back plain descriptors rather than finished lines,
@@ -179,6 +186,59 @@ function fromDescriptors(descriptors, settings) {
       ? settings
       : { ...settings, wastePercent: descriptor.wastePercent });
   });
+}
+
+/* Posts are counted ONCE per location.
+
+   An explicitly drawn post sitting on a beam end is one post, not two. The
+   Portal used to count getPosts() in post-footing and beam-derived posts in
+   framing-standard with no dedup between them, which double-ordered every
+   shared location. Upstream solved it by keying locations on a 1-inch grid,
+   and that solution comes across whole. */
+function pointKey(point, tolerance = 1) {
+  return `${Math.round(point.x / tolerance)}:${Math.round(point.y / tolerance)}`;
+}
+
+function deriveFramingTakeoff(document, settings) {
+  const layer = getFramingLayer(document);
+  const beams = descriptorLines(describeBeams(document));
+  const joists = descriptorLines(describeJoists(document));
+  // post-footing's own post/base/concrete lines are dropped: the deduplicated
+  // set below replaces them, and keeping both would order each post twice
+  const explicitDescriptors = describePosts(document)
+    .filter((line) => !['auto:framing:post', 'auto:hardware:post-base', 'auto:framing:concrete-bag'].includes(line.id));
+  const uniquePostLocations = new Map(getPosts(document).map((post) => [pointKey(post.at), { point: post.at, sourceId: post.id }]));
+  deriveAllBeamGeometries(document, layer.settings).forEach((geometry) => {
+    geometry.posts.forEach((post) => uniquePostLocations.set(pointKey(post), { point: post, sourceId: geometry.beam.id }));
+  });
+  const postLocations = [...uniquePostLocations.values()];
+  const sourceObjectIds = [...new Set(postLocations.map((entry) => entry.sourceId))];
+  const postCount = postLocations.length;
+  const posts = postCount ? [
+    yieldLine({
+      id: 'auto:framing:post-stock', category: 'framing',
+      description: `4\u00d74\u00d7${layer.settings.postStockFeet} post stock`,
+      piecesNeeded: postCount,
+      cutFeet: layer.settings.postCutFeet, stockFeet: layer.settings.postStockFeet,
+      sourceObjectIds, confidence: 'preliminary',
+    }),
+    countLine({ id: 'auto:hardware:post-base', category: 'hardware', description: DCR_DEFAULT_POST_BASE.description,
+      specification: 'One per post \u00b7 model/size to match post', quantity: postCount, sourceObjectIds, confidence: 'preliminary' }),
+    countLine({ id: 'auto:framing:concrete-bag', category: 'framing', description: 'Concrete 60lb bag',
+      specification: `${layer.settings.concreteBagsPerFooting} bags per footing`,
+      quantity: postCount * layer.settings.concreteBagsPerFooting, sourceObjectIds, confidence: 'preliminary' }),
+  ] : [];
+  return [
+    ...descriptorLines(describeLedgerTakeoff(document)),
+    ...beams, ...joists,
+    ...descriptorLines(describeJoistBlockingTakeoff(document)),
+    ...descriptorLines(explicitDescriptors),
+    ...posts,
+  ];
+}
+
+function descriptorLines(descriptors) {
+  return descriptors.map((descriptor) => countLine(descriptor));
 }
 
 export function deriveAutomaticTakeoff(document, options = {}) {
@@ -245,15 +305,17 @@ export function deriveAutomaticTakeoff(document, options = {}) {
   /* Framing: counted pieces, straight from the drawing. See the READMEs in
      tools/beam and tools/joist-group for why these are counts and not a
      lineal-feet buy off a stock length. */
-  lines.push(...fromDescriptors(describeBeams(document), settings));
-  lines.push(...fromDescriptors(describeJoists(document), settings));
-  lines.push(...fromDescriptors(describePosts(document), settings));
+  // beams, joists and posts now come through deriveFramingTakeoff below
   /* Count pins are how a rep tallies anything this tool has no idea about, so
      their labels reach the estimator verbatim. */
   lines.push(...fromDescriptors(describeSymbols(document), settings));
-  /* The DCR framing standard, dormant until a primary deck level is set so no
-     existing drawing's quantities move on its own. */
-  lines.push(...fromDescriptors(describeStandardFraming(document, settings), settings));
+  /* The framing pipeline: ledger, beams and joists in commercial stock,
+     blocking, and posts counted once per location. This supersedes the older
+     DCRCS beam/post lines, which double-counted against beam.js once upstream
+     moved stock planning into the beam itself. */
+  lines.push(...deriveFramingTakeoff(document, settings));
+  lines.push(...descriptorLines(describeRimJoistTakeoff(document)));
+  lines.push(...descriptorLines(describeStairFramingTakeoff(document)));
   /* Stick-built and Trex only. Wild Hog is billed above and must not be billed
      twice. */
   lines.push(...fromDescriptors(describeRailingSystems(document, options), settings));

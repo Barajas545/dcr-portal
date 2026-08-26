@@ -20,6 +20,11 @@
    not: at that height the estimator picks spacing and sizes, because the
    standard was never meant to cover it. */
 export const SECOND_FLOOR_LEVEL_INCHES = 120;
+export const DCR_DEFAULT_POST_BASE = Object.freeze({
+  manufacturer: 'Simpson Strong-Tie',
+  series: 'ABW',
+  description: 'Simpson Strong-Tie ABW Post Base',
+});
 
 export function isSecondFloor(deckLevelInches, threshold = SECOND_FLOOR_LEVEL_INCHES) {
   const level = Number(deckLevelInches);

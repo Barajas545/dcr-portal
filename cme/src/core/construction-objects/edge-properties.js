@@ -1,4 +1,4 @@
-export const EDGE_PROPERTY_SCHEMA_VERSION = 1;
+export const EDGE_PROPERTY_SCHEMA_VERSION = 2;
 
 export function createEdgeProperties(overrides = {}) {
   return {
@@ -20,7 +20,13 @@ export function createEdgeProperties(overrides = {}) {
       demolition: false,
       ...overrides.existingConditions,
     },
-    attachments: { ...overrides.attachments },
+    attachments: {
+      // null preserves legacy House Attachment edges: until explicitly changed,
+      // they continue to behave as the ledger relationship CME historically implied.
+      ledger: null,
+      rimJoist: null,
+      ...overrides.attachments,
+    },
     custom: { ...overrides.custom },
   };
 }

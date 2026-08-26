@@ -155,26 +155,31 @@ export function deriveRailingGeometry(railing, edgeStart, edgeEnd) {
   };
 }
 
-export function analyzeRailingGeometries(geometries, cornerClassifications = {}, tolerance = 0.6) {
+function normalizedDirection(vector) {
+  const length = Math.hypot(vector.x, vector.y);
+  return length > EPSILON ? { x: vector.x / length, y: vector.y / length } : { x: 0, y: 0 };
+}
+
+function cornerSettingIsDouble(setting) {
+  return setting === 'double' || setting?.double === true;
+}
+
+export function deriveRailingPostLayout(geometries, cornerSettings = {}, tolerance = 0.6) {
   const valid = geometries.filter(Boolean);
-  const clusters = [];
   const endpointDirections = [];
   valid.forEach((geometry) => {
-    geometry.posts.forEach((post) => {
-      let cluster = clusters.find((entry) => distance(entry, post) <= tolerance);
-      if (!cluster) { cluster = { x: post.x, y: post.y, count: 0 }; clusters.push(cluster); }
-      cluster.count += 1;
-    });
     endpointDirections.push(
-      { point: geometry.start, vector: { x: geometry.end.x - geometry.start.x, y: geometry.end.y - geometry.start.y } },
-      { point: geometry.end, vector: { x: geometry.start.x - geometry.end.x, y: geometry.start.y - geometry.end.y } },
+      { point: geometry.start, endpointId: `${geometry.railing.id}:endpoint:start`, legacyMemberId: `${geometry.railing.id}:post:0`, vector: { x: geometry.end.x - geometry.start.x, y: geometry.end.y - geometry.start.y } },
+      { point: geometry.end, endpointId: `${geometry.railing.id}:endpoint:end`, legacyMemberId: `${geometry.railing.id}:post:${geometry.posts.length - 1}`, vector: { x: geometry.start.x - geometry.end.x, y: geometry.start.y - geometry.end.y } },
     );
   });
   const cornerGroups = [];
   endpointDirections.forEach((endpoint) => {
     let group = cornerGroups.find((entry) => distance(entry.point, endpoint.point) <= tolerance);
-    if (!group) { group = { point: endpoint.point, vectors: [] }; cornerGroups.push(group); }
+    if (!group) { group = { point: endpoint.point, vectors: [], endpointIds: [], legacyMemberIds: [] }; cornerGroups.push(group); }
     group.vectors.push(endpoint.vector);
+    group.endpointIds.push(endpoint.endpointId);
+    group.legacyMemberIds.push(endpoint.legacyMemberId);
   });
   const corners = cornerGroups.filter((group) => group.vectors.length === 2).flatMap((group) => {
     const [a, b] = group.vectors;
@@ -182,16 +187,100 @@ export function analyzeRailingGeometries(geometries, cornerClassifications = {},
     const magnitudes = Math.hypot(a.x, a.y) * Math.hypot(b.x, b.y);
     const angle = Math.acos(Math.max(-1, Math.min(1, dot / magnitudes))) * 180 / Math.PI;
     if (Math.abs(180 - angle) <= 1) return [];
-    const key = `${group.point.x.toFixed(2)},${group.point.y.toFixed(2)}`;
-    return [{ key, x: group.point.x, y: group.point.y, angle, classification: cornerClassifications[key] ?? 'exterior' }];
+    const id = `railing-corner:${[...group.endpointIds].sort().join('|')}`;
+    const legacyId = `railing-corner:${[...group.legacyMemberIds].sort().join('|')}`;
+    const legacyKey = `${group.point.x.toFixed(2)},${group.point.y.toFixed(2)}`;
+    const doubled = cornerSettingIsDouble(cornerSettings[id] ?? cornerSettings[legacyId] ?? cornerSettings[legacyKey]);
+    return [{ id, key: id, legacyId, legacyKey, x: group.point.x, y: group.point.y, angle, doubled, classification: doubled ? 'double' : 'single', vectors: group.vectors.map(normalizedDirection), endpointIds: group.endpointIds }];
   });
-  const exteriorCornerCount = corners.filter((corner) => corner.classification === 'exterior').length;
+
+  const cornerForEndpoint = (endpointId) => corners.find((corner) => corner.endpointIds.includes(endpointId));
+  const resolvedGeometries = valid.map((geometry) => {
+    const originalLength = distance(geometry.start, geometry.end);
+    const direction = normalizedDirection({ x: geometry.end.x - geometry.start.x, y: geometry.end.y - geometry.start.y });
+    const postWidth = geometry.postWidth ?? geometry.railing.settings?.postWidth ?? DEFAULT_POST_WIDTH;
+    const startEndpointId = `${geometry.railing.id}:endpoint:start`;
+    const endEndpointId = `${geometry.railing.id}:endpoint:end`;
+    const startInset = cornerForEndpoint(startEndpointId)?.doubled ? postWidth : 0;
+    const endInset = cornerForEndpoint(endEndpointId)?.doubled ? postWidth : 0;
+    const usableLength = Math.max(0, originalLength - startInset - endInset);
+    const start = { x: geometry.start.x + direction.x * startInset, y: geometry.start.y + direction.y * startInset };
+    const end = { x: geometry.end.x - direction.x * endInset, y: geometry.end.y - direction.y * endInset };
+    const layout = computeRailingLayout(usableLength, geometry.railing.settings);
+    return {
+      ...geometry,
+      sourceStart: geometry.start,
+      sourceEnd: geometry.end,
+      sourceLength: originalLength,
+      start,
+      end,
+      ...layout,
+      posts: layout.posts.map((post, index) => ({
+        t: post.t,
+        x: start.x + (end.x - start.x) * post.t,
+        y: start.y + (end.y - start.y) * post.t,
+        memberId: `${geometry.railing.id}:post:${index}`,
+        endpointId: index === 0 ? startEndpointId : index === layout.posts.length - 1 ? endEndpointId : null,
+      })),
+    };
+  });
+
+  const clusters = [];
+  resolvedGeometries.forEach((geometry) => geometry.posts.forEach((post) => {
+    let cluster = clusters.find((entry) => distance(entry, post) <= tolerance);
+    if (!cluster) { cluster = { x: post.x, y: post.y, count: 0, members: [], endpointIds: [], postWidth: geometry.postWidth ?? DEFAULT_POST_WIDTH }; clusters.push(cluster); }
+    cluster.count += 1;
+    cluster.members.push(post.memberId);
+    if (post.endpointId) cluster.endpointIds.push(post.endpointId);
+    cluster.postWidth = Math.max(cluster.postWidth, geometry.postWidth ?? DEFAULT_POST_WIDTH);
+  }));
+
+  const consumed = new Set();
+  const posts = corners.filter((corner) => corner.doubled).map((corner) => {
+    const cornerClusters = clusters.filter((cluster) => cluster.endpointIds.some((endpointId) => corner.endpointIds.includes(endpointId)));
+    cornerClusters.forEach((cluster) => consumed.add(cluster));
+    return {
+      id: `railing-post:${corner.id}`,
+      x: corner.x,
+      y: corner.y,
+      sourcePostIds: cornerClusters.flatMap((cluster) => cluster.members),
+      shared: true,
+      cornerId: corner.id,
+      corner,
+      doubled: true,
+      markers: cornerClusters.map((cluster) => ({ x: cluster.x, y: cluster.y, size: cluster.postWidth })),
+    };
+  });
+  clusters.filter((cluster) => !consumed.has(cluster)).forEach((cluster) => {
+    const id = `railing-post:${[...cluster.members].sort().join('|')}`;
+    const corner = corners.find((entry) => cluster.endpointIds.some((endpointId) => entry.endpointIds.includes(endpointId))) ?? null;
+    posts.push({ id, x: cluster.x, y: cluster.y, sourcePostIds: [...cluster.members], shared: cluster.count > 1, cornerId: corner?.id ?? null, corner, doubled: false, markers: [{ x: cluster.x, y: cluster.y, size: cluster.postWidth }] });
+  });
+  const doubleCornerCount = corners.filter((corner) => corner.doubled).length;
+  const physicalPostCount = posts.reduce((sum, post) => sum + post.markers.length, 0);
+  return { posts, corners, geometries: resolvedGeometries, basePostCount: physicalPostCount - doubleCornerCount, doubleCornerCount, physicalPostCount };
+}
+
+export function setRailingCornerDouble(document, cornerId, doubled) {
+  const settings = { ...(document.railingCornerSettings ?? {}) };
+  if (doubled) settings[cornerId] = { double: true };
+  else delete settings[cornerId];
+  return { ...document, railingCornerSettings: settings, updatedAt: new Date().toISOString() };
+}
+
+export function analyzeRailingGeometries(geometries, cornerSettings = {}, tolerance = 0.6) {
+  const valid = geometries.filter(Boolean);
+  const layout = deriveRailingPostLayout(valid, cornerSettings, tolerance);
   return {
     totalLength: valid.reduce((sum, geometry) => sum + geometry.length, 0),
-    sectionCount: valid.reduce((sum, geometry) => sum + geometry.sectionCount, 0),
-    visiblePostCount: clusters.length,
-    exteriorCornerCount,
-    estimatedPostCount: clusters.length + exteriorCornerCount,
-    corners,
+    sectionCount: layout.geometries.reduce((sum, geometry) => sum + geometry.sectionCount, 0),
+    visiblePostCount: layout.physicalPostCount,
+    basePostCount: layout.basePostCount,
+    doubleCornerCount: layout.doubleCornerCount,
+    exteriorCornerCount: layout.doubleCornerCount,
+    estimatedPostCount: layout.physicalPostCount,
+    corners: layout.corners,
+    posts: layout.posts,
+    geometries: layout.geometries,
   };
 }

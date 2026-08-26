@@ -88,10 +88,12 @@ test('an L-shaped deck shares its corner post once and adds a corner post', () =
   );
   const descriptors = describeTakeoff(document, { railingGeometries: geometriesFor(document) });
   const posts = lineById(descriptors, 'auto:railing:stick-post');
-  /* Six posts: three per run, the post they share at (120, 0) counted once, plus
-     one for the exterior corner. The old floor(railLF / 6) + 1 said four for the
-     same 20 ft - it could not see either the joint or the corner. */
-  assert.equal(posts.piecesNeeded, 6);
+  /* Five posts. The handoff's LATEST RAILING RULE governs this: "Takeoff counts
+     only posts that are visibly modeled. A shared angled corner defaults to ONE
+     post." This test used to expect six, adding a second post at the corner by
+     default; that post is now created only when the estimator explicitly asks
+     for a Double post corner, which also regenerates equal spans on both runs. */
+  assert.equal(posts.piecesNeeded, 5);
   assert.deepEqual(posts.sourceObjectIds, ['railing-1', 'railing-2']);
   assert.equal(lineById(descriptors, 'auto:railing:stick-rail').quantity, 8, 'two bays per run, two rails per bay');
   assert.equal(lineById(descriptors, 'auto:railing:stick-baluster').quantity, 54, 'the run total, ceil once');

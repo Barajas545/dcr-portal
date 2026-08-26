@@ -1,5 +1,6 @@
 import { upsertObject } from '../../core/document/project-document.js';
 import { point } from '../../core/geometry/vector.js';
+import { DCR_DEFAULT_POST_BASE } from '../../core/standards/dcr-construction-standard.js';
 
 export const POST_TYPE = 'post';
 
@@ -12,6 +13,7 @@ const objectsOf = (document) => (Array.isArray(document?.objects) ? document.obj
 export const PILLAR_TYPE = 'pillar';
 export const POST_FOOTING_SCHEMA_VERSION = 1;
 export const DEFAULT_POST_SIZE = '4x4x8';
+export const DEFAULT_MANUAL_FOOTING_SIZE_INCHES = 16;
 export const DEFAULT_PILLAR_SIZE_INCHES = 6;
 export const CONCRETE_BAGS_PER_POST = 3;
 const defaultId = (prefix) => `${prefix}-${crypto.randomUUID()}`;
@@ -21,7 +23,10 @@ function markerPoint(at, label) {
   return point(at.x, at.y);
 }
 
-export function createPost({ at, size = DEFAULT_POST_SIZE, name } = {}, idFactory = defaultId) {
+export function createPost({ at, size = DEFAULT_POST_SIZE, name, footing = null } = {}, idFactory = defaultId) {
+  const footingSizeInches = Number(footing?.sizeInches ?? DEFAULT_MANUAL_FOOTING_SIZE_INCHES);
+  const concreteBags = Number(footing?.concreteBags ?? CONCRETE_BAGS_PER_POST);
+  if (!(footingSizeInches > 0) || !(concreteBags > 0)) throw new Error('Post footing dimensions and concrete allowance must be positive.');
   return {
     type: POST_TYPE,
     schemaVersion: POST_FOOTING_SCHEMA_VERSION,
@@ -30,6 +35,7 @@ export function createPost({ at, size = DEFAULT_POST_SIZE, name } = {}, idFactor
     at: markerPoint(at, 'Post'),
     // A size is a label the estimator picks off a list; nothing is derived from it.
     size: String(size),
+    footing: { sizeInches: footingSizeInches, concreteBags },
     lifecycle: { phase: 'established', revision: 1 },
   };
 }
@@ -91,10 +97,10 @@ export function describeTakeoff(document) {
           quantity: posts.length, sourceObjectIds: postIds,
           ...(sizes.length ? {} : { confidence: 'preliminary' }) };
       })(),
-      { kind: 'count', id: 'auto:hardware:post-base', category: 'hardware', description: 'Post base / anchor', specification: 'One per post', quantity: posts.length, sourceObjectIds: postIds },
+      { kind: 'count', id: 'auto:hardware:post-base', category: 'hardware', description: DCR_DEFAULT_POST_BASE.description, specification: 'One per post · model/size to match post', quantity: posts.length, sourceObjectIds: postIds, confidence: 'preliminary' },
       // Three bags a post is the shop's flat allowance, not a footing volume, so
       // it is flagged preliminary rather than presented as a calculated figure.
-      { kind: 'count', id: 'auto:framing:concrete-bag', category: 'framing', description: 'Concrete 60lb bag', specification: `${CONCRETE_BAGS_PER_POST} bags per post`, quantity: posts.length * CONCRETE_BAGS_PER_POST, sourceObjectIds: postIds, confidence: 'preliminary' },
+      { kind: 'count', id: 'auto:framing:concrete-bag', category: 'framing', description: 'Concrete 60lb bag', specification: 'Modeled footing allowance', quantity: posts.reduce((sum, post) => sum + (Number(post.footing?.concreteBags) || CONCRETE_BAGS_PER_POST), 0), sourceObjectIds: postIds, confidence: 'preliminary' },
     );
   }
   if (pillars.length) {

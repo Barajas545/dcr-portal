@@ -11,7 +11,7 @@
    standard rather than a verified structural design. */
 
 import { distance } from '../../core/geometry/vector.js';
-import { beamBoards, isSecondFloor } from '../../core/standards/dcr-construction-standard.js';
+import { DCR_DEFAULT_POST_BASE, beamBoards, isSecondFloor } from '../../core/standards/dcr-construction-standard.js';
 import { getBeams } from '../beam/beam.js';
 import { deriveBeamGeometry } from '../beam/beam-geometry.js';
 
@@ -137,7 +137,7 @@ export function describeTakeoff(document, settings) {
     });
     descriptors.push({
       kind: 'count', id: 'auto:hardware:dcrcs-post-base', category: 'hardware',
-      description: 'Post base / anchor', specification: 'One per footing',
+      description: DCR_DEFAULT_POST_BASE.description, specification: 'One per footing · model/size to match post',
       quantity: postCount, sourceObjectIds: beamIds, confidence: 'preliminary',
     });
     descriptors.push({

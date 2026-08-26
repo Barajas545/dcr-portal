@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createProjectDocument } from '../../core/document/project-document.js';
 import {
   CONCRETE_BAGS_PER_POST,
+  DEFAULT_MANUAL_FOOTING_SIZE_INCHES,
   DEFAULT_PILLAR_SIZE_INCHES,
   DEFAULT_POST_SIZE,
   PILLAR_TYPE,
@@ -41,7 +42,7 @@ test('descriptions and categories match the ported list verbatim', () => {
     [...lines.values()].map((line) => [line.kind, line.category, line.description]),
     [
       ['count', 'framing', '4x4x8 post'],
-      ['count', 'hardware', 'Post base / anchor'],
+      ['count', 'hardware', 'Simpson Strong-Tie ABW Post Base'],
       ['count', 'framing', 'Concrete 60lb bag'],
       ['count', 'framing', '6x6 pillar'],
     ],
@@ -81,10 +82,19 @@ test('markers carry the defaults the old tool used', () => {
   const pillar = createPillar({ at: { x: 12, y: 24 } }, testId);
   assert.equal(post.type, POST_TYPE);
   assert.equal(post.size, DEFAULT_POST_SIZE);
+  assert.deepEqual(post.footing, { sizeInches: DEFAULT_MANUAL_FOOTING_SIZE_INCHES, concreteBags: CONCRETE_BAGS_PER_POST });
   assert.deepEqual(post.at, { x: 12, y: 24 });
   assert.equal(pillar.type, PILLAR_TYPE);
   assert.equal(pillar.dimensions.sizeInches, DEFAULT_PILLAR_SIZE_INCHES);
   assert.equal(DEFAULT_PILLAR_SIZE_INCHES, 6);
+});
+
+test('a manually placed post owns its footing and concrete allowance', () => {
+  const post = createPost({ at: { x: 48, y: 72 }, footing: { sizeInches: 20, concreteBags: 4 } }, testId);
+  const document = addPost(createProjectDocument({ id: 'manual-post-footing' }), post);
+  assert.deepEqual(post.footing, { sizeInches: 20, concreteBags: 4 });
+  assert.equal(describeTakeoff(document).find((line) => line.id === 'auto:framing:concrete-bag').quantity, 4);
+  assert.throws(() => createPost({ at: { x: 0, y: 0 }, footing: { sizeInches: 0 } }, testId), /must be positive/);
 });
 
 test('a size is a label, so an odd one still counts as one post', () => {
