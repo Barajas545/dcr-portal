@@ -581,3 +581,15 @@ button { color: inherit; }
 .framing-system-option + .framing-system-option { border-left: 1px solid var(--line, #d8dee6); }
 .framing-system-option:hover { background: var(--panel-2, rgba(127,140,160,.1)); }
 .framing-system-option.on { background: var(--accent, #2f80d8); color: #fff; }
+
+/* ── takeoff: detailed vs consolidated ── */
+.takeoff-view-mode { display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  flex-wrap: wrap; padding: 11px 13px; margin-bottom: 10px; border-radius: 10px;
+  background: var(--panel-2, rgba(127,140,160,.08)); border: 1px solid var(--line, #d8dee6); }
+.takeoff-view-mode strong { display: block; font-size: 12.5px; }
+.takeoff-view-mode small { display: block; font-size: 11.5px; color: var(--muted, #5b6b7c); max-width: 52ch; line-height: 1.35; }
+.segmented-control { display: inline-flex; border: 1px solid var(--line, #d8dee6); border-radius: 9px; overflow: hidden; }
+.segmented-control .button { border: none; border-radius: 0; min-height: 38px; font-size: 12px; }
+.segmented-control .button + .button { border-left: 1px solid var(--line, #d8dee6); }
+.takeoff-line input:disabled { opacity: .75; cursor: default; background: transparent; }
+.takeoff-desc:disabled { border-color: transparent; }

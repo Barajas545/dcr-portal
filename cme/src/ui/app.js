@@ -31,7 +31,7 @@ import { CAT_LINE_TYPE, CAT_MEASUREMENT_TYPE, CAT_NOTE_TYPE, createCatLine, crea
 import { createLevelDown, deriveLevelDownDepth, deriveLevelDownRegion, orthogonalizeLevelDown, setLevelDownRiserHeight, splitLevelDownSegment, updateLevelDownProperties } from '../tools/level-down/level-down.js';
 import { attachStairToBoundary, deriveStairDragOptions, deriveStairOpeningSnap, deriveStairSideSegments, deriveStairTreads, detachStairFromBoundary, findStairBoundaryConnection, getStairInterfaceEdge, materializeStairSideJunction, mergeStairBoundaryConnection, removeStairSideJunction, resolveStairHostEdge, setStairSidePosition, setStairWidth, synchronizeConnectedStairLevels, updateStairDimensions, updateStairInterfaceEdgeProperties, validateStairPlacement } from '../tools/stairs/stair.js';
 import { analyzeRailingGeometries, createRailingLine, deriveRailingGeometry, deriveRailingLineGeometry, resolveRailingEndpointSnap, updateRailingSettings } from '../tools/railing/railing.js';
-import { TAKEOFF_CATEGORIES, addManualTakeoffLine, createTakeoffExport, getEffectiveTakeoffLines, getTakeoffState, removeManualTakeoffLine, resetTakeoffLine, setTakeoffNote, setTakeoffState, updateTakeoffLine } from '../tools/takeoff/takeoff.js';
+import { TAKEOFF_CATEGORIES, addManualTakeoffLine, consolidateTakeoffLines, createTakeoffExport, getEffectiveTakeoffLines, getTakeoffState, removeManualTakeoffLine, resetTakeoffLine, setTakeoffNote, setTakeoffState, updateTakeoffLine } from '../tools/takeoff/takeoff.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 /* Storage is scoped per estimate when the portal hosts this.
@@ -385,7 +385,11 @@ function takeoffContext() {
   return { railingGeometries, railingPostCount: railing.estimatedPostCount };
 }
 
-function renderTakeoffLine(line) {
+function renderTakeoffLine(line, editable = true) {
+  /* A consolidated line is the SUM of several modeled lines, so its inputs are
+     disabled rather than hidden: the estimator still reads the quantity and the
+     price, but an edit here would have nowhere to write back to. */
+  const ro = editable ? '' : ' disabled';
   const sourceLabel = line.origin === 'adjusted' ? 'ADJUSTED' : line.origin === 'manual' ? 'MANUAL' : 'AUTO';
   const price = line.unitPrice == null ? '' : line.unitPrice;
   const subtotal = line.unitPrice == null ? '—' : `$${(line.quantity * line.unitPrice).toFixed(2)}`;
@@ -398,7 +402,7 @@ function renderTakeoffLine(line) {
   const calculation = line.calculatedQuantity == null ? '' : `<small>Calculated ${line.calculatedQuantity}${line.requiredLinearFeet ? ` · ${line.requiredLinearFeet} LF net` : ''}${confidenceFlag}</small>`;
   const renamed = line.calculatedDescription && line.calculatedDescription !== line.description
     ? `<small>Named by the tool: ${escapeHtml(line.calculatedDescription)}</small>` : '';
-  return `<div class="takeoff-line"><div class="takeoff-material"><span class="takeoff-origin ${line.origin}">${sourceLabel}</span><input class="takeoff-desc" value="${escapeHtml(line.description)}" data-takeoff-description="${escapeHtml(line.id)}" aria-label="Material description"><small>${escapeHtml(line.specification ?? '')}</small>${renamed}${calculation}</div><label><span>Qty</span><input type="number" min="0" step="1" value="${line.quantity}" data-takeoff-quantity="${escapeHtml(line.id)}"></label><label class="takeoff-price"><span>Unit price</span><input type="number" min="0" step="0.01" placeholder="—" value="${price}" data-takeoff-price="${escapeHtml(line.id)}"></label><div class="takeoff-subtotal"><span>Subtotal</span><strong>${subtotal}</strong></div><button class="icon-button takeoff-note-btn${line.note ? ' has-note' : ''}" data-action="toggle-takeoff-note" data-line-id="${escapeHtml(line.id)}" aria-label="${line.note ? 'Edit the note on this material' : 'Add a note to this material'}" title="${line.note ? 'Note attached' : 'Add a note'}">${line.note ? '📝' : '🗒'}</button><div class="takeoff-line-actions">${line.origin === 'manual' ? `<button class="icon-button danger" data-action="delete-takeoff-line" data-line-id="${escapeHtml(line.id)}" aria-label="Delete material">×</button>` : line.origin === 'adjusted' ? `<button class="button ghost" data-action="reset-takeoff-line" data-line-id="${escapeHtml(line.id)}">Reset</button>` : ''}</div>${takeoffNoteOpen === line.id ? renderTakeoffNote(line) : ''}</div>`;
+  return `<div class="takeoff-line"><div class="takeoff-material"><span class="takeoff-origin ${line.origin}">${sourceLabel}</span><input class="takeoff-desc" value="${escapeHtml(line.description)}" data-takeoff-description="${escapeHtml(line.id)}" aria-label="Material description"${ro}><small>${escapeHtml(line.specification ?? '')}</small>${renamed}${calculation}</div><label><span>Qty</span><input type="number" min="0" step="1" value="${line.quantity}" data-takeoff-quantity="${escapeHtml(line.id)}"${ro}></label><label class="takeoff-price"><span>Unit price</span><input type="number" min="0" step="0.01" placeholder="—" value="${price}" data-takeoff-price="${escapeHtml(line.id)}"${ro}></label><div class="takeoff-subtotal"><span>Subtotal</span><strong>${subtotal}</strong></div>${!editable ? '' : `<button class="icon-button takeoff-note-btn${line.note ? ' has-note' : ''}" data-action="toggle-takeoff-note" data-line-id="${escapeHtml(line.id)}" aria-label="${line.note ? 'Edit the note on this material' : 'Add a note to this material'}" title="${line.note ? 'Note attached' : 'Add a note'}">${line.note ? '📝' : '🗒'}</button>`}<div class="takeoff-line-actions">${line.origin === 'manual' ? `<button class="icon-button danger" data-action="delete-takeoff-line" data-line-id="${escapeHtml(line.id)}" aria-label="Delete material">×</button>` : line.origin === 'adjusted' ? `<button class="button ghost" data-action="reset-takeoff-line" data-line-id="${escapeHtml(line.id)}">Reset</button>` : ''}</div>${takeoffNoteOpen === line.id ? renderTakeoffNote(line) : ''}</div>`;
 }
 
 /* Two notes, and they are never the same kind of thing.
@@ -420,6 +424,12 @@ let takeoffNoteOpen = null;
 // what the standard commits to, in the words an estimator would use
 const DCRCS_SUMMARY = 'posts every 6 ft under each beam, 16\u2033 footings, 3 bags a footing';
 let takeoffExportNotes = false;
+/* Two ways to read the same material. 'detailed' keeps the construction role -
+   why and where each piece is used, and every quantity editable. 'consolidated'
+   answers a different question: what do I order? Identical stock is summed
+   across roles, which necessarily makes those lines read-only, because a sum
+   has nowhere to write an edit back to. */
+let takeoffViewMode = 'detailed';
 
 /* The shop rules behind every AUTO line. One field per rule, saved with the
    project - a different contractor types their numbers once and every
@@ -444,16 +454,25 @@ function renderTakeoffSettings() {
 
 function renderTakeoffWorkspace() {
   if (!takeoffOpen) return '';
-  const lines = getEffectiveTakeoffLines(documentModel, takeoffContext());
+  const detailedLines = getEffectiveTakeoffLines(documentModel, takeoffContext());
+  const lines = takeoffViewMode === 'consolidated' ? consolidateTakeoffLines(detailedLines) : detailedLines;
+  const editableTakeoff = takeoffViewMode === 'detailed';
   const knownTotal = lines.reduce((sum, line) => sum + (line.unitPrice == null ? 0 : line.quantity * line.unitPrice), 0);
   const unpriced = lines.filter((line) => line.unitPrice == null).length;
   const categories = TAKEOFF_CATEGORIES.map((category) => {
     const categoryLines = lines.filter((line) => line.category === category.id);
     const expanded = takeoffExpanded.has(category.id);
     const adding = takeoffAddCategory === category.id;
-    return `<section class="takeoff-category ${expanded ? 'expanded' : ''}"><button class="takeoff-category-heading" data-action="toggle-takeoff-category" data-category="${category.id}" aria-expanded="${expanded}"><span><b>${expanded ? '−' : '+'}</b><strong>${category.label}</strong></span><small>${categoryLines.length} material${categoryLines.length === 1 ? '' : 's'}</small></button>${expanded ? `<div class="takeoff-category-body">${categoryLines.length ? categoryLines.map(renderTakeoffLine).join('') : '<div class="takeoff-empty">No calculated materials yet. Add a project material or keep modeling.</div>'}${adding ? `<div class="takeoff-add-form"><label><span>Material</span><input id="takeoff-new-description" placeholder="Example: Pressure treated joist"></label><label><span>Specification</span><input id="takeoff-new-specification" placeholder="Example: 2×8×16"></label><label><span>Quantity</span><input id="takeoff-new-quantity" type="number" min=".01" step="1" value="1"></label><label><span>Unit</span><select id="takeoff-new-unit"><option value="ea">pieces</option><option value="lf">LF</option><option value="sf">SF</option><option value="box">boxes</option><option value="bag">bags</option><option value="gal">gallons</option></select></label><label><span>Unit price · optional</span><input id="takeoff-new-price" type="number" min="0" step=".01" placeholder="—"></label><div class="takeoff-add-actions"><button class="button primary" data-action="save-takeoff-line" data-category="${category.id}">Add material</button><button class="button ghost" data-action="cancel-takeoff-line">Cancel</button></div></div>` : `<button class="button ghost takeoff-add" data-action="add-takeoff-line" data-category="${category.id}">+ Add material</button>`}</div>` : ''}</section>`;
+    return `<section class="takeoff-category ${expanded ? 'expanded' : ''}"><button class="takeoff-category-heading" data-action="toggle-takeoff-category" data-category="${category.id}" aria-expanded="${expanded}"><span><b>${expanded ? '−' : '+'}</b><strong>${category.label}</strong></span><small>${categoryLines.length} material${categoryLines.length === 1 ? '' : 's'}</small></button>${expanded ? `<div class="takeoff-category-body">${categoryLines.length ? categoryLines.map((line) => renderTakeoffLine(line, editableTakeoff)).join('') : '<div class="takeoff-empty">No calculated materials yet. Add a project material or keep modeling.</div>'}${adding ? `<div class="takeoff-add-form"><label><span>Material</span><input id="takeoff-new-description" placeholder="Example: Pressure treated joist"></label><label><span>Specification</span><input id="takeoff-new-specification" placeholder="Example: 2×8×16"></label><label><span>Quantity</span><input id="takeoff-new-quantity" type="number" min=".01" step="1" value="1"></label><label><span>Unit</span><select id="takeoff-new-unit"><option value="ea">pieces</option><option value="lf">LF</option><option value="sf">SF</option><option value="box">boxes</option><option value="bag">bags</option><option value="gal">gallons</option></select></label><label><span>Unit price · optional</span><input id="takeoff-new-price" type="number" min="0" step=".01" placeholder="—"></label><div class="takeoff-add-actions"><button class="button primary" data-action="save-takeoff-line" data-category="${category.id}">Add material</button><button class="button ghost" data-action="cancel-takeoff-line">Cancel</button></div></div>` : `<button class="button ghost takeoff-add" data-action="add-takeoff-line" data-category="${category.id}">+ Add material</button>`}</div>` : ''}</section>`;
   }).join('');
-  return `<section class="takeoff-overlay" role="dialog" aria-modal="true" aria-label="Project material takeoff"><header class="takeoff-header"><div><div class="eyebrow">CME material intelligence</div><h1>Project Takeoff</h1><p>${escapeHtml(documentModel.name)} · calculated from the current construction model</p></div><button class="takeoff-close" data-action="close-takeoff" aria-label="Close takeoff">×</button></header><div class="takeoff-summary"><span><small>Material lines</small><strong>${lines.length}</strong></span><span><small>Unpriced</small><strong>${unpriced}</strong></span><span class="takeoff-price"><small>Known material total</small><strong>$${knownTotal.toFixed(2)}</strong></span></div><div class="takeoff-actions"><button class="button primary" data-action="print-takeoff-quote">Export quote · no prices</button><button class="button" data-action="print-takeoff-priced">Export with prices</button><button class="button ghost" data-action="download-takeoff-json">Takeoff JSON</button><label class="takeoff-notes-toggle"><input type="checkbox" id="takeoff-export-notes"${takeoffExportNotes ? ' checked' : ''}> Include notes</label></div>${renderTakeoffSettings()}<div class="takeoff-list">${categories}</div><footer class="takeoff-footer"><span>PRELIMINARY = a shop recipe not yet confirmed · REVIEW = needs a human decision. Every quantity stays editable, and an edit keeps the calculated figure beside it.</span><strong>${lines.filter((line) => line.origin === 'adjusted').length} adjusted · ${lines.filter((line) => line.origin === 'manual').length} manual</strong></footer></section>`;
+  return `<section class="takeoff-overlay" role="dialog" aria-modal="true" aria-label="Project material takeoff"><header class="takeoff-header"><div><div class="eyebrow">CME material intelligence</div><h1>Project Takeoff</h1><p>${escapeHtml(documentModel.name)} · calculated from the current construction model</p></div><button class="takeoff-close" data-action="close-takeoff" aria-label="Close takeoff">×</button></header><div class="takeoff-view-mode"><div><strong>List format</strong><small>${takeoffViewMode === 'consolidated'
+        ? 'Groups identical material and stock length across construction roles \u2014 what to order.'
+        : 'Keeps why and where every piece is used, and every quantity editable.'}</small></div>` +
+      `<div class="segmented-control"><button class="button ${takeoffViewMode === 'detailed' ? 'active-constraint' : ''}" data-action="set-takeoff-view" data-view="detailed">Detailed by use</button>` +
+      `<button class="button ${takeoffViewMode === 'consolidated' ? 'active-constraint' : ''}" data-action="set-takeoff-view" data-view="consolidated">Consolidated for purchase</button></div></div>` +
+      `<div class="takeoff-summary"><span><small>Material lines</small><strong>${lines.length}</strong></span><span><small>Unpriced</small><strong>${unpriced}</strong></span><span class="takeoff-price"><small>Known material total</small><strong>$${knownTotal.toFixed(2)}</strong></span></div><div class="takeoff-actions"><button class="button primary" data-action="print-takeoff-quote">Export quote · no prices</button><button class="button" data-action="print-takeoff-priced">Export with prices</button><button class="button ghost" data-action="download-takeoff-json">Takeoff JSON</button><label class="takeoff-notes-toggle"><input type="checkbox" id="takeoff-export-notes"${takeoffExportNotes ? ' checked' : ''}> Include notes</label></div>${renderTakeoffSettings()}<div class="takeoff-list">${categories}</div><footer class="takeoff-footer">${takeoffViewMode === 'consolidated'
+        ? `<span>Read-only purchase list \u2014 return to Detailed by use to adjust a modeled quantity.</span><strong>${detailedLines.length} detailed \u2192 ${lines.length} purchase lines</strong>`
+        : `<span>PRELIMINARY = a shop recipe not yet confirmed · REVIEW = needs a human decision. Every quantity stays editable, and an edit keeps the calculated figure beside it.</span><strong>${lines.filter((line) => line.origin === 'adjusted').length} adjusted \u00b7 ${lines.filter((line) => line.origin === 'manual').length} manual</strong>`}</footer></section>`;
 }
 
 function renderContextPanel(current) {
@@ -3061,6 +3080,15 @@ function handleAction(action, source = null) {
   if (action === 'close-project-menu') { projectMenuOpen = false; pendingProjectDeleteId = null; render(); return; }
   if (action === 'toggle-export-menu') { exportMenuOpen = !exportMenuOpen; projectMenuOpen = false; pendingProjectDeleteId = null; render(); return; }
   if (action === 'open-takeoff') { takeoffOpen = true; exportMenuOpen = false; projectMenuOpen = false; takeoffAddCategory = null; message = 'Editable project takeoff generated'; render(); return; }
+  if (action === 'set-takeoff-view') {
+    takeoffViewMode = source?.dataset.view === 'consolidated' ? 'consolidated' : 'detailed';
+    takeoffNoteOpen = null;   // a note belongs to a modeled line, not to a sum
+    message = takeoffViewMode === 'consolidated'
+      ? 'Purchase list consolidated by material and stock size'
+      : 'Detailed construction takeoff restored';
+    render();
+    return;
+  }
   if (action === 'toggle-takeoff-note') {
     const id = source?.dataset.lineId;
     takeoffNoteOpen = takeoffNoteOpen === id ? null : id;
