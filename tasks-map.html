@@ -218,6 +218,40 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-s
 .pt-section-head-sub{font-size:10px;color:#bbb;font-weight:500;}
 
 /* ═══ DRAWER 2 — TASK DETAIL ═══ */
+/* New-task sheet. Same bottom-sheet shape as the other two drawers; the
+   inputs are 16px so iOS does not zoom the page when one takes focus, and
+   48px tall so a gloved thumb can hit them. */
+#ptNewTaskSheet{
+  background:#fff;border-radius:20px 20px 0 0;
+  width:100%;max-width:540px;max-height:92vh;max-height:92dvh;
+  display:flex;flex-direction:column;
+  box-shadow:0 -8px 40px rgba(0,0,0,0.25);
+  overflow:hidden;
+  animation:ptSlideUp .3s cubic-bezier(.4,0,.2,1);
+}
+.pt-nt-head{display:flex;align-items:flex-start;gap:10px;padding:4px 18px 12px;border-bottom:1px solid #ececec;}
+.pt-nt-title{font-size:19px;font-weight:800;color:#1a1a1a;line-height:1.2;}
+.pt-nt-sub{font-size:13px;color:#6b6b6b;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pt-nt-body{padding:14px 18px 6px;overflow-y:auto;-webkit-overflow-scrolling:touch;flex:1;}
+.pt-nt-lab{display:block;font-size:12px;font-weight:700;color:#5a5a5a;margin:12px 0 5px;letter-spacing:.01em;}
+.pt-nt-lab:first-child{margin-top:0;}
+.pt-nt-in{
+  width:100%;box-sizing:border-box;padding:13px 12px;border:1px solid #d6d6d6;border-radius:11px;
+  font-size:16px;font-family:inherit;color:#1a1a1a;background:#fff;min-height:48px;
+  -webkit-appearance:none;appearance:none;
+}
+select.pt-nt-in{
+  background-image:url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath fill='%23666' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 14px center;background-size:12px;padding-right:34px;
+}
+textarea.pt-nt-in{min-height:84px;resize:vertical;line-height:1.45;}
+.pt-nt-in:focus{outline:none;border-color:#0b6b3a;box-shadow:0 0 0 3px rgba(11,107,58,.14);}
+.pt-nt-msg{font-size:13px;margin:12px 0 4px;min-height:18px;color:#6b6b6b;}
+.pt-nt-msg.err{color:#c0392b;font-weight:600;}
+.pt-nt-msg.ok{color:#0b6b3a;font-weight:600;}
+.pt-nt-foot{display:flex;gap:8px;padding:12px 18px;border-top:1px solid #ececec;background:#fff;
+  padding-bottom:calc(12px + env(safe-area-inset-bottom));}
+
 #ptDrawer2{
   background:#fff;border-radius:20px 20px 0 0;
   width:100%;max-width:540px;max-height:92vh;max-height:92dvh;
@@ -377,7 +411,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-s
 /* ═══ DESKTOP ═══ */
 @media(min-width:601px){
   .pt-modal-overlay-full{align-items:center;padding:20px;}
-  #ptDrawer1,#ptDrawer2{border-radius:16px;max-height:82vh;animation:ptFadeIn .25s ease;}
+  #ptDrawer1,#ptDrawer2,#ptNewTaskSheet{border-radius:16px;max-height:82vh;animation:ptFadeIn .25s ease;}
   .pt-modal-overlay{align-items:center;padding:20px;}
   .pt-modal{border-radius:16px;}
   #ptConfirmModal .pt-modal{border-radius:16px;}
@@ -477,6 +511,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-s
                 <button class="pt-dir-btn" onclick="ptGetDirections()" style="flex:1;">Get Directions</button>
                 <button class="pt-dir-btn" id="ptD1MovePinBtn" onclick="ptMovePinFromDrawer1()" style="flex:1;background:#555;">&#x1F4CD; Move Pin</button>
               </div>
+              <button class="pt-dir-btn" id="ptD1NewTaskBtn" onclick="ptOpenNewTask()" style="background:#0b6b3a;margin:0 0 8px;">&#x2795; New task here</button>
             </div>
             <button class="pt-m1-close" onclick="ptCloseDrawer1()">&#x2715;</button>
           </div>
@@ -486,6 +521,70 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-s
           <button class="pt-sort-btn" id="ptSortPriority" onclick="ptSetSort('priority')">By Priority</button>
         </div>
         <div class="pt-task-scroll" id="ptTaskScroll"></div>
+      </div>
+    </div>
+
+    <!-- MODAL 3: NEW TASK AT THIS PIN -->
+    <div class="pt-modal-overlay-full" id="ptNewTaskOverlay" style="z-index:900;">
+      <div id="ptNewTaskSheet">
+        <div class="pt-drawer-handle"></div>
+        <div class="pt-nt-head">
+          <div style="flex:1;min-width:0;">
+            <div class="pt-nt-title">New task</div>
+            <div class="pt-nt-sub" id="ptNTWhere"></div>
+          </div>
+          <button class="pt-m1-close" onclick="ptCloseNewTask()">&#x2715;</button>
+        </div>
+        <div class="pt-nt-body">
+          <label class="pt-nt-lab" for="ptNTAssign">Assign to *</label>
+          <select class="pt-nt-in" id="ptNTAssign"></select>
+
+          <label class="pt-nt-lab" for="ptNTName">Task name *</label>
+          <input class="pt-nt-in" id="ptNTName" placeholder="What needs doing" autocomplete="off">
+
+          <label class="pt-nt-lab" for="ptNTDesc">Description</label>
+          <textarea class="pt-nt-in" id="ptNTDesc" rows="3" placeholder="Details about this task"></textarea>
+
+          <div class="pt-nt-row">
+            <div style="flex:1;min-width:0;">
+              <label class="pt-nt-lab" for="ptNTCat">Category</label>
+              <select class="pt-nt-in" id="ptNTCat">
+                <option value="">&mdash;</option>
+                <option>Photos &amp; Video</option><option>Sales</option><option>Customer Relations</option>
+                <option>General Task</option><option>Electrical</option><option>Plumbing</option>
+                <option>Estimate</option><option>Drafting</option><option>Change Order</option>
+                <option>Office Work</option><option>Marketing</option>
+              </select>
+            </div>
+            <div style="flex:1;min-width:0;">
+              <label class="pt-nt-lab" for="ptNTPri">Priority</label>
+              <select class="pt-nt-in" id="ptNTPri">
+                <option value="">&mdash;</option><option>Urgent</option><option>Medium</option><option selected>Low</option>
+              </select>
+            </div>
+          </div>
+
+          <label class="pt-nt-lab" for="ptNTSub">Sub-category</label>
+          <select class="pt-nt-in" id="ptNTSub">
+            <option value="">&mdash;</option>
+            <option>Photos &amp; Video</option><option>Camera Setup</option><option>Sales</option>
+            <option>General Task</option><option>Website</option><option>Content Creation</option>
+            <option>Social Media</option><option>Marketing</option><option>Follow up</option>
+            <option>Review</option>
+          </select>
+
+          <label class="pt-nt-lab" for="ptNTEmail">Notify (email)</label>
+          <input class="pt-nt-in" id="ptNTEmail" type="email" inputmode="email" placeholder="Filled in from the employee">
+
+          <label class="pt-nt-lab" for="ptNTCc">CC</label>
+          <input class="pt-nt-in" id="ptNTCc" type="email" inputmode="email" placeholder="Optional">
+
+          <div class="pt-nt-msg" id="ptNTMsg"></div>
+        </div>
+        <div class="pt-nt-foot">
+          <button class="pt-dir-btn" onclick="ptCloseNewTask()" style="flex:1;background:#e6e6e6;color:#1a1a1a;">Cancel</button>
+          <button class="pt-dir-btn" id="ptNTSubmit" onclick="ptSubmitNewTask()" style="flex:2;background:#0b6b3a;">&#x2713; Create task</button>
+        </div>
       </div>
     </div>
 
@@ -865,6 +964,7 @@ window.ptOpenDrawer1=function(addr){
   document.getElementById("ptD1Title").textContent=addr;
   document.getElementById("ptD1Sub").textContent=info&&info.name?info.name:"";
   document.getElementById("ptD1MovePinBtn").style.display=ptMarkerMap[addr]?"":"none";
+  document.getElementById("ptD1NewTaskBtn").style.display=ptCanAssign?"":"none";
   const tasks=info?[...info.tasks].filter(t=>!t.TaskCheckComplete).sort((a,b)=>priOrder(a.TaskPrioraty)-priOrder(b.TaskPrioraty)):[];
   const scroll=document.getElementById("ptTaskScroll");
   if(!tasks.length){
@@ -873,6 +973,120 @@ window.ptOpenDrawer1=function(addr){
     scroll.innerHTML=tasks.map(t=>ptMakeTaskCard(t)).join("");
   }
   document.getElementById("ptModal1Overlay").classList.add("open");
+};
+
+/* ── raise a task at this pin ──────────────────────────────────────────────
+   The pin knows the address; the task records now carry the project id, so it
+   knows which project to raise against. Everything goes through the SAME
+   op:"taskAdd" the project screen uses, which is what sends the assignee their
+   notification - a second write path would have quietly stopped emailing. */
+let ptNTPeople=null,ptNTProjectId="",ptNTBusy=false,ptCanAssign=false;
+
+function ptNTMsg(kind,text){
+  const el=document.getElementById("ptNTMsg");
+  el.className="pt-nt-msg"+(kind?" "+kind:"");
+  el.textContent=text||"";
+}
+
+/* Which project this pin belongs to. Tasks at one address can in principle
+   carry different project ids; the most common one wins, and if none of them
+   has an id the sheet says so rather than posting into nowhere. */
+function ptNTResolveProject(addr){
+  const grouped=groupByAddr(ptFilteredRecords());
+  const info=grouped[addr];
+  if(!info)return{id:"",name:"",city:""};
+  const counts={};
+  (info.tasks||[]).forEach(t=>{const id=t.ProjectID==null?"":String(t.ProjectID);if(id)counts[id]=(counts[id]||0)+1;});
+  const best=Object.keys(counts).sort((a,b)=>counts[b]-counts[a])[0]||"";
+  return{id:best,name:info.name||"",city:info.city||""};
+}
+
+async function ptNTLoadPeople(projectId){
+  const sel=document.getElementById("ptNTAssign");
+  if(ptNTPeople){ptNTFillPeople(sel);return;}
+  sel.innerHTML='<option value="">Loading…</option>';
+  try{
+    const d=await DCR.api("/api/portal?action=project&id="+encodeURIComponent(projectId)+"&part=assignees");
+    ptNTPeople=d.people||[];
+  }catch(e){ptNTPeople=[];}
+  ptNTFillPeople(sel);
+}
+
+function ptNTFillPeople(sel){
+  if(!ptNTPeople.length){
+    sel.innerHTML='<option value="">No employees found</option>';
+    return;
+  }
+  sel.innerHTML='<option value="">Choose an employee…</option>'+
+    ptNTPeople.map(p=>`<option value="${esc(p.name)}" data-email="${esc(p.email||"")}">${esc(p.name)}</option>`).join("");
+}
+
+window.ptOpenNewTask=function(){
+  if(!ptCurrentAddr)return;
+  const proj=ptNTResolveProject(ptCurrentAddr);
+  ptNTProjectId=proj.id;
+  document.getElementById("ptNTWhere").textContent=
+    ptCurrentAddr+(proj.name?" · "+proj.name:"");
+  ["ptNTName","ptNTDesc","ptNTEmail","ptNTCc"].forEach(id=>{document.getElementById(id).value="";});
+  document.getElementById("ptNTAssign").value="";
+  ptNTMsg("", ptNTProjectId?"":"");
+  if(!ptNTProjectId){
+    ptNTMsg("err","No project is linked to this pin, so a task cannot be raised here yet.");
+  }
+  document.getElementById("ptNTSubmit").disabled=!ptNTProjectId;
+  document.getElementById("ptNewTaskOverlay").classList.add("open");
+  if(ptNTProjectId)ptNTLoadPeople(ptNTProjectId);
+};
+
+window.ptCloseNewTask=function(){
+  document.getElementById("ptNewTaskOverlay").classList.remove("open");
+};
+
+window.ptSubmitNewTask=async function(){
+  if(ptNTBusy)return;
+  const name=document.getElementById("ptNTName").value.trim();
+  const sel=document.getElementById("ptNTAssign");
+  const who=sel.value.trim();
+  if(!who){ptNTMsg("err","Choose who this task is for.");sel.focus();return;}
+  if(!name){ptNTMsg("err","Give the task a name.");document.getElementById("ptNTName").focus();return;}
+  if(!ptNTProjectId){ptNTMsg("err","No project is linked to this pin.");return;}
+
+  const picked=sel.selectedOptions[0];
+  const email=document.getElementById("ptNTEmail").value.trim()||(picked?picked.dataset.email||"":"");
+  const btn=document.getElementById("ptNTSubmit");
+  ptNTBusy=true;btn.disabled=true;ptNTMsg("","Creating…");
+  try{
+    const r=await DCR.api("/api/portal?action=project",{method:"POST",body:{
+      op:"taskAdd",
+      projectId:ptNTProjectId,
+      taskName:name,
+      priority:document.getElementById("ptNTPri").value,
+      category:document.getElementById("ptNTCat").value,
+      subCategory:document.getElementById("ptNTSub").value,
+      assignedPerson:who,
+      assignedEmail:email,
+      toName:who,
+      cc:document.getElementById("ptNTCc").value.trim(),
+      description:document.getElementById("ptNTDesc").value.trim(),
+      /* No map link: the pin IS the location, and the address already travels
+         on the task record. */
+      portalLink:location.origin+location.pathname,
+    }});
+    const n=r.notify||{};
+    ptNTMsg("ok", n.sent?("Task created — "+who+" has been emailed."):"Task created.");
+    /* The list behind the sheet is now stale, so refresh it before the sheet
+       closes - otherwise the new task appears only after a manual reload and
+       looks like it was not saved. */
+    if(typeof ptLoadTasks==="function"){try{await ptLoadTasks();}catch(e){}}
+    setTimeout(()=>{
+      ptCloseNewTask();
+      if(ptCurrentAddr)ptOpenDrawer1(ptCurrentAddr);
+    },900);
+  }catch(e){
+    ptNTMsg("err",(e&&e.message)||"Could not create the task.");
+  }finally{
+    ptNTBusy=false;btn.disabled=false;
+  }
 };
 
 window.ptCloseDrawer1=function(){
@@ -1020,10 +1234,12 @@ document.addEventListener("keydown",function(e){
   if(document.getElementById("ptConfirmModal").classList.contains("open")){document.getElementById("ptConfirmModal").classList.remove("open");return;}
   if(document.getElementById("ptNotesModal").classList.contains("open")){ptCloseNotes();return;}
   if(document.getElementById("ptModal2Overlay").classList.contains("open")){ptCloseDrawer2();return;}
+  if(document.getElementById("ptNewTaskOverlay").classList.contains("open")){ptCloseNewTask();return;}
   if(document.getElementById("ptModal1Overlay").classList.contains("open")){ptCloseDrawer1();return;}
 });
 
 document.getElementById("ptModal1Overlay").addEventListener("click",function(e){if(e.target===this)ptCloseDrawer1();});
+document.getElementById("ptNewTaskOverlay").addEventListener("click",function(e){if(e.target===this)ptCloseNewTask();});
 document.getElementById("ptModal2Overlay").addEventListener("click",function(e){if(e.target===this)ptCloseDrawer2();});
 
 (function(){
@@ -1034,6 +1250,7 @@ document.getElementById("ptModal2Overlay").addEventListener("click",function(e){
     el.addEventListener("touchend",function(e){if(e.changedTouches[0].clientY-startY>80)closeFn();},{passive:true});
   }
   addSwipe("ptModal1Overlay",ptCloseDrawer1);
+  addSwipe("ptNewTaskOverlay",ptCloseNewTask);
   addSwipe("ptModal2Overlay",ptCloseDrawer2);
   addSwipe("ptNotesModal",ptCloseNotes);
   addSwipe("ptConfirmModal",function(){document.getElementById("ptConfirmModal").classList.remove("open");});
@@ -1161,6 +1378,10 @@ window.ptLogout=function(){ DCR.logout(); };
   try{ profile=await DCR.requireAuth(); }
   catch(e){ return; } // requireAuth redirects to the login page
   ptUser=profile.displayName||profile.email;
+  /* Raising a task needs project:write on the server ("Only managers can
+     assign tasks"). Showing the button to everyone would mean a field worker
+     taps it and gets a 403 for something they were invited to do. */
+  ptCanAssign=(profile.permissions||{}).project==="write";
   document.getElementById("ptHeaderName").textContent=ptUser;
   document.getElementById("ptTopBar").style.display="flex";
   document.getElementById("ptFilterFloat").style.display="flex";
