@@ -397,6 +397,22 @@
         .to-menu button{padding:13px 16px;}
       }
       /* each estimate is its own card, with clear spacing between them */
+      .pj-sent{margin-bottom:22px; border:1px solid var(--border); border-radius:10px; overflow:hidden;}
+      .pj-sent-hd{display:flex; align-items:flex-start; gap:12px; padding:12px 14px; background:var(--surface-2); flex-wrap:wrap;}
+      .pj-sent-nm{font-weight:800; font-size:14.5px; color:var(--text); flex:1; min-width:180px;}
+      .pj-sent-sub{font-size:12px; opacity:.72; margin-top:3px; font-weight:500;}
+      .pj-sent-amt{font-weight:800; font-size:15px; white-space:nowrap;}
+      /* Status badge, NOT the clickable .pj-chip filter pill defined below -
+         same name would have styled each as the other in both directions. */
+      .pj-schip{display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px;
+        font-weight:700; letter-spacing:.02em; white-space:nowrap;}
+      .pj-schip.ok{background:rgba(38,140,80,.16); color:#2f9e5f;}
+      .pj-schip.sent{background:rgba(70,130,210,.16); color:#5b9bd5;}
+      .pj-schip.draft{background:var(--tint); color:var(--muted,#999);}
+      .pj-sent .pj-tbl{margin:0; border:0; border-radius:0;}
+      .pj-sent-none{padding:11px 14px; font-size:12.5px; opacity:.7;}
+      .pj-diag{padding:10px 13px; margin-bottom:16px; border-radius:8px; font-size:12.5px;
+        background:var(--tint); border:1px solid var(--border); line-height:1.5;}
       .pj-esttable{margin-bottom:26px; border:1px solid var(--border); border-radius:10px; overflow:hidden;}
       .pj-colhead th{background:var(--surface); border-bottom:1px solid var(--border);}
       .pj-rowbtns{display:flex; gap:4px;}
@@ -577,6 +593,7 @@
       <div class="pj-tabs" id="pjTabs">
         <button class="pj-tab active" data-tab="overview">Overview</button>
         <button class="pj-tab" data-tab="estimate">Estimate</button>
+        <button class="pj-tab" data-tab="estimates">Client Estimates</button>
         <button class="pj-tab" data-tab="takeoffs">Takeoffs</button>
         <button class="pj-tab" data-tab="expenses">Expenses</button>
         <button class="pj-tab" data-tab="payments">Payments</button>
@@ -589,6 +606,7 @@
 
       <div class="pj-pane active" id="pane-overview"><div class="pj-empty">Loading…</div></div>
       <div class="pj-pane" id="pane-estimate"><div class="pj-empty">Loading…</div></div>
+      <div class="pj-pane" id="pane-estimates"><div class="pj-empty">Loading…</div></div>
       <div class="pj-pane" id="pane-takeoffs"><div class="pj-empty">Loading…</div></div>
       <div class="pj-pane" id="pane-expenses"><div class="pj-empty">Loading…</div></div>
       <div class="pj-pane" id="pane-payments"><div class="pj-empty">Loading…</div></div>

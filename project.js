@@ -267,6 +267,7 @@
     if (name==="overview" || state.parts[name]) return;
     state.parts[name] = true;
     if (name==="estimate") loadEstimate();
+    else if (name==="estimates") loadEstimatesSent();
     else if (name==="takeoffs") loadTakeoffs();
     else if (name==="expenses") loadExpenses();
     else if (name==="payments") loadPayments();
@@ -275,6 +276,104 @@
     else if (name==="logs") loadLogs();
     else if (name==="mailing") renderMailing();
     else if (name==="files") loadFiles();
+  }
+
+  /* ── estimates sent to the client (Estimates → EstimateDetails) ──────────
+     The Access relationship, as it stands there: a project has many estimates,
+     each estimate has many priced lines. Distinct from the Estimate tab, which
+     is the internal working breakdown built from GeneralProjectTasks rows. */
+  async function loadEstimatesSent() {
+    var pane = el("pane-estimates");
+    pane.innerHTML = '<div class="pj-empty">Loading estimates…</div>';
+    try {
+      var d = await DCR.api("/api/portal?action=project&id="+PID+"&part=estimates");
+      renderEstimatesSent(d);
+    } catch (e) { pane.innerHTML = '<div class="pj-empty">'+esc(e.message)+'</div>'; }
+  }
+
+  function estStatusChip(h) {
+    if (h.estimateAppoved) return '<span class="pj-schip ok">Approved</span>';
+    if (h.estimateSent || h.estimateSentDate) return '<span class="pj-schip sent">Sent</span>';
+    return '<span class="pj-schip draft">Not sent</span>';
+  }
+
+  function renderEstimatesSent(d) {
+    var pane = el("pane-estimates");
+    var rows = d.rows || [];
+    var hidden = !!d.pricesHidden;
+
+    if (!rows.length) {
+      pane.innerHTML = '<div class="pj-empty">No estimates recorded for this project.</div>';
+      return;
+    }
+
+    /* The ParentEstimateID join can come up empty without erroring, so when
+       there are lines in the list but none of them matched, say exactly that
+       rather than showing every estimate as having no items. */
+    var diag = "";
+    if (d.joinedVia === "none") {
+      diag = '<div class="pj-diag"><b>No line items matched.</b> ' + (d.detailRowsSeen||0) +
+        ' rows exist in EstimateDetails, but none of their ParentEstimateID values line up with ' +
+        'these estimates — the two lists are probably keyed on different numbering. Tell Claude and it can be corrected.</div>';
+    } else if (d.joinedVia === "no-access") {
+      diag = '<div class="pj-diag">You can see the estimates but not their line items ' +
+        '(no read access to EstimateDetails).</div>';
+    } else if (d.joinedVia === "oldID") {
+      diag = '<div class="pj-diag">Line items are matched by the legacy Access ID ' +
+        'rather than the SharePoint one.</div>';
+    }
+
+    var html = diag;
+    rows.forEach(function (h) {
+      var name = h.estimateName || h.title || "Untitled estimate";
+      var sub = [];
+      // fmtDate falls through to the raw stored value when it cannot parse it,
+      // so this is list content and has to be escaped like any other.
+      if (h.estimateSentDate) sub.push("Sent " + esc(fmtDate(h.estimateSentDate)));
+      if (h.estimateClientName) sub.push(esc(h.estimateClientName));
+      if (h.estimateDescription) sub.push(esc(String(h.estimateDescription)));
+
+      // Prefer the header's own price; fall back to the sum of its lines.
+      var amt = "";
+      if (!hidden) {
+        var total = Number(h.estimatePrice) || h.lineTotal || 0;
+        amt = '<div class="pj-sent-amt">' + fmtMoney(total) + '</div>';
+      }
+
+      html += '<div class="pj-sent">' +
+        '<div class="pj-sent-hd">' +
+          '<div class="pj-sent-nm">' + esc(name) +
+            (sub.length ? '<div class="pj-sent-sub">' + sub.join(" · ") + '</div>' : '') +
+          '</div>' +
+          estStatusChip(h) + amt +
+        '</div>';
+
+      var lines = h.lines || [];
+      if (!lines.length) {
+        html += '<div class="pj-sent-none">No line items on this estimate.</div>';
+      } else {
+        html += '<div class="pj-tblwrap"><table class="pj-tbl"><thead><tr>' +
+          '<th>Item</th><th>Category</th><th class="num">Qty</th>' +
+          (hidden ? '' : '<th class="num">Material</th><th class="num">Labor</th><th class="num">Total</th><th class="num">Balance</th>') +
+          '</tr></thead><tbody>';
+        lines.forEach(function (l) {
+          html += '<tr>' +
+            '<td>' + esc(l.estimateDetailName || l.title || "—") + '</td>' +
+            '<td>' + esc(l.estimateDetailCategory || "—") + '</td>' +
+            '<td class="num">' + (l.estimateDetailQty || 0) + '</td>' +
+            (hidden ? '' :
+              '<td class="num">' + fmtMoney(l.estimateDetailMaterialPrice || 0) + '</td>' +
+              '<td class="num">' + fmtMoney(l.estimateDetailLaborPrice || 0) + '</td>' +
+              '<td class="num">' + fmtMoney(l.estimateDetailTotalPrice || 0) + '</td>' +
+              '<td class="num">' + fmtMoney(l.estimateDetailValance || 0) + '</td>') +
+            '</tr>';
+        });
+        html += '</tbody></table></div>';
+      }
+      html += '</div>';
+    });
+
+    pane.innerHTML = html;
   }
 
   /* ── estimate (grouped: estimate name → grouping name → sorting number) ── */
