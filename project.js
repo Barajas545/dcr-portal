@@ -300,27 +300,39 @@
   function renderEstimatesSent(d) {
     var pane = el("pane-estimates");
     var rows = d.rows || [];
-    var hidden = !!d.pricesHidden;
+    var c = d.counts || {};
+    var showMoney = !d.pricesHidden;
+    var m$ = function(n){ return num(n) ? fmtMoney(n) : ""; };
+    var mBare = function(n){ return num(n) ? fmtMoney(n).replace("$", "") : ""; };
 
     if (!rows.length) {
-      pane.innerHTML = '<div class="pj-empty">No estimates recorded for this project.</div>';
+      pane.innerHTML = '<div class="pj-empty">No estimates recorded for this project.' +
+        (c.lineRows ? ' (' + c.lineRows + ' estimate lines exist but have no estimate to belong to.)' : '') +
+        '</div>';
       return;
     }
 
-    /* The ParentEstimateID join can come up empty without erroring, so when
-       there are lines in the list but none of them matched, say exactly that
-       rather than showing every estimate as having no items. */
+    /* The join can come up empty without erroring, so when there are lines but
+       none of them matched, say exactly that — otherwise every estimate just
+       looks like it has no items, which is a different problem entirely. */
     var diag = "";
     if (d.joinedVia === "none") {
-      diag = '<div class="pj-diag"><b>No line items matched.</b> ' + (d.detailRowsSeen||0) +
-        ' rows exist in EstimateDetails, but none of their ParentEstimateID values line up with ' +
-        'these estimates — the two lists are probably keyed on different numbering. Tell Claude and it can be corrected.</div>';
-    } else if (d.joinedVia === "no-access") {
-      diag = '<div class="pj-diag">You can see the estimates but not their line items ' +
-        '(no read access to EstimateDetails).</div>';
+      diag = '<div class="pj-diag"><b>No lines matched.</b> ' + (c.lineRows || 0) +
+        ' estimate lines exist for this project, but none of their estimate number ' +
+        'lines up with these estimates — the two lists are keyed differently. ' +
+        'Tell Claude the numbers you see here and it can be corrected.</div>';
     } else if (d.joinedVia === "oldID") {
-      diag = '<div class="pj-diag">Line items are matched by the legacy Access ID ' +
-        'rather than the SharePoint one.</div>';
+      diag = '<div class="pj-diag">Lines are matched by the legacy Access ID rather than ' +
+        'the SharePoint one.</div>';
+    }
+    var loose = (c.unkeyed || 0) + (c.unmatched || 0);
+    if (d.joinedVia !== "none" && loose) {
+      diag += '<div class="pj-diag">' + loose + ' estimate line' + (loose === 1 ? " is" : "s are") +
+        ' not attached to any estimate here' +
+        (c.unkeyed ? ' (' + c.unkeyed + ' with no estimate number' +
+          (c.unmatched ? ', ' + c.unmatched + ' pointing at an estimate that is not on this project' : '') + ')'
+          : '') +
+        '. They still appear on the Estimate tab.</div>';
     }
 
     var html = diag;
@@ -333,10 +345,10 @@
       if (h.estimateClientName) sub.push(esc(h.estimateClientName));
       if (h.estimateDescription) sub.push(esc(String(h.estimateDescription)));
 
-      // Prefer the header's own price; fall back to the sum of its lines.
+      // The estimate's own price if it carries one, else the sum of its lines.
       var amt = "";
-      if (!hidden) {
-        var total = Number(h.estimatePrice) || h.lineTotal || 0;
+      if (showMoney) {
+        var total = num(h.estimatePrice) ? Number(h.estimatePrice) : (h.lineTotal || 0);
         amt = '<div class="pj-sent-amt">' + fmtMoney(total) + '</div>';
       }
 
@@ -350,24 +362,39 @@
 
       var lines = h.lines || [];
       if (!lines.length) {
-        html += '<div class="pj-sent-none">No line items on this estimate.</div>';
+        html += '<div class="pj-sent-none">No lines on this estimate.</div>';
       } else {
-        html += '<div class="pj-tblwrap"><table class="pj-tbl"><thead><tr>' +
-          '<th>Item</th><th>Category</th><th class="num">Qty</th>' +
-          (hidden ? '' : '<th class="num">Material</th><th class="num">Labor</th><th class="num">Total</th><th class="num">Balance</th>') +
-          '</tr></thead><tbody>';
-        lines.forEach(function (l) {
-          html += '<tr>' +
-            '<td>' + esc(l.estimateDetailName || l.title || "—") + '</td>' +
-            '<td>' + esc(l.estimateDetailCategory || "—") + '</td>' +
-            '<td class="num">' + (l.estimateDetailQty || 0) + '</td>' +
-            (hidden ? '' :
-              '<td class="num">' + fmtMoney(l.estimateDetailMaterialPrice || 0) + '</td>' +
-              '<td class="num">' + fmtMoney(l.estimateDetailLaborPrice || 0) + '</td>' +
-              '<td class="num">' + fmtMoney(l.estimateDetailTotalPrice || 0) + '</td>' +
-              '<td class="num">' + fmtMoney(l.estimateDetailValance || 0) + '</td>') +
-            '</tr>';
+        // Group by grouping name, the way the Estimate tab does.
+        var groups = [];
+        var seen = {};
+        lines.forEach(function (r) {
+          var g = r.taskGroupingName || "(ungrouped)";
+          if (!seen[g]) { seen[g] = { name: g, rows: [] }; groups.push(seen[g]); }
+          seen[g].rows.push(r);
         });
+
+        var cols = showMoney ? 4 : 1;
+        html += '<div class="pj-tblwrap"><table class="pj-tbl"><thead><tr><th>Item</th>' +
+          (showMoney ? '<th class="num">Labor</th><th class="num">Material</th><th class="num">Total</th>' : '') +
+          '</tr></thead><tbody>';
+        groups.forEach(function (gr) {
+          if (groups.length > 1) {
+            html += '<tr class="pj-grp"><td colspan="' + cols + '">' + esc(gr.name) + '</td></tr>';
+          }
+          gr.rows.forEach(function (r) {
+            var labor = (r.TaskLaborTotalPrice || 0) + (r.TaskLaborTotalPricePerQty || 0);
+            html += '<tr><td class="pj-il">' + estLineHtml(r) + '</td>' +
+              (showMoney
+                ? '<td class="num">' + mBare(labor) + '</td>' +
+                  '<td class="num">' + mBare(r.TaskMaterialTotalPrice) + '</td>' +
+                  '<td class="num"><b>' + m$(r.TaskGrandTotalMaterialAndLabor) + '</b></td>'
+                : '') + '</tr>';
+          });
+        });
+        if (showMoney) {
+          html += '<tr class="pj-grpTot"><td>Estimate total</td><td class="num"></td>' +
+            '<td class="num"></td><td class="num">' + m$(h.lineTotal) + '</td></tr>';
+        }
         html += '</tbody></table></div>';
       }
       html += '</div>';
