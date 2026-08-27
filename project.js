@@ -322,8 +322,12 @@
         'lines up with these estimates — the two lists are keyed differently. ' +
         'Tell Claude the numbers you see here and it can be corrected.</div>';
     } else if (d.joinedVia === "oldID") {
-      diag = '<div class="pj-diag">Lines are matched by the legacy Access ID rather than ' +
-        'the SharePoint one.</div>';
+      // _OldID is an export artifact, not live keying — landing here means the
+      // numbers are not what they should be, so say so rather than shrug.
+      diag = '<div class="pj-diag"><b>Matched on the old Access ID.</b> These lines are ' +
+        'linked by the number SharePoint wrote during the export, rather than by the ' +
+        'ID of the estimate itself. The figures below are right, but the numbering ' +
+        'is worth a look.</div>';
     }
     var loose = (c.unkeyed || 0) + (c.unmatched || 0);
     if (d.joinedVia !== "none" && loose) {
