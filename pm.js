@@ -1114,9 +1114,20 @@
     var qRows = l.quotes.map(function (q) {
       var amt = hidden ? "" : (q.quoteAmount != null && q.quoteAmount !== "" ? C.money(Number(q.quoteAmount)) : "—");
       var awarded = q.quoteStatus === "Awarded";
+      /* A status this screen does not know means the row came from somewhere
+         else - hand-entered, or carrying a value from the PROJECT vocabulary
+         ("Sent") rather than the quote one. Treating it as "not Requested"
+         hid every action and left the quote unreachable: no follow-up, no
+         marking it received, no awarding it, only delete. An unknown status
+         is an OPEN quote, so it gets the same buttons a requested one does. */
+      // An array, not an object: a status of "constructor" would look known.
+      var known = ["Requested", "Received", "Declined", "Awarded", "Self"];
+      var stRaw = q.quoteStatus || "Requested";
+      var stOdd = known.indexOf(stRaw) < 0;
+      var openQ = stRaw === "Requested" || stOdd;
       var menu = can.quotes
         ? '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">' +
-          (q.quoteStatus === "Requested"
+          (openQ
             ? '<button class="btn btn-ghost btn-sm qtRecv" data-q="' + esc(q.id) + '" style="padding:2px 8px">✓ Mark received…</button>' +
               (q.vendorEmail ? '<button class="btn btn-ghost btn-sm qtChase" data-q="' + esc(q.id) + '" style="padding:2px 8px">✉ Follow up</button>' : "")
             : "") +
@@ -1159,7 +1170,9 @@
         (q.documentUrl && /^https:\/\//i.test(q.documentUrl) ? '<a href="' + esc(q.documentUrl) + '" target="_blank" rel="noopener noreferrer">📎 quote doc</a>' : "") +
         menu + invStrip + "</td>" +
         '<td style="text-align:right;white-space:nowrap">' + amt +
-        '<div><span class="pm-st ' + esc(q.quoteStatus || "Requested") + '">' + esc(q.quoteStatus || "Requested") + "</span></div></td></tr>";
+        '<div><span class="pm-st ' + esc(stOdd ? "Requested" : stRaw) + '"' +
+          (stOdd ? ' title="' + esc(stRaw) + ' is not a quote status — treated as still open. Mark received or award it to correct the record."' : "") +
+          '>' + esc(stRaw) + (stOdd ? " ?" : "") + "</span></div></td></tr>";
     }).join("");
 
     var addForm = can.quotes
