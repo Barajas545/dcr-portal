@@ -430,6 +430,8 @@
       state.estRows = d.rows||[];
       state.estCanEdit = !!d.canEdit;
       state.estPricesHidden = !!d.pricesHidden;
+      state.estBilled = d.billed || {};
+      state.estCanBill = !!d.canBill;
       renderEstimate(d.canEdit);
     } catch (e) { pane.innerHTML = '<div class="pj-empty">'+esc(e.message)+'</div>'; }
   }
@@ -441,6 +443,20 @@
   // line breaks intact (never as live HTML). Shared with the printed sheet.
   function stripML(v) { return DCR.exp.stripML(v); }
   function escML(v) { return DCR.exp.escML(v); }
+
+  /* The estimate's name, trimmed.
+
+     The billed record is stored under the trimmed name, so grouping on the
+     raw value would look the record up under a key that differs by a space
+     and find nothing: the estimate would read as unbilled however many times
+     it had been marked, and Undo would never be offered. Access-migrated text
+     carries stray whitespace, and the estimate editor does not trim on the way
+     in either, so this is reachable from inside the portal. Trimming here also
+     makes a whitespace-only name fall through to "(no estimate name)", which
+     suppresses the button rather than letting it 400. */
+  function estName(r) {
+    return String((r && r.taskEstimateName) || "").trim() || "(no estimate name)";
+  }
 
   function estLineHtml(r) {
     // Money parentheticals are skipped when their fields are absent (e.g. the
@@ -474,7 +490,7 @@
 
     // All estimate names (for the filter list) — from every row, always.
     var allNames = [];
-    rows.forEach(function(r){ var n = r.taskEstimateName || "(no estimate name)"; if (allNames.indexOf(n)===-1) allNames.push(n); });
+    rows.forEach(function(r){ var n = estName(r); if (allNames.indexOf(n)===-1) allNames.push(n); });
     if (!allNames.length || allNames.indexOf(state.estFilter)===-1) state.estFilter = "*";
 
     var filterSel = allNames.length > 1
@@ -493,7 +509,7 @@
     // build the section/group structure preserving that order.
     var secs = [], secIdx = {};
     rows.forEach(function(r){
-      var sn = r.taskEstimateName || "(no estimate name)";
+      var sn = estName(r);
       if (state.estFilter !== "*" && sn !== state.estFilter) return;
       if (!(sn in secIdx)) { secIdx[sn] = secs.length; secs.push({ name:sn, groups:[], gIdx:{}, labor:0, mat:0, tot:0 }); }
       var s = secs[secIdx[sn]];
@@ -526,8 +542,24 @@
     var html = "";
     secs.forEach(function(s){
       var addBtn = canEdit ? ' <button class="pj-btn pj-btn-sm" data-est-addto="'+esc(s.name==="(no estimate name)"?"":s.name)+'" style="margin-left:8px">＋ Add item</button>' : "";
-      html += '<div class="pj-esttable"><table class="pj-tbl"><thead>' +
-        '<tr class="pj-est"><td><span class="pj-estname">📄 '+esc(s.name)+'</span>'+addBtn+'</td>' +
+      /* Billing is tracked per estimate because that is the unit that gets
+         invoiced - one estimate per billing period for time-and-materials
+         work. An estimate with no name cannot be marked: there would be
+         nothing to key the record on. */
+      var named = s.name !== "(no estimate name)";
+      var bill = (state.estBilled || {})[s.name];
+      var billBadge = bill
+        ? ' <span class="pj-billed" title="Recorded ' + esc(bill.at || "") +
+            (bill.by ? " by " + esc(bill.by) : "") + '">✓ Billed' +
+            (bill.invoice ? " · inv " + esc(bill.invoice) : "") +
+            (bill.amount != null && showMoney ? " · " + fmtMoney(bill.amount) : "") + '</span>'
+        : "";
+      var billBtn = (state.estCanBill && named)
+        ? ' <button class="pj-btn pj-btn-sm" data-est-bill="'+esc(s.name)+'" data-billed="'+(bill?1:0)+
+          '" data-total="'+esc(String(s.tot||0))+'" style="margin-left:6px">'+(bill?"Undo billed":"Mark billed…")+'</button>'
+        : "";
+      html += '<div class="pj-esttable'+(bill?" is-billed":"")+'"><table class="pj-tbl"><thead>' +
+        '<tr class="pj-est"><td><span class="pj-estname">📄 '+esc(s.name)+'</span>'+billBadge+addBtn+billBtn+'</td>' +
           (showMoney ? '<td class="num">'+m$(s.labor)+'</td><td class="num">'+m$(s.mat)+'</td><td class="num">'+m$(s.tot)+'</td>' : "") + '</tr>' +
         '<tr class="pj-colhead"><th>Item</th>'+(showMoney?'<th class="num">Labor</th><th class="num">Material</th><th class="num">Total</th>':"")+'</tr>' +
         '</thead><tbody>';
@@ -556,9 +588,62 @@
 
     pane.innerHTML = bar + html;
     wireEstBar(canEdit);
+    // Marking billed is gated on project:write, not on estimate editing, so it
+    // is wired outside the canEdit block.
+    pane.querySelectorAll("[data-est-bill]").forEach(function(b){
+      b.onclick = function(e){ e.stopPropagation(); markEstimateBilled(b); };
+    });
     if (canEdit) {
       pane.querySelectorAll("[data-est-addto]").forEach(function(b){ b.onclick=function(e){ e.stopPropagation(); ieOpen(null, b.getAttribute("data-est-addto")); }; });
       pane.querySelectorAll("[data-est-open]").forEach(function(tr){ tr.ondblclick=function(){ ieOpen(tr.getAttribute("data-est-open")); }; });
+    }
+  }
+
+  /* Record (or undo) that an estimate has gone out on an invoice.
+
+     Time-and-materials work is billed in periods, and nothing else in the
+     system remembers which periods have been billed: an invoice is a single
+     typed amount with no link back to the work. Without this the second
+     invoice has no way to exclude what the first one covered. */
+  async function markEstimateBilled(btn) {
+    var name = btn.getAttribute("data-est-bill");
+    var already = btn.getAttribute("data-billed") === "1";
+    var total = Number(btn.getAttribute("data-total")) || 0;
+
+    if (already) {
+      if (!(await DCR.confirm(
+            'Clear the billing record for "' + name + '"? It will look unbilled again.',
+            { title: "Undo billed", okText: "Clear", danger: true }))) return;
+      await postBilled({ estimateName: name, clear: true }, btn);
+      return;
+    }
+    var r = await DCR.modal({
+      title: "Mark as billed",
+      message: 'Record that "' + name + '" has gone out to the client.',
+      fields: [
+        { name: "invoice", label: "Invoice number", placeholder: "e.g. 1042" },
+        // Prefilled with what this estimate actually totals, so the recorded
+        // figure matches the work rather than being retyped from memory.
+        { name: "amount", label: "Amount billed", type: "number", step: "0.01",
+          value: total ? String(Math.round(total * 100) / 100) : "" },
+      ],
+      okText: "Mark billed",
+    });
+    if (!r) return;
+    await postBilled({ estimateName: name, invoice: r.invoice || "", amount: r.amount || "" }, btn);
+  }
+
+  async function postBilled(body, btn) {
+    var label = btn.textContent;
+    btn.disabled = true; btn.textContent = "…";
+    try {
+      body.op = "billed";
+      body.projectId = PID;
+      await DCR.api("/api/portal?action=pm", { method: "POST", body: body });
+      await loadEstimate();
+    } catch (e) {
+      btn.disabled = false; btn.textContent = label;
+      DCR.alert((e && e.message) || "Could not record that.", { title: "Billing not saved" });
     }
   }
 

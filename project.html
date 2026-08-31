@@ -413,6 +413,14 @@
       .pj-sent-none{padding:11px 14px; font-size:12.5px; opacity:.7;}
       .pj-diag{padding:10px 13px; margin-bottom:16px; border-radius:8px; font-size:12.5px;
         background:var(--tint); border:1px solid var(--border); line-height:1.5;}
+      /* A billed estimate reads as settled, not as another open one. Kept to a
+         tinted rule and a badge rather than greying the figures out - the
+         numbers still have to be legible when a GC queries the invoice. */
+      .pj-billed{display:inline-block; margin-left:8px; padding:2px 8px; border-radius:999px;
+        font-size:11px; font-weight:700; letter-spacing:.02em; white-space:nowrap;
+        background:rgba(38,140,80,.16); color:#2f9e5f; vertical-align:middle;}
+      .pj-esttable.is-billed{border-color:rgba(47,158,95,.45);}
+      .pj-esttable.is-billed .pj-est td{background:rgba(38,140,80,.09);}
       .pj-esttable{margin-bottom:26px; border:1px solid var(--border); border-radius:10px; overflow:hidden;}
       .pj-colhead th{background:var(--surface); border-bottom:1px solid var(--border);}
       .pj-rowbtns{display:flex; gap:4px;}
