@@ -1326,15 +1326,21 @@
     var d = el("pmDrawer");
     var msg = function (t) { var e = el("qtMsg"); if (e) e.textContent = t || ""; };
 
+    /* Reports whether the write actually landed. It swallows the error to put
+       a message on screen, which means `await write(...)` returns normally on
+       failure - so a caller that goes on to do something consequential has to
+       check. Callers that only needed the save can keep ignoring it. */
     async function write(body, msgEl) {
       try {
         await DCR.api("/api/portal?action=pm", { method: "POST", body: body });
         await load();
         renderDrawer();
+        return true;
       } catch (e) {
         var m2 = el(msgEl || "qtMsg");
         if (m2) m2.textContent = e.message || "Save failed";
         else DCR.alert(e.message || "Save failed", { title: "Couldn't save" });
+        return false;
       }
     }
 
@@ -1376,8 +1382,15 @@
            trap qtAdd was fixed for — which would leave a follow-up looking
            logged when it was not. */
         b.disabled = true;
-        try { await write({ op: "qtFollowUp", itemId: b.dataset.q }); }
+        var recorded;
+        try { recorded = await write({ op: "qtFollowUp", itemId: b.dataset.q }); }
         finally { b.disabled = false; }
+        /* And do not open the mail client unless it did land. write() reports
+           failure by returning false rather than throwing, so without this the
+           draft opens anyway: the chase gets sent, nothing records it, and the
+           warning this button exists to clear stays up. Worse than not sending,
+           because it looks done. */
+        if (!recorded) return;
         var subj = "Follow-up: quote request — " + (state.model.project.internalIDNumber || "") + " " +
           (state.model.project.projectName || "") + " — " + l.groupingName;
         var mail = document.createElement("a");
