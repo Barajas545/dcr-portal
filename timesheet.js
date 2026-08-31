@@ -261,15 +261,29 @@ function buildCalendar() {
       var cell=buildDayCell(d,key,isToday,isWeekend,dayItems);
       if(isWeekend)weekendCells+=cell;else weekdayCells+=cell;
     }
-    html+='<div style="display:grid;grid-template-columns:2fr 5fr;gap:0;align-items:start;">';
-    html+='<div style="padding-right:12px;"><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:4px;">';
-    html+='<div class="cal-day-name weekend-label">Sat</div><div class="cal-day-name weekend-label">Sun</div></div>';
-    html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">'+weekendCells+'</div></div>';
+    /* Day names and day cells share ONE grid each, rather than sitting in two
+       grids that happen to declare the same columns. Two grids drift the
+       moment their content differs, which is what put Mon over Tuesday: a
+       column of `1fr` is `minmax(auto, 1fr)`, so a cell can never shrink below
+       its own content. The entry cards inside set `white-space:nowrap`, so a
+       long description made its column wider than a fifth instead of
+       ellipsising, while the one-word headers stayed at exactly a fifth.
+
+       `minmax(0, 1fr)` gives the columns a zero floor: every day is the same
+       width, the labels line up with the days beneath them by construction,
+       and the nowrap text finally has a boundary to ellipsise against. */
+    var COL5 = "repeat(5,minmax(0,1fr))";
+    var COL2 = "repeat(2,minmax(0,1fr))";
+    html+='<div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,5fr);gap:0;align-items:start;">';
+    html+='<div style="padding-right:12px;">';
+    html+='<div style="display:grid;grid-template-columns:'+COL2+';column-gap:8px;row-gap:4px;">';
+    html+='<div class="cal-day-name weekend-label">Sat</div><div class="cal-day-name weekend-label">Sun</div>';
+    html+=weekendCells+'</div></div>';
     html+='<div style="border-left:2px solid #185FA5;padding-left:12px;">';
     html+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;"><span style="font-size:10px;font-weight:700;color:#185FA5;text-transform:uppercase;letter-spacing:0.06em;">&#8212; Work week</span></div>';
-    html+='<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:4px;">';
+    html+='<div style="display:grid;grid-template-columns:'+COL5+';column-gap:8px;row-gap:4px;">';
     ["Mon","Tue","Wed","Thu","Fri"].forEach(function(n){html+='<div class="cal-day-name workweek-label">'+n+'</div>';});
-    html+='</div><div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;">'+weekdayCells+'</div></div></div>';
+    html+=weekdayCells+'</div></div></div>';
   });
   area.innerHTML=html;
 }
