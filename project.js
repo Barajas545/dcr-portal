@@ -316,10 +316,16 @@
        none of them matched, say exactly that — otherwise every estimate just
        looks like it has no items, which is a different problem entirely. */
     var diag = "";
-    if (d.joinedVia === "none") {
-      diag = '<div class="pj-diag"><b>No lines matched.</b> ' + (c.lineRows || 0) +
-        ' estimate lines exist for this project, but none of their estimate number ' +
-        'lines up with these estimates — the two lists are keyed differently. ' +
+    /* "Nothing matched" has two very different causes and only one is a bug.
+       If no line carries an estimate number at all, the lists are not keyed
+       differently — the numbers were simply never filled in. Claiming a
+       schema fault there sends the reader hunting for something that is not
+       broken, so only say it when a row actually held a number that fit
+       nothing. */
+    if (d.joinedVia === "none" && (c.unmatched || 0) > 0) {
+      diag = '<div class="pj-diag"><b>No lines matched.</b> ' + (c.unmatched || 0) +
+        ' estimate line' + ((c.unmatched || 0) === 1 ? " carries a number that does" : "s carry numbers that do") +
+        ' not line up with any estimate — the two lists are keyed differently. ' +
         'Tell Claude the numbers you see here and it can be corrected.</div>';
     } else if (d.joinedVia === "oldID") {
       // _OldID is an export artifact, not live keying — landing here means the
@@ -329,13 +335,21 @@
         'ID of the estimate itself. The figures below are right, but the numbering ' +
         'is worth a look.</div>';
     }
-    var loose = (c.unkeyed || 0) + (c.unmatched || 0);
-    if (d.joinedVia !== "none" && loose) {
+    /* Every line the join did not attach, each under its own name. These
+       three counts are disjoint and together with `attached` they account for
+       every row, so leaving one out means money missing from the totals with
+       nothing on screen to explain it — which is the exact failure this note
+       exists to prevent. `foreign` was the one being dropped. */
+    var parts = [];
+    if (c.unkeyed) parts.push(c.unkeyed + ' with no estimate number');
+    if (c.unmatched) parts.push(c.unmatched + ' with a number that fits no estimate');
+    if (c.foreign) parts.push(c.foreign + ' pointing at an estimate on another project');
+    var loose = (c.unkeyed || 0) + (c.unmatched || 0) + (c.foreign || 0);
+    // Suppressed only when the banner above already said the same thing.
+    if (loose && !(d.joinedVia === "none" && (c.unmatched || 0) > 0)) {
       diag += '<div class="pj-diag">' + loose + ' estimate line' + (loose === 1 ? " is" : "s are") +
         ' not attached to any estimate here' +
-        (c.unkeyed ? ' (' + c.unkeyed + ' with no estimate number' +
-          (c.unmatched ? ', ' + c.unmatched + ' pointing at an estimate that is not on this project' : '') + ')'
-          : '') +
+        (parts.length ? ' (' + parts.join(", ") + ')' : '') +
         '. They still appear on the Estimate tab.</div>';
     }
 
