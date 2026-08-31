@@ -2052,7 +2052,11 @@
     var rows = items.map(function(f){
       return '<div class="pj-file" data-fid="'+esc(f.id)+'" data-folder="'+(f.isFolder?1:0)+'" data-name="'+esc(f.name)+'" data-link="'+esc(f.webViewLink||"")+'">' +
         '<span>'+fileIcon(f)+'</span><span>'+esc(f.name)+'</span>' +
-        '<span class="meta">'+fmtSize(f.size)+(f.modifiedTime?' · '+fmtDate(f.modifiedTime):"")+'</span></div>';
+        '<span class="meta">'+fmtSize(f.size)+(f.modifiedTime?' · '+fmtDate(f.modifiedTime):"")+'</span>' +
+        (f.isFolder ? "" :
+          '<button class="pj-dl" data-dl="'+esc(f.id)+'" title="Download '+esc(f.name)+'" ' +
+          'aria-label="Download '+esc(f.name)+'">&#11015;</button>') +
+        '</div>';
     }).join("") || '<div class="pj-empty">Empty folder.</div>';
     pane.innerHTML = capBarHtml() + '<div class="pj-crumb">'+crumbs+
       (top.url ? '<a class="pj-btn pj-btn-sm" style="margin-left:auto" target="_blank" href="'+esc(top.url)+'">Open in SharePoint ↗</a>' : "")+'</div>' +
@@ -2063,6 +2067,14 @@
         var i = Number(a.getAttribute("data-crumb"));
         state.files.stack = state.files.stack.slice(0, i+1);
         loadFiles(state.files.stack[i].id);
+      };
+    });
+    pane.querySelectorAll("[data-dl]").forEach(function(btn){
+      btn.onclick = function(ev){
+        // The row itself opens the file (PDFs go to the plan viewer), so a
+        // click on the button must stop there or it would do both.
+        ev.stopPropagation();
+        downloadFile(btn.getAttribute("data-dl"), btn.closest(".pj-file").getAttribute("data-name"), btn);
       };
     });
     pane.querySelectorAll(".pj-file").forEach(function(row){
@@ -2079,6 +2091,56 @@
         } else openFile(row.getAttribute("data-fid"), row.getAttribute("data-link"));
       };
     });
+  }
+
+  /* Save a file to the machine, as opposed to openFile() which views it.
+
+     The bytes come straight from SharePoint's pre-authed downloadUrl rather
+     than through /api/portal: that URL supports CORS and byte ranges and has
+     no size ceiling, while the serverless route buffers the whole file and
+     already answers 413 for the big ones. A 56 MB plan set is normal here.
+
+     Small files are fetched into a blob so the saved file carries its real
+     name - the `download` attribute is ignored on a cross-origin href, so a
+     plain link would leave the browser to name it. Past a threshold that
+     buffering is the bigger problem (a phone holding 80 MB in a tab), so
+     those hand off to SharePoint, which sends its own filename. */
+  var DL_BLOB_MAX = 60 * 1024 * 1024;
+
+  async function downloadFile(fileId, fallbackName, btn) {
+    var restore = btn ? btn.innerHTML : "";
+    if (btn) { btn.disabled = true; btn.innerHTML = "…"; }
+    var info = null;
+    try {
+      info = await DCR.api("/api/portal?action=drive&fileInfo=" + encodeURIComponent(fileId));
+      if (!info || !info.downloadUrl) throw new Error("No download link for this file.");
+      var name = info.name || fallbackName || "download";
+
+      if (Number(info.size) > DL_BLOB_MAX) {
+        window.open(info.downloadUrl, "_blank", "noopener");
+        return;
+      }
+      var r = await fetch(info.downloadUrl);
+      if (!r.ok) throw new Error("Download failed (" + r.status + ")");
+      var obj = URL.createObjectURL(await r.blob());
+      var a = document.createElement("a");
+      a.href = obj;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      // Freed on a timer, not immediately: revoking before the browser has
+      // started writing cancels the save in some of them.
+      setTimeout(function(){ URL.revokeObjectURL(obj); }, 60000);
+    } catch (e) {
+      /* Falling back to the SharePoint page is better than an error: the file
+         is still reachable, just with one more click. */
+      var link = (info && (info.downloadUrl || info.webUrl)) || "";
+      if (link) window.open(link, "_blank", "noopener");
+      else DCR.alert((e && e.message) || "Could not download that file.", { title: "Download failed" });
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = restore; }
+    }
   }
 
   async function openFile(fileId, webViewLink) {
