@@ -30,6 +30,30 @@
   function niceDay(d){ return d.toLocaleDateString("en-US",{weekday:"long"}); }
   function niceDate(d){ return d.toLocaleDateString("en-US",{month:"short",day:"numeric"}); }
 
+  /* Name the fortnight this screen is about to draw, rather than letting the
+     server guess it.
+
+     The server's default window is computed from ITS clock, which is UTC on
+     Vercel, while these weeks come from the browser's. For the ~7 hours from
+     Friday evening Pacific the two disagree by a whole week: the server has
+     already rolled to the next Saturday and drops every row the page is about
+     to lay out, so "Last week" renders seven empty days and a total of zero,
+     with nothing on screen saying anything was withheld. On a payroll
+     document, and on the evening a foreman actually prints one.
+
+     Local parts, not toISOString - that is UTC, and is only accidentally
+     right at negative offsets. */
+  function tcDayKey(d){
+    var p=function(n){ return String(n).length<2 ? "0"+n : String(n); };
+    return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate());
+  }
+  function tcRangeQS(){
+    var sat=getSaturdayOf(new Date());
+    var from=new Date(sat); from.setDate(from.getDate()-7);   // start of "last week"
+    var to=new Date(sat);   to.setDate(to.getDate()+6);       // end of "this week"
+    return "&from="+encodeURIComponent(tcDayKey(from))+"&to="+encodeURIComponent(tcDayKey(to));
+  }
+
   function weekStart() {
     var thisSat = getSaturdayOf(new Date());
     if (state.week === "last") { var p = new Date(thisSat); p.setDate(p.getDate() - 7); return p; }
@@ -104,7 +128,7 @@
     try {
       var results = await Promise.all([
         DCR.api("/api/portal?action=roster"),
-        DCR.api("/api/portal?action=timesheets"),
+        DCR.api("/api/portal?action=timesheets" + tcRangeQS()),
       ]);
       state.employees = results[0].employees || [];
       state.items = results[1].items || [];

@@ -4,6 +4,11 @@
    their crew — enforced server-side. Same dateTime/number/leave handling as the other pages. */
 
 var pmAllItems = [];
+/* Every project name in scope, from the server, not derived from the rows on
+   screen: the picker has to offer a job that has had no hours lately. */
+var pmProjectNames = [];
+// Guards against a slow answer for one week landing after a newer one.
+var pmLoadSeq = 0;
 var pmEmployeeList = [];   // [{ name, employeeId, start1, end1, start2, end2, lunch }]
 var pmScope = null;        // "*" or { self, managed:[...] }
 var pmWeekStart = null;
@@ -119,8 +124,20 @@ function sortEmployees(employees){
 }
 
 /* ── week nav ── */
-function goToCurrentWeek(){ pmWeekStart=pmGetSaturday(new Date()); buildWeek(); renderTable(); }
-function changeWeek(delta){ var d=new Date(pmWeekStart); d.setDate(d.getDate()+delta*7); pmWeekStart=d; buildWeek(); renderTable(); }
+/* Moving to another week has to ASK for that week.
+
+   These used to move the label and re-filter the rows already in hand, and
+   the server only ever sent back to the previous Saturday - so stepping back
+   drew an empty grid whether or not anyone had worked. Hours older than a
+   week or so were unreachable from every screen, which is exactly the stretch
+   you need when you sit down to bill a fortnight. */
+async function goToCurrentWeek(){ pmWeekStart=pmGetSaturday(new Date()); buildWeek(); await loadAllData(); }
+async function changeWeek(delta){ var d=new Date(pmWeekStart); d.setDate(d.getDate()+delta*7); pmWeekStart=d; buildWeek(); await loadAllData(); }
+function pmWeekRangeQS(){
+  if(!pmWeekStart) return "";
+  var end=new Date(pmWeekStart); end.setDate(end.getDate()+6);
+  return "&from="+encodeURIComponent(pmFmtDate(pmWeekStart))+"&to="+encodeURIComponent(pmFmtDate(end));
+}
 function buildWeek(){
   pmDayKeys=[]; for(var i=0;i<7;i++){ var d=new Date(pmWeekStart); d.setDate(d.getDate()+i); pmDayKeys.push(d.toISOString().split("T")[0]); }
   var end=new Date(pmWeekStart); end.setDate(end.getDate()+6);
@@ -193,7 +210,7 @@ function updateStats(employees){
 function showPmModal(html){ el("pmModalContainer").innerHTML='<div class="pm-detail-overlay" onclick="if(event.target===this)closePmModal()">'+html+'</div>'; }
 function closePmModal(){ el("pmModalContainer").innerHTML=""; }
 function buildEmpOptions(sel){ return '<option value="">-- Select employee --</option>'+pmEmployeeList.map(function(e){ return '<option value="'+pmEsc(e.name)+'"'+((e.name||"")===sel?" selected":"")+'>'+pmEsc(e.name)+'</option>'; }).join(""); }
-function buildProjectOptions(sel){ var p={}; pmAllItems.forEach(function(it){ if(it.timeSheetProjectName)p[it.timeSheetProjectName]=true; }); LEAVE_TYPES.forEach(function(t){p[t]=true;}); return '<option value="">-- Select project --</option>'+Object.keys(p).sort().map(function(x){ return '<option value="'+pmEsc(x)+'"'+(x===sel?" selected":"")+'>'+pmEsc(x)+'</option>'; }).join(""); }
+function buildProjectOptions(sel){ var p={}; pmProjectNames.forEach(function(n){ p[n]=true; }); LEAVE_TYPES.forEach(function(t){p[t]=true;}); return '<option value="">-- Select project --</option>'+Object.keys(p).sort().map(function(x){ return '<option value="'+pmEsc(x)+'"'+(x===sel?" selected":"")+'>'+pmEsc(x)+'</option>'; }).join(""); }
 
 /* ── day detail ── */
 function showDayDetail(empName,empId,dateKey){
@@ -314,10 +331,13 @@ function exportCSV(){
 /* ── load ── */
 async function loadAllData(){
   el("pmTableArea").innerHTML='<div class="pm-no-data">Loading time sheets…</div>';
+  var seq=++pmLoadSeq;
   try{
-    var results=await Promise.all([ DCR.api("/api/portal?action=timesheets"), DCR.api("/api/portal?action=roster") ]);
+    var results=await Promise.all([ DCR.api("/api/portal?action=timesheets"+pmWeekRangeQS()), DCR.api("/api/portal?action=roster") ]);
+    if(seq!==pmLoadSeq) return;   // a newer week was asked for while this was in flight
     var ts=results[0], roster=results[1];
     pmScope=ts.scope;
+    pmProjectNames=ts.projectNames||[];
     pmAllItems=(ts.items||[]).map(function(it){
       it.timeSheetWorkStatTime=pmIsoToDisplay(it.timeSheetWorkStatTime);
       it.timeSheetWorkEndTime=pmIsoToDisplay(it.timeSheetWorkEndTime);
@@ -330,11 +350,16 @@ async function loadAllData(){
     if(pmScope==="*") note.textContent="Viewing all employees.";
     else if(pmScope&&pmScope.managed&&pmScope.managed.length) note.textContent="Viewing your crew: "+[pmScope.self].concat(pmScope.managed).filter(Boolean).join(", ")+".";
     else note.innerHTML='<span style="color:var(--gold)">You only manage your own timesheets. Use the Time Sheet page for your own entries.</span>';
-    var proj={}; pmAllItems.forEach(function(it){ if(it.timeSheetProjectName)proj[it.timeSheetProjectName]=true; });
     var sel=el("pmFilterProject"); var cur=sel.value; sel.innerHTML='<option value="">All projects</option>';
-    Object.keys(proj).sort().forEach(function(p){ var o=document.createElement("option"); o.value=p.toLowerCase(); o.textContent=p; sel.appendChild(o); }); sel.value=cur;
+    pmProjectNames.forEach(function(p){ var o=document.createElement("option"); o.value=p.toLowerCase(); o.textContent=p; sel.appendChild(o); }); sel.value=cur;
     renderTable();
-  }catch(e){ el("pmTableArea").innerHTML='<div class="pm-no-data" style="color:var(--err);">'+pmEsc(e.message||"Error loading data.")+'</div>'; }
+  }catch(e){
+    /* A failure from a week the user has already moved off must not paint over
+       the week they are now looking at - otherwise clicking through weeks
+       quickly leaves an error sitting on top of good data. */
+    if(seq!==pmLoadSeq) return;
+    el("pmTableArea").innerHTML='<div class="pm-no-data" style="color:var(--err);">'+pmEsc(e.message||"Error loading data.")+'</div>';
+  }
 }
 
 document.addEventListener("DOMContentLoaded", async function(){

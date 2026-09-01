@@ -37,6 +37,20 @@ function onDayTypeChange() {
 function escHtml(s) { return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 function fmtDate(v) { if(!v)return""; return new Date(v).toISOString().split("T")[0]; }
 function getSaturdayOf(date) { var d=new Date(date);d.setHours(0,0,0,0);var day=d.getDay();d.setDate(d.getDate()-(day===6?0:day+1));return d; }
+/* The calendar lays out last week and this week from the BROWSER clock, while
+   the server's default window comes from its own - UTC on Vercel. They differ
+   by a week for a few hours each Friday evening Pacific, and the calendar then
+   shows "+ Add entry" on days that already have hours, which invites entering
+   them twice. Asking for the exact fortnight being drawn removes the guess.
+   Local parts, not toISOString, which is UTC. */
+function tsDayKeyLocal(d){ var p=function(n){ return String(n).length<2 ? "0"+n : String(n); };
+  return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate()); }
+function tsCalendarRangeQS(){
+  var sat=getSaturdayOf(new Date());
+  var from=new Date(sat); from.setDate(from.getDate()-7);
+  var to=new Date(sat);   to.setDate(to.getDate()+6);
+  return "&from="+encodeURIComponent(tsDayKeyLocal(from))+"&to="+encodeURIComponent(tsDayKeyLocal(to));
+}
 
 /* ── Time helpers ── */
 function tsParseSpTime(isoStr) {
@@ -491,7 +505,7 @@ async function loadEmployees() {
 async function loadData() {
   document.getElementById("calArea").innerHTML='<div style="color:#888;font-size:14px;">Loading&hellip;</div>';
   try {
-    var data = await DCR.api("/api/portal?action=timesheets");
+    var data = await DCR.api("/api/portal?action=timesheets" + tsCalendarRangeQS());
     allItems = (data.items || []).map(function(it){
       // schedule fields come back as ISO dateTimes — show them as clock times
       it.timeSheetWorkStatTime = tsIsoToDisplay(it.timeSheetWorkStatTime);
