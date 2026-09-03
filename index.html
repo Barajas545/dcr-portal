@@ -50,7 +50,9 @@
       // If already signed in, skip straight to the dashboard.
       if (DCR.getToken()) {
         DCR.api("/api/portal?action=me")
-          .then(() => (location.href = "dashboard.html"))
+          // replace, not assign: a sign-in page that stays in history is a
+          // back-target that bounces you straight forward again.
+          .then(() => location.replace("dashboard.html"))
           .catch(() => DCR.clearToken());
       }
 
@@ -73,7 +75,7 @@
             },
           });
           DCR.setToken(data.token);
-          location.href = "dashboard.html";
+          location.replace("dashboard.html");
         } catch (ex) {
           err.textContent = ex.message || "Sign in failed.";
           err.classList.add("show");

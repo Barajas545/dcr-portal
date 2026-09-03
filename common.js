@@ -697,4 +697,139 @@
       });
     });
   })();
+
+  /* ── Back / Forward ───────────────────────────────────────────────────────
+     The portal opens in a desktop shell with no browser chrome, so no page has
+     a back control of its own: every screen is a full navigation, and the only
+     ways back were the brand link or retyping a URL.
+
+     The buttons drive real history - history.back() and history.forward() -
+     rather than a stack of our own, so they stay in step with anything else
+     that moves through history: a keyboard shortcut, the shell's own gesture,
+     a redirect. What our bookkeeping adds is only knowing WHERE in that
+     history we are, which the platform will not tell you; there is no API for
+     "is there an entry ahead of this one". So each entry is stamped with an
+     index, and the highest index reached this session says whether a forward
+     entry exists. Reading the stamp back off history.state means arriving by
+     any route - click, Back, Forward, reload - lands on the right answer. */
+  (function () {
+    var LAST  = "dcr_nav_last";  // index of the entry we were last on
+    var MAX   = "dcr_nav_max";   // highest index reached; anything beyond is gone
+
+    /* The sign-in page, which is deliberately NOT stamped below.
+
+       It replaces itself with the dashboard the moment a token is in hand, so
+       its entry never survives - counting it would push every later index one
+       past the real history depth, and Back would offer to go somewhere that
+       does not exist. Identified by URL, not by "has no topbar": eleven pages
+       have no topbar. */
+    function isSignIn() {
+      var p = String(location.pathname || "");
+      // A directory URL is the sign-in page too: the site is served at
+      // /dcr-portal/, which hands back index.html without naming it.
+      if (/\/$/.test(p) || p === "") return true;
+      var leaf = p.slice(p.lastIndexOf("/") + 1);
+      return /^index\.html$/i.test(leaf) || leaf.indexOf(".") === -1;
+    }
+
+    function num(v) { var n = Number(v); return isFinite(n) ? n : 0; }
+    function get(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } }
+    function set(k, v) { try { sessionStorage.setItem(k, String(v)); } catch (e) {} }
+    function stamped(st) { return st && typeof st.dcrNav === "number" ? st.dcrNav : null; }
+
+    /* Pages set their own history state - project.js and pm.js write the open
+       tab or item into the URL, all of them passing null as the state - which
+       would wipe the stamp off the current entry and lose our place. Rather
+       than ask six call sites to remember us, keep the stamp through any
+       replaceState, and give a pushState the next index as a new entry. */
+    ["pushState", "replaceState"].forEach(function (name) {
+      var orig = history[name];
+      if (typeof orig !== "function") return;
+      history[name] = function (st, title, url) {
+        var idx = name === "replaceState"
+          ? stamped(history.state)
+          : num(get(LAST)) + 1;
+        if (idx !== null) {
+          try { st = Object.assign({}, st || {}, { dcrNav: idx }); } catch (e) {}
+          if (name === "pushState") { set(LAST, idx); set(MAX, idx); }
+        }
+        return orig.call(history, st, title, url);
+      };
+    });
+
+    // Where this entry sits. An unstamped entry is a fresh navigation: it lands
+    // one past wherever we were, and anything that was ahead is now unreachable.
+    function position() {
+      var idx = stamped(history.state);
+      if (idx === null) {
+        idx = num(get(LAST)) + 1;
+        try { history.replaceState(Object.assign({}, history.state || {}, { dcrNav: idx }), ""); } catch (e) {}
+        set(MAX, idx);
+      }
+      set(LAST, idx);
+      return idx;
+    }
+
+    /* Stamp this entry NOW, before anything else runs and whether or not this
+       page shows the buttons.
+
+       It used to happen inside build(), which returns early when there is no
+       top bar - and eleven pages have none, among them the plan viewer, the
+       map and every printable report. Those entries were never stamped and
+       never advanced the counters, so they were holes: come back from one and
+       Forward was greyed out with the page still sitting one step ahead in
+       real history. Where the buttons are DRAWN is a question about this page;
+       where we are in history is not. */
+    if (!isSignIn()) position();
+
+    function build() {
+      var bar = document.querySelector(".topbar");
+      // Eleven pages have no bar - the sign-in page, the phone view, the plan
+      // viewer, the map, the printable reports. Their history position is
+      // already recorded above; they simply do not draw the buttons.
+      if (!bar || bar.querySelector(".dcr-nav")) return;
+
+      var CHEV = function (d) {
+        return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" ' +
+          'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="' + d + '"/></svg>';
+      };
+      var nav = document.createElement("div");
+      nav.className = "dcr-nav";
+      nav.innerHTML =
+        '<button type="button" class="dcr-navbtn" data-nav="back" title="Back" aria-label="Go back">' + CHEV("15 18 9 12 15 6") + '</button>' +
+        '<button type="button" class="dcr-navbtn" data-nav="fwd" title="Forward" aria-label="Go forward">' + CHEV("9 18 15 12 9 6") + '</button>';
+
+      /* querySelector finds a .brand at any depth, but insertBefore demands a
+         direct child - and capture.html wraps its bar contents in .topbar-in,
+         so passing that grandchild threw NotFoundError and Site Photos got no
+         buttons at all. Staying a direct child also keeps the CSS matching,
+         since those rules use the child combinator. */
+      var brand = bar.querySelector(".brand");
+      bar.insertBefore(nav, brand && brand.parentNode === bar ? brand : bar.firstChild);
+
+      var back = nav.querySelector('[data-nav="back"]');
+      var fwd = nav.querySelector('[data-nav="fwd"]');
+      back.onclick = function () { if (!back.disabled) history.back(); };
+      fwd.onclick = function () { if (!fwd.disabled) history.forward(); };
+
+      function paint() {
+        var idx = position();
+        var max = Math.max(num(get(MAX)), idx);
+        /* Index 1 is the first portal page of this session. The sign-in page
+           is never counted and never lingers - it replaces itself - so nothing
+           behind index 1 is anywhere Back should go. */
+        back.disabled = idx <= 1;
+        fwd.disabled = idx >= max;
+      }
+      paint();
+
+      // Restored from the back/forward cache the script does not re-run, so the
+      // buttons would still describe the page you left.
+      window.addEventListener("pageshow", paint);
+      window.addEventListener("popstate", paint);
+    }
+
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", build);
+    else build();
+  })();
 })();

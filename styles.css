@@ -111,6 +111,33 @@ input:focus, select:focus, textarea:focus {
 }
 .topbar .brand h1 { font-size: 16px; }
 .top-actions { display: flex; align-items: center; gap: 12px; }
+
+/* ── Back / Forward ────────────────────────────────────────────────────────
+   The portal is opened in a desktop shell with no browser chrome, so no page
+   has a back control of its own. These sit at the far left of the bar, ahead
+   of the brand, which is where one is looked for. */
+.topbar > .dcr-nav { display: flex; align-items: center; gap: 6px; margin-right: 14px; flex-shrink: 0; }
+/* An auto margin outranks justify-content: space-between, so the nav and the
+   brand stay together on the left while the actions keep the right. */
+.topbar > .brand { margin-right: auto; }
+.dcr-navbtn {
+  width: 32px; height: 32px; padding: 0; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface); color: var(--text);
+  cursor: pointer; line-height: 1;
+  transition: background .12s ease, border-color .12s ease, opacity .12s ease;
+}
+.dcr-navbtn svg { width: 17px; height: 17px; display: block; }
+.dcr-navbtn:hover:not(:disabled) { background: var(--surface-2); border-color: var(--text-muted); }
+.dcr-navbtn:active:not(:disabled) { background: var(--surface-2); transform: translateY(1px); }
+.dcr-navbtn:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+/* Dimmed, never hidden: a control that disappears shifts everything beside it,
+   and the button you were reaching for moves out from under the cursor. */
+.dcr-navbtn:disabled { opacity: .3; cursor: default; }
+@media (max-width: 620px) {
+  .topbar > .dcr-nav { margin-right: 8px; gap: 4px; }
+}
 .pill {
   font-size: 12px; font-weight: 600;
   padding: 3px 10px; border-radius: 999px;
