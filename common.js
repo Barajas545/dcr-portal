@@ -852,6 +852,9 @@
     var IDLE_MS = 10000;    // "is anyone helping me?"
     var LIVE_MS = 1500;     // "what next?"
     var timer = null, session = null, lastSeq = 0, banner = null, pointer = null, stopped = false;
+    // Bumped whenever the session is dropped on purpose, so a poll that was
+    // already in flight when End was pressed cannot come back and re-attach it.
+    var gen = 0;
 
     function isSignInPage() {
       var p = String(location.pathname || "");
@@ -922,6 +925,75 @@
       return String(t).replace(/\s+/g, " ").trim().slice(0, 44);
     }
 
+    /* The page drawn as a picture.
+
+       A web page cannot photograph the phone. What it can do is render
+       ITSELF into an image - html2canvas walks the DOM and paints it - which
+       for "which button do I tap" is the same thing, and works on an iPhone
+       where nothing else does. It is a rendering rather than a photo: the
+       keyboard, an open native picker and the browser's own bars are not in
+       it, and a few effects paint slightly differently. The buttons are where
+       the buttons are.
+
+       Loaded lazily, and only once a session is live: it is 200KB, and every
+       page of the portal loads this file. Nobody logging hours should pay for
+       a helper that is not there. */
+    var rendererPromise = null;
+    function ensureRenderer() {
+      if (window.html2canvas) return Promise.resolve(window.html2canvas);
+      if (rendererPromise) return rendererPromise;
+      rendererPromise = new Promise(function (resolve, reject) {
+        var sc = document.createElement("script");
+        sc.src = "html2canvas.min.js";
+        sc.async = true;
+        sc.onload = function () { resolve(window.html2canvas || null); };
+        sc.onerror = function () { rendererPromise = null; reject(new Error("renderer failed to load")); };
+        document.head.appendChild(sc);
+      });
+      return rendererPromise;
+    }
+
+    /* Just the part on screen, as a JPEG small enough for the column it
+       lands in (measured to ~2M characters; this stays far under).
+
+       scrollX/scrollY are the page's real scroll, not zero. html2canvas paints
+       a fixed or sticky element at its viewport position PLUS the scroll it
+       is told about, then crops at the real scroll - so with zero the phone's
+       sticky toolbar, the bottom sheet and every modal were painted at the
+       top of the document and cropped clean out. The admin saw the page
+       UNDERNEATH the dialog at exactly the moment help was wanted, while the
+       hit targets (taken from the live page) still sat where the dialog was,
+       so a click named a button the picture did not show.
+
+       The scale option multiplies CSS pixels, not device pixels - the
+       library's own default is devicePixelRatio - so 0.5 on a modern phone
+       was a sixth of native, a 195px-wide bitmap the admin's panel then blew
+       up until no label could be read. Start at the device's ratio (capped at
+       2) and step down only if the result is too big. */
+    async function captureImage() {
+      var h2c = await ensureRenderer();
+      if (!h2c) return "";
+      var vw = window.innerWidth, vh = window.innerHeight;
+      var opts = {
+        x: window.scrollX, y: window.scrollY, width: vw, height: vh,
+        scrollX: window.scrollX, scrollY: window.scrollY,
+        windowWidth: vw, windowHeight: vh,
+        useCORS: true, logging: false, backgroundColor: null,
+        // Our own furniture is not part of their page.
+        ignoreElements: function (n) {
+          return !!(n.classList && (n.classList.contains("dcr-assist") ||
+                                    n.classList.contains("dcr-assist-point")));
+        },
+      };
+      var ladder = [Math.min(window.devicePixelRatio || 1, 2), 1, 0.7];
+      for (var i = 0; i < ladder.length; i++) {
+        var canvas = await h2c(document.documentElement, Object.assign({ scale: ladder[i] }, opts));
+        var url = canvas.toDataURL("image/jpeg", 0.55);
+        if (url.length <= 600000) return url;
+      }
+      return "";     // still too big: the wireframe alone will have to do
+    }
+
     function collectSnapshot() {
       var vw = window.innerWidth || 1, vh = window.innerHeight || 1;
       var out = [], nodes = document.querySelectorAll(SNAP_SELECTOR);
@@ -940,17 +1012,48 @@
           k: snapKind(n), t: snapLabel(n),
         });
       }
-      return { page: pageName(), ar: vw / vh, els: out };
+      return { page: pageName(), ar: vw / vh, vw: vw, vh: vh, els: out };
     }
 
-    async function sendSnapshot() {
-      if (!session) return;
+    var snapping = false, lastSnapKey = "";
+    /* `force` is the helper pressing Refresh, or a session just starting.
+       Otherwise a screen that has not changed since the last upload is not
+       rendered and not sent: rendering costs the phone real work, and every
+       upload is a new version on a SharePoint row. Someone sitting reading a
+       page should cost nothing. The key is where things are and what they
+       say, which moves with scrolling and typing - if that is identical, so
+       is the picture. */
+    async function sendSnapshot(force) {
+      if (!session || snapping) return;    // never two renders at once on a phone
+      snapping = true;
       try {
+        var snap = collectSnapshot();
+        var key = JSON.stringify([snap.page, snap.vw, snap.vh, snap.els]);
+        if (!force && key === lastSnapKey) return;
+        try { snap.img = await captureImage(); } catch (e) { snap.img = ""; }
+        if (!session) return;                // ended while we were drawing
+        lastSnapKey = key;
         await DCR.api("/api/portal?action=assist", {
           method: "POST",
-          body: { op: "snapshot", sessionId: session.id, snapshot: collectSnapshot() },
+          body: { op: "snapshot", sessionId: session.id, snapshot: snap },
         });
       } catch (e) { /* the helper simply sees the previous view */ }
+      finally { snapping = false; }
+    }
+
+    /* A fresh picture every so often while a session is live, so what the
+       helper sees keeps up with what is on the screen without them pressing
+       Refresh. Twelve seconds: often enough to follow along, seldom enough
+       that a phone is not rendering itself continuously. Only while visible,
+       and it stops itself the moment the session ends. */
+    var SNAP_EVERY_MS = 12000;
+    var snapTimer = null;
+    function keepSnapping() {
+      clearInterval(snapTimer);
+      snapTimer = setInterval(function () {
+        if (!session) { clearInterval(snapTimer); snapTimer = null; return; }
+        if (document.visibilityState === "visible") sendSnapshot();
+      }, SNAP_EVERY_MS);
     }
 
     function runCommand(cmd) {
@@ -973,7 +1076,7 @@
         clearPointer();
         if (banner) banner._msg.textContent = "";
       } else if (cmd.kind === "look") {
-        sendSnapshot();
+        sendSnapshot(true);
       } else if (cmd.kind === "goto") {
         /* Re-checked here as well as on the server. A page name, never a URL:
            one member of staff able to send another's browser anywhere is an
@@ -985,31 +1088,55 @@
       }
     }
 
+    /* Nothing is torn down until the server has confirmed the row is gone.
+
+       It used to hide the banner and forget the session first and ask the
+       server second, swallowing any failure - so a failed End took the banner
+       off the screen, and ten seconds later the next poll found the session
+       still there and quietly put everything back. The person had pressed
+       Stop, watched it appear to work, and was being driven again with no
+       message. If the server says no, they are told, and the button is still
+       there to press. */
     async function endSession() {
-      var id = session && session.id;
-      hideBanner();
-      session = null;
-      if (!id) return;
+      if (!session) return;
+      var id = session.id;
+      var btn = banner ? banner.querySelector("button") : null;
+      if (btn) { btn.disabled = true; btn.textContent = "Ending…"; }
       try {
         await DCR.api("/api/portal?action=assist", { method: "POST", body: { op: "end", sessionId: id } });
-      } catch (e) { /* it is ended locally either way */ }
+      } catch (e) {
+        if (btn) { btn.disabled = false; btn.textContent = "End"; }
+        if (banner) banner._msg.textContent = "Could not end — tap End again";
+        schedule();
+        return;
+      }
+      gen++;
+      session = null;
+      clearInterval(snapTimer); snapTimer = null;
+      hideBanner();
       schedule();
     }
 
     async function tick() {
       if (stopped || !DCR.getToken() || document.visibilityState !== "visible") return schedule();
       try {
+        var g = gen;
         var d = await DCR.api("/api/portal?action=assist&op=poll&where=" +
                               encodeURIComponent(pageName()));
+        if (g !== gen) return schedule();    // answered a poll from before End: ignore it
         if (d && d.session) {
           if (!session) {
             session = d.session; lastSeq = 0; showBanner(d.session.operator);
-            sendSnapshot();       // so the helper sees the screen straight away
+            lastSnapKey = "";
+            sendSnapshot(true);   // so the helper sees the screen straight away
+            keepSnapping();
           }
           else { session = d.session; }
           runCommand(d.command);
         } else if (session) {
+          gen++;
           session = null;
+          clearInterval(snapTimer); snapTimer = null;
           hideBanner();
         }
       } catch (e) {

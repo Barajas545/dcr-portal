@@ -76,6 +76,13 @@
   }
 
   async function startSession() {
+    /* Starting while a session is live used to leave the old watch interval
+       running beside the new one and the old session row with nobody
+       ending it. Finish the one in hand first, properly. */
+    if (session) {
+      await endSession();
+      if (session) return;          // it could not be ended; the message says so
+    }
     var sel = el("asWho");
     var email = sel.value;
     if (!email) { msg("asStartMsg", "err", "Choose who needs help."); return; }
@@ -90,6 +97,7 @@
       el("asWhoLive").textContent = name || email;
       el("asPanel").hidden = false;
       msg("asStartMsg", "ok", "Session started. The banner appears on their screen within a few seconds.");
+      clearInterval(watch);           // never two watches for one panel
       pollWatch();
       watch = setInterval(pollWatch, 4000);
     } catch (e) {
@@ -129,10 +137,26 @@
      pipe anyway. This is enough to say "that one". */
   function drawSnapshot(snap) {
     var box = el("asScreen");
-    box.style.aspectRatio = String(Math.max(0.2, Math.min(4, snap.ar || 0.5)));
+    // Their exact screen shape when the page reported it, else the ratio.
+    var ar = (snap.vw && snap.vh) ? (snap.vw / snap.vh) : (snap.ar || 0.5);
+    box.style.aspectRatio = String(Math.max(0.2, Math.min(4, ar)));
     box.innerHTML = "";
     var els = snap.els || [];
-    if (!els.length) {
+    var hasImg = !!snap.img;
+    box.classList.toggle("has-img", hasImg);
+
+    /* The picture of their screen, underneath everything. The wireframe goes
+       on top as invisible hit targets, so a click still names the control it
+       landed on - "tap this one - Submit time sheet" - rather than only a
+       ring at a coordinate. */
+    if (hasImg) {
+      var img = document.createElement("img");
+      img.src = snap.img;
+      img.alt = "What is on their screen";
+      img.draggable = false;
+      box.appendChild(img);
+    }
+    if (!els.length && !hasImg) {
       var empty = document.createElement("span");
       empty.className = "lbl";
       empty.textContent = "Nothing to show yet — press Refresh view";
@@ -157,8 +181,19 @@
     });
     var foot = document.createElement("span");
     foot.className = "lbl";
-    foot.textContent = "Their screen — click anything to point at it";
+    foot.textContent = hasImg
+      ? "Their screen, " + ageText(snap.at) + " — click anything to point at it"
+      : "Their screen — click anything to point at it";
     box.appendChild(foot);
+  }
+
+  // "just now" / "8s ago": the picture refreshes itself every few seconds,
+  // and knowing how old it is stops anyone pointing at something that has
+  // since scrolled away.
+  function ageText(iso) {
+    var s = Math.round((Date.now() - Date.parse(iso || "")) / 1000);
+    if (!isFinite(s) || s < 3) return "just now";
+    return s < 60 ? s + "s ago" : Math.round(s / 60) + "m ago";
   }
 
   function markAt(x, y) {
