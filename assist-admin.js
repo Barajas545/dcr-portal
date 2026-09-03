@@ -30,7 +30,7 @@
     ["logs.html", "Log History"],
   ];
 
-  var session = null, watch = null;
+  var session = null, watch = null, lastWhere = null, snapAt = null;
 
   function msg(where, kind, text) {
     var n = el(where);
@@ -63,15 +63,15 @@
     }).join("");
   }
 
-  async function send(body) {
+  async function send(body, quiet) {
     if (!session) return;
     body.op = "command";
     body.sessionId = session.id;
     try {
       await DCR.api("/api/portal?action=assist", { method: "POST", body: body });
-      msg("asMsg", "ok", "Sent.");
+      if (!quiet) msg("asMsg", "ok", "Sent.");
     } catch (e) {
-      msg("asMsg", "err", e.message || "Could not send that.");
+      if (!quiet) msg("asMsg", "err", e.message || "Could not send that.");
     }
   }
 
@@ -105,12 +105,70 @@
       var d = await DCR.api("/api/portal?action=assist&op=watch&sessionId=" +
                             encodeURIComponent(session.id));
       if (!d.session) { stopWatching("They ended the session."); return; }
-      el("asWhere").textContent = d.session.where || "(not reported yet)";
+      var where = d.session.where || "";
+      el("asWhere").textContent = where || "(not reported yet)";
       // Stale means their page has stopped checking in - closed tab, asleep,
       // no signal. Better to show that than to keep pretending it is live.
       el("asPip").className = "as-pip" + (d.session.stale ? " stale" : "");
       el("asPip").title = d.session.stale ? "Not checking in" : "Connected";
+
+      // They moved: the view on screen is of a page they have left.
+      if (where && where !== lastWhere) { lastWhere = where; askForLook(); }
+      if (d.snapshot && d.snapshot.at !== snapAt) {
+        snapAt = d.snapshot.at;
+        drawSnapshot(d.snapshot);
+      }
     } catch (e) { /* transient; the next tick will say */ }
+  }
+
+  function askForLook() { send({ kind: "look" }, true); }
+
+  /* Draw what is actually on their screen: real positions, real labels, real
+     scroll position. Not a picture of it - a picture would mean shipping their
+     names, hours and rates into a support channel, and would not fit down this
+     pipe anyway. This is enough to say "that one". */
+  function drawSnapshot(snap) {
+    var box = el("asScreen");
+    box.style.aspectRatio = String(Math.max(0.2, Math.min(4, snap.ar || 0.5)));
+    box.innerHTML = "";
+    var els = snap.els || [];
+    if (!els.length) {
+      var empty = document.createElement("span");
+      empty.className = "lbl";
+      empty.textContent = "Nothing to show yet — press Refresh view";
+      box.appendChild(empty);
+      return;
+    }
+    els.forEach(function (e) {
+      var n = document.createElement("span");
+      n.className = "as-el as-" + (e.k || "text");
+      n.style.left = e.x + "%"; n.style.top = e.y + "%";
+      n.style.width = e.w + "%"; n.style.height = e.h + "%";
+      n.textContent = e.t || "";
+      n.title = (e.t || "") + "  —  click to point at this";
+      n.onclick = function (ev) {
+        ev.stopPropagation();
+        markAt(e.x + e.w / 2, e.y + e.h / 2);
+        // Point at the middle of the thing, and name it, so the caption on
+        // their screen says what you are pointing at.
+        send({ kind: "point", x: e.x + e.w / 2, y: e.y + e.h / 2, label: e.t || "" });
+      };
+      box.appendChild(n);
+    });
+    var foot = document.createElement("span");
+    foot.className = "lbl";
+    foot.textContent = "Their screen — click anything to point at it";
+    box.appendChild(foot);
+  }
+
+  function markAt(x, y) {
+    var box = el("asScreen");
+    var old = box.querySelector(".mk");
+    if (old) old.remove();
+    var mk = document.createElement("span");
+    mk.className = "mk";
+    mk.style.left = x + "%"; mk.style.top = y + "%";
+    box.appendChild(mk);
   }
 
   function stopWatching(text) {
@@ -161,13 +219,9 @@
       var r = this.getBoundingClientRect();
       var x = ((e.clientX - r.left) / r.width) * 100;
       var y = ((e.clientY - r.top) / r.height) * 100;
-      var old = this.querySelector(".mk");
-      if (old) old.remove();
-      var mk = document.createElement("span");
-      mk.className = "mk";
-      mk.style.left = x + "%"; mk.style.top = y + "%";
-      this.appendChild(mk);
+      markAt(x, y);
       send({ kind: "point", x: x, y: y, label: el("asSay").value.trim().slice(0, 60) });
     };
+    el("asLook").onclick = function () { askForLook(); msg("asMsg", "", "Asked for a fresh view…"); };
   });
 })();

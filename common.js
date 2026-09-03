@@ -892,6 +892,67 @@
       pointer = null;
     }
 
+    /* A wireframe of this screen: where the controls are and what they say.
+
+       Not a picture. Rendering and shipping one every second is not something
+       to do over a list that also holds payroll, and it would put the whole
+       page - names, hours, rates - into a support channel. What goes instead
+       is position and label for the things you can act on, which is all the
+       helper needs in order to say "that one". They see the layout as it
+       really is, including how far this page is scrolled. */
+    var SNAP_SELECTOR = "button, a[href], input, select, textarea, [role=button], h1, h2, h3, label";
+
+    function snapKind(n) {
+      var tag = (n.tagName || "").toLowerCase();
+      if (tag === "button" || n.getAttribute("role") === "button" ||
+          (n.className && String(n.className).indexOf("btn") !== -1)) return "button";
+      if (tag === "input" || tag === "select" || tag === "textarea") return "field";
+      if (tag === "a") return "link";
+      if (tag === "h1" || tag === "h2" || tag === "h3") return "heading";
+      return "text";
+    }
+
+    function snapLabel(n) {
+      var t = (n.getAttribute && (n.getAttribute("aria-label") || n.getAttribute("placeholder"))) || "";
+      if (!t && n.tagName === "SELECT" && n.selectedOptions && n.selectedOptions[0]) {
+        t = n.selectedOptions[0].textContent || "";
+      }
+      if (!t && (n.tagName === "INPUT" || n.tagName === "TEXTAREA")) t = n.value || "";
+      if (!t) t = n.textContent || "";
+      return String(t).replace(/\s+/g, " ").trim().slice(0, 44);
+    }
+
+    function collectSnapshot() {
+      var vw = window.innerWidth || 1, vh = window.innerHeight || 1;
+      var out = [], nodes = document.querySelectorAll(SNAP_SELECTOR);
+      for (var i = 0; i < nodes.length && out.length < 80; i++) {
+        var n = nodes[i];
+        // Never send our own furniture back as if it were part of the page.
+        if (n.closest && (n.closest(".dcr-assist") || n.closest(".dcr-assist-point"))) continue;
+        var r = n.getBoundingClientRect();
+        if (r.width < 8 || r.height < 8) continue;
+        if (r.bottom <= 0 || r.top >= vh || r.right <= 0 || r.left >= vw) continue;  // off screen
+        var cs = window.getComputedStyle(n);
+        if (cs.visibility === "hidden" || cs.display === "none" || cs.opacity === "0") continue;
+        out.push({
+          x: (r.left / vw) * 100, y: (r.top / vh) * 100,
+          w: (r.width / vw) * 100, h: (r.height / vh) * 100,
+          k: snapKind(n), t: snapLabel(n),
+        });
+      }
+      return { page: pageName(), ar: vw / vh, els: out };
+    }
+
+    async function sendSnapshot() {
+      if (!session) return;
+      try {
+        await DCR.api("/api/portal?action=assist", {
+          method: "POST",
+          body: { op: "snapshot", sessionId: session.id, snapshot: collectSnapshot() },
+        });
+      } catch (e) { /* the helper simply sees the previous view */ }
+    }
+
     function runCommand(cmd) {
       if (!cmd || typeof cmd !== "object") return;
       if (Number(cmd.seq) <= lastSeq) return;     // already done this one
@@ -911,6 +972,8 @@
       } else if (cmd.kind === "clear") {
         clearPointer();
         if (banner) banner._msg.textContent = "";
+      } else if (cmd.kind === "look") {
+        sendSnapshot();
       } else if (cmd.kind === "goto") {
         /* Re-checked here as well as on the server. A page name, never a URL:
            one member of staff able to send another's browser anywhere is an
@@ -939,7 +1002,10 @@
         var d = await DCR.api("/api/portal?action=assist&op=poll&where=" +
                               encodeURIComponent(pageName()));
         if (d && d.session) {
-          if (!session) { session = d.session; lastSeq = 0; showBanner(d.session.operator); }
+          if (!session) {
+            session = d.session; lastSeq = 0; showBanner(d.session.operator);
+            sendSnapshot();       // so the helper sees the screen straight away
+          }
           else { session = d.session; }
           runCommand(d.command);
         } else if (session) {

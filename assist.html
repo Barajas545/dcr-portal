@@ -28,7 +28,20 @@
       .as-screen .lbl{position:absolute; inset:auto 0 8px 0; text-align:center;
         color:var(--text-muted); font-size:12.5px; pointer-events:none;}
       .as-screen .mk{position:absolute; width:26px; height:26px; margin:-13px 0 0 -13px;
-        border:3px solid var(--acc,#2f80d8); border-radius:50%; pointer-events:none;}
+        border:3px solid #2f80d8; border-radius:50%; pointer-events:none; z-index:3;}
+      /* Their screen, drawn from what is actually on it. Deliberately a
+         wireframe and not a picture: a picture would carry their names, hours
+         and rates into a support channel. */
+      .as-el{position:absolute; overflow:hidden; border-radius:5px; cursor:pointer;
+        font-size:10.5px; line-height:1.25; padding:2px 4px; white-space:nowrap;
+        text-overflow:ellipsis; color:var(--text-muted); border:1px solid var(--border);
+        background:var(--surface); display:flex; align-items:center;}
+      .as-el:hover{outline:2px solid #2f80d8; outline-offset:1px; z-index:2; color:var(--text);}
+      .as-button{background:rgba(47,128,216,.16); border-color:#2f80d8; color:var(--text); font-weight:700;}
+      .as-field{background:var(--surface); border-style:dashed;}
+      .as-link{color:#2f80d8; border-color:transparent; background:transparent;}
+      .as-heading{border-color:transparent; background:transparent; font-weight:700; color:var(--text);}
+      .as-text{border-color:transparent; background:transparent;}
       .as-msg{font-size:13px; min-height:18px; margin-top:10px;}
       .as-msg.err{color:var(--danger);} .as-msg.ok{color:var(--ok);}
       #asPanel[hidden]{display:none;}
@@ -67,6 +80,7 @@
           <span class="hint">is on</span>
           <span class="as-where" id="asWhere">…</span>
           <span style="margin-left:auto"></span>
+          <button class="btn btn-ghost btn-sm" id="asLook">Refresh view</button>
           <button class="btn btn-ghost btn-sm" id="asClear">Clear pointer</button>
           <button class="btn btn-danger btn-sm" id="asEnd">End session</button>
         </div>
