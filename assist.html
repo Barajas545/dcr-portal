@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DCR Portal — Guided assist</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      .as{max-width:820px; margin:0 auto; padding:26px 18px 60px; display:flex; flex-direction:column; gap:22px;}
+      .as h2{font-size:19px; margin:0 0 4px;}
+      .as .hint{color:var(--text-muted); font-size:14px; margin:0;}
+      .as-card{background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px 22px;}
+      .as-row{display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;}
+      .as-row label{display:flex; flex-direction:column; gap:5px; font-size:12.5px;
+        font-weight:600; color:var(--text-muted);}
+      .as-row select,.as-row input{padding:9px 11px; border:1px solid var(--border); border-radius:8px;
+        background:var(--surface); color:var(--text); font-size:14px; min-width:220px;}
+      .as-live{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px;}
+      .as-pip{width:10px; height:10px; border-radius:50%; background:var(--ok); flex:0 0 auto;}
+      .as-pip.stale{background:var(--text-muted);}
+      .as-where{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:13px;
+        background:var(--surface-2); border:1px solid var(--border); border-radius:6px; padding:2px 8px;}
+      /* A proportional stand-in for their screen. Clicking it sends a percentage
+         position, so it lands in the same relative place on a phone or a 27in monitor. */
+      .as-screen{position:relative; width:100%; aspect-ratio:16/10; margin-top:14px;
+        border:2px dashed var(--border); border-radius:10px; background:var(--surface-2);
+        cursor:crosshair; overflow:hidden;}
+      .as-screen .lbl{position:absolute; inset:auto 0 8px 0; text-align:center;
+        color:var(--text-muted); font-size:12.5px; pointer-events:none;}
+      .as-screen .mk{position:absolute; width:26px; height:26px; margin:-13px 0 0 -13px;
+        border:3px solid var(--acc,#2f80d8); border-radius:50%; pointer-events:none;}
+      .as-msg{font-size:13px; min-height:18px; margin-top:10px;}
+      .as-msg.err{color:var(--danger);} .as-msg.ok{color:var(--ok);}
+      #asPanel[hidden]{display:none;}
+    </style>
+  </head>
+  <body>
+    <div class="topbar">
+      <div class="brand"><img class="brand-logo" src="logo.png" alt="DCR Framing" /><h1 id="companyName">DCR Portal</h1></div>
+      <div class="top-actions">
+        <span class="pill" id="userPill">…</span>
+        <button class="btn btn-ghost btn-sm" id="logoutBtn">Log out</button>
+      </div>
+    </div>
+
+    <div class="as">
+      <div>
+        <h2>Guided assist</h2>
+        <p class="hint">Show someone how to use the portal on whatever they are holding — phone, tablet or
+          desktop. You point and send them where they need to go; their own screen does the rest.</p>
+      </div>
+
+      <div class="as-card" id="asStart">
+        <div class="as-row">
+          <label>Who needs help
+            <select id="asWho"><option value="">Loading…</option></select>
+          </label>
+          <button class="btn btn-primary" id="asGo">Start helping</button>
+        </div>
+        <div class="as-msg" id="asStartMsg"></div>
+      </div>
+
+      <div class="as-card" id="asPanel" hidden>
+        <div class="as-live">
+          <span class="as-pip" id="asPip"></span>
+          <strong id="asWhoLive">—</strong>
+          <span class="hint">is on</span>
+          <span class="as-where" id="asWhere">…</span>
+          <span style="margin-left:auto"></span>
+          <button class="btn btn-ghost btn-sm" id="asClear">Clear pointer</button>
+          <button class="btn btn-danger btn-sm" id="asEnd">End session</button>
+        </div>
+
+        <div class="as-row">
+          <label>Send them to
+            <select id="asPage"></select>
+          </label>
+          <button class="btn btn-ghost" id="asSend">Go</button>
+          <label style="flex:1; min-width:240px;">Tell them
+            <input id="asSay" placeholder="e.g. tap the green button" maxlength="200" />
+          </label>
+          <button class="btn btn-ghost" id="asSayBtn">Say</button>
+        </div>
+
+        <div class="as-screen" id="asScreen" title="Click where you want to point on their screen">
+          <span class="lbl">Click anywhere here to point at the same spot on their screen</span>
+        </div>
+        <div class="as-msg" id="asMsg"></div>
+      </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="common.js"></script>
+    <script src="assist-admin.js"></script>
+  </body>
+</html>

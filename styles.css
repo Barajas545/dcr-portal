@@ -265,3 +265,49 @@ tbody tr:hover { background: var(--surface-2); }
 @media (prefers-color-scheme: dark) {
   .dcr-mo-hd img { filter: invert(1); }
 }
+
+
+/* ── guided assist ────────────────────────────────────────────────────────
+   Shown on the screen of somebody being helped. Calm, not alarming: this is a
+   colleague demonstrating something, not a warning. It sits at the BOTTOM so
+   it never covers the top bar the helper is likely pointing at. */
+.dcr-assist{
+  position:fixed; left:50%; transform:translateX(-50%); z-index:2147483000;
+  /* Clear of the home indicator on a phone - this feature exists FOR phones,
+     and a Stop button sitting under the swipe bar is a Stop button you fight. */
+  bottom:calc(14px + env(safe-area-inset-bottom));
+  display:flex; align-items:center; gap:12px; max-width:calc(100vw - 24px);
+  padding:10px 12px 10px 15px; border-radius:12px;
+  background:#12233a; border:1px solid #2f6fb8; color:#e8f0fa;
+  box-shadow:0 6px 28px rgba(0,0,0,.32); font-size:13.5px;
+}
+.dcr-assist .who{font-weight:700; white-space:nowrap;}
+.dcr-assist .msg{color:#b9cde6; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.dcr-assist .pip{width:9px; height:9px; border-radius:50%; background:#4d9bf0; flex:0 0 auto;
+  animation:dcrAssistPulse 2s ease-in-out infinite;}
+@keyframes dcrAssistPulse{0%,100%{opacity:1}50%{opacity:.35}}
+.dcr-assist button{
+  flex:0 0 auto; border-radius:8px; padding:6px 12px; font:600 12.5px/1 inherit; cursor:pointer;
+  background:#a8341f; border:1px solid #c04227; color:#fff;
+}
+.dcr-assist button:hover{background:#bd3c24;}
+
+/* Where the helper is pointing. Never intercepts a click - the whole purpose
+   is that the person taps the thing underneath it. */
+.dcr-assist-point{
+  position:fixed; z-index:2147482999; pointer-events:none;
+  width:46px; height:46px; margin:-23px 0 0 -23px; border-radius:50%;
+  border:3px solid #4d9bf0; box-shadow:0 0 0 4px rgba(77,155,240,.22);
+  animation:dcrPointIn .35s cubic-bezier(.2,.9,.3,1.4);
+}
+.dcr-assist-point::after{
+  content:attr(data-label); position:absolute; left:50%; top:calc(100% + 8px);
+  transform:translateX(-50%); white-space:nowrap;
+  background:#12233a; color:#e8f0fa; border:1px solid #2f6fb8; border-radius:7px;
+  padding:3px 9px; font:600 12px/1.4 inherit;
+}
+.dcr-assist-point[data-label=""]::after{display:none;}
+@keyframes dcrPointIn{from{transform:scale(.4); opacity:0} to{transform:scale(1); opacity:1}}
+@media (prefers-reduced-motion:reduce){
+  .dcr-assist .pip,.dcr-assist-point{animation:none;}
+}

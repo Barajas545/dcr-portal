@@ -37,6 +37,7 @@
     sections.push({ label: "Operations", cards: [
       { href: "vehicles.html", ic: "🚚", tt: "Vehicles", ds: "Fleet board: oil changes, services due, history.", show: !!pp.vehicleInformation },
       { href: "data.html", ic: "🗄️", tt: "Data Browser", ds: "Browse and edit any SharePoint table directly.", show: profile.role === "Admin" },
+      { href: "assist.html", ic: "🤝", tt: "Guided Assist", ds: "Show someone how to use the portal on their own phone, tablet or PC.", show: profile.role === "Admin" },
       { href: "admin.html", ic: "🔐", tt: "Admin", ds: "User accounts, roles, and permissions.", show: profile.role === "Admin" },
       { href: "backup.html", ic: "🗄️", tt: "Backup", ds: "Snapshot the whole database, and see how old the last one is.", show: profile.role === "Admin" },
     ]});

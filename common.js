@@ -832,4 +832,145 @@
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", build);
     else build();
   })();
+
+  /* ── guided assist ────────────────────────────────────────────────────────
+     Being shown how to use the portal, on whatever device you are holding.
+
+     The desktop remote-control tool cannot reach a phone - its screen capture
+     and input injection are win32 calls - and on iPhone and iPad nobody can
+     drive the screen, because Apple does not expose that to third parties at
+     all. So this drives the PAGE instead of the machine: the helper points at
+     something or sends you somewhere, and the page you are already looking at
+     carries it out. Same code on a phone, a tablet and a desktop.
+
+     There is no realtime channel and cannot cheaply be one - the API is
+     serverless, and SharePoint is the only store - so the page asks, rather
+     than being told. Rarely when nothing is happening; briskly once a session
+     is live. Only while the tab is visible: a portal left open in a background
+     tab all day should cost nothing. */
+  (function () {
+    var IDLE_MS = 10000;    // "is anyone helping me?"
+    var LIVE_MS = 1500;     // "what next?"
+    var timer = null, session = null, lastSeq = 0, banner = null, pointer = null, stopped = false;
+
+    function isSignInPage() {
+      var p = String(location.pathname || "");
+      if (/\/$/.test(p) || p === "") return true;
+      var leaf = p.slice(p.lastIndexOf("/") + 1);
+      return /^index\.html$/i.test(leaf) || leaf.indexOf(".") === -1;
+    }
+    function pageName() {
+      var leaf = String(location.pathname || "").split("/").pop();
+      return leaf || "dashboard.html";
+    }
+
+    function el(tag, cls) { var n = document.createElement(tag); if (cls) n.className = cls; return n; }
+
+    function showBanner(operator) {
+      if (banner) return;
+      banner = el("div", "dcr-assist");
+      var pip = el("span", "pip");
+      var who = el("span", "who");
+      who.textContent = (operator || "Someone") + " is helping you";
+      var msg = el("span", "msg");
+      var end = document.createElement("button");
+      end.type = "button";
+      end.textContent = "End";
+      end.title = "Stop being helped";
+      end.onclick = endSession;
+      banner.appendChild(pip); banner.appendChild(who); banner.appendChild(msg); banner.appendChild(end);
+      document.body.appendChild(banner);
+      banner._msg = msg;
+    }
+    function hideBanner() {
+      if (banner && banner.parentNode) banner.parentNode.removeChild(banner);
+      banner = null;
+      clearPointer();
+    }
+    function clearPointer() {
+      if (pointer && pointer.parentNode) pointer.parentNode.removeChild(pointer);
+      pointer = null;
+    }
+
+    function runCommand(cmd) {
+      if (!cmd || typeof cmd !== "object") return;
+      if (Number(cmd.seq) <= lastSeq) return;     // already done this one
+      lastSeq = Number(cmd.seq) || 0;
+
+      if (cmd.kind === "point") {
+        clearPointer();
+        pointer = el("div", "dcr-assist-point");
+        // Percentages of the viewport, because the helper may be on a large
+        // monitor and this may be a phone.
+        pointer.style.left = Math.max(0, Math.min(100, Number(cmd.x) || 0)) + "vw";
+        pointer.style.top = Math.max(0, Math.min(100, Number(cmd.y) || 0)) + "vh";
+        pointer.setAttribute("data-label", String(cmd.label || ""));
+        document.body.appendChild(pointer);
+      } else if (cmd.kind === "say") {
+        if (banner) banner._msg.textContent = String(cmd.text || "");
+      } else if (cmd.kind === "clear") {
+        clearPointer();
+        if (banner) banner._msg.textContent = "";
+      } else if (cmd.kind === "goto") {
+        /* Re-checked here as well as on the server. A page name, never a URL:
+           one member of staff able to send another's browser anywhere is an
+           open redirect with a person operating it. */
+        var page = String(cmd.page || "");
+        if (!/^[a-z0-9-]{1,40}\.html$/i.test(page)) return;
+        if (page === pageName() && !cmd.query) return;
+        location.href = page + (cmd.query ? "?" + cmd.query : "");
+      }
+    }
+
+    async function endSession() {
+      var id = session && session.id;
+      hideBanner();
+      session = null;
+      if (!id) return;
+      try {
+        await DCR.api("/api/portal?action=assist", { method: "POST", body: { op: "end", sessionId: id } });
+      } catch (e) { /* it is ended locally either way */ }
+      schedule();
+    }
+
+    async function tick() {
+      if (stopped || !DCR.getToken() || document.visibilityState !== "visible") return schedule();
+      try {
+        var d = await DCR.api("/api/portal?action=assist&op=poll&where=" +
+                              encodeURIComponent(pageName()));
+        if (d && d.session) {
+          if (!session) { session = d.session; lastSeq = 0; showBanner(d.session.operator); }
+          else { session = d.session; }
+          runCommand(d.command);
+        } else if (session) {
+          session = null;
+          hideBanner();
+        }
+      } catch (e) {
+        /* Signed out, offline, or the endpoint is unavailable. Fall back to the
+           slow cadence rather than hammering it, and never surface an error:
+           nobody looking at a timesheet needs to hear that a support channel
+           they are not using is unreachable. */
+        if (e && /signed in/i.test(e.message || "")) stopped = true;
+      }
+      schedule();
+    }
+
+    function schedule() {
+      clearTimeout(timer);
+      if (stopped) return;
+      timer = setTimeout(tick, session ? LIVE_MS : IDLE_MS);
+    }
+
+    function start() {
+      if (isSignInPage()) return;
+      document.addEventListener("visibilitychange", function () {
+        if (document.visibilityState === "visible") { clearTimeout(timer); timer = setTimeout(tick, 250); }
+      });
+      timer = setTimeout(tick, 1500);   // let the page finish loading first
+    }
+
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start);
+    else start();
+  })();
 })();
