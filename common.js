@@ -889,10 +889,32 @@
       if (banner && banner.parentNode) banner.parentNode.removeChild(banner);
       banner = null;
       clearPointer();
+      showNote("");
     }
     function clearPointer() {
       if (pointer && pointer.parentNode) pointer.parentNode.removeChild(pointer);
       pointer = null;
+    }
+
+    /* What the helper wrote, as something actually readable.
+
+       It used to go in the banner's one line, which ellipsised anything past a
+       few words - so an instruction worth writing could not be read. It sits
+       above the banner instead, wraps, and stays until they clear it or send
+       another. Empty text takes it away. */
+    var note = null;
+    function showNote(text) {
+      var t = String(text == null ? "" : text).trim();
+      if (!t) {
+        if (note && note.parentNode) note.parentNode.removeChild(note);
+        note = null;
+        return;
+      }
+      if (!note) {
+        note = el("div", "dcr-assist-note");
+        document.body.appendChild(note);
+      }
+      note.textContent = t;      // text, never markup: this arrives over the wire
     }
 
     /* A wireframe of this screen: where the controls are and what they say.
@@ -915,14 +937,49 @@
       return "text";
     }
 
+    function isSecret(n) {
+      return n.tagName === "INPUT" &&
+             String(n.type || "").toLowerCase() === "password";
+    }
+
+    /* Emoji are stripped from every label. The portal uses them as card icons,
+       so a caption built from a card read as the icon glued to the title, and
+       the helper was asked not to put them on someone's screen. */
+    function plainText(v) {
+      return String(v == null ? "" : v)
+        .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}]/gu, "")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    /* What a control shows. A password field NEVER contributes its value:
+       this travels to the helper, and the picture beside it only ever shows
+       dots. */
     function snapLabel(n) {
       var t = (n.getAttribute && (n.getAttribute("aria-label") || n.getAttribute("placeholder"))) || "";
       if (!t && n.tagName === "SELECT" && n.selectedOptions && n.selectedOptions[0]) {
         t = n.selectedOptions[0].textContent || "";
       }
-      if (!t && (n.tagName === "INPUT" || n.tagName === "TEXTAREA")) t = n.value || "";
+      if (!t && (n.tagName === "INPUT" || n.tagName === "TEXTAREA")) {
+        t = isSecret(n) ? "" : (n.value || "");
+      }
       if (!t) t = n.textContent || "";
-      return String(t).replace(/\s+/g, " ").trim().slice(0, 44);
+      return plainText(t).slice(0, 44);
+    }
+
+    /* How a control is recognised again a few seconds later.
+
+       Its kind and its accessible NAME - never its current value, or typing
+       into a field would change the very thing used to verify it. */
+    function snapSig(n) {
+      var name = (n.getAttribute && (n.getAttribute("aria-label") ||
+                                     n.getAttribute("placeholder") ||
+                                     n.getAttribute("name") ||
+                                     n.getAttribute("id"))) || "";
+      if (!name && n.tagName !== "INPUT" && n.tagName !== "TEXTAREA" && n.tagName !== "SELECT") {
+        name = n.textContent || "";
+      }
+      return (snapKind(n) + "|" + plainText(name)).slice(0, 80);
     }
 
     /* The page drawn as a picture.
@@ -994,7 +1051,14 @@
       return "";     // still too big: the wireframe alone will have to do
     }
 
-    function collectSnapshot() {
+    /* The controls on screen, in a fixed order, as NODES.
+
+       The helper acts on these by position - "the seventh thing you reported"
+       - so the picture and the acting must come from the same walk in the
+       same order, or a click lands on a different control than the one that
+       was clicked in the picture. One function produces the list; the
+       snapshot describes it and the actions index into it. */
+    function collectNodes() {
       var vw = window.innerWidth || 1, vh = window.innerHeight || 1;
       var out = [], nodes = document.querySelectorAll(SNAP_SELECTOR);
       for (var i = 0; i < nodes.length && out.length < 80; i++) {
@@ -1006,12 +1070,21 @@
         if (r.bottom <= 0 || r.top >= vh || r.right <= 0 || r.left >= vw) continue;  // off screen
         var cs = window.getComputedStyle(n);
         if (cs.visibility === "hidden" || cs.display === "none" || cs.opacity === "0") continue;
-        out.push({
+        out.push(n);
+      }
+      return out;
+    }
+
+    function collectSnapshot() {
+      var vw = window.innerWidth || 1, vh = window.innerHeight || 1;
+      var out = collectNodes().map(function (n) {
+        var r = n.getBoundingClientRect();
+        return {
           x: (r.left / vw) * 100, y: (r.top / vh) * 100,
           w: (r.width / vw) * 100, h: (r.height / vh) * 100,
-          k: snapKind(n), t: snapLabel(n),
-        });
-      }
+          k: snapKind(n), t: snapLabel(n), s: snapSig(n),
+        };
+      });
       return { page: pageName(), ar: vw / vh, vw: vw, vh: vh, els: out };
     }
 
@@ -1071,12 +1144,14 @@
         pointer.setAttribute("data-label", String(cmd.label || ""));
         document.body.appendChild(pointer);
       } else if (cmd.kind === "say") {
-        if (banner) banner._msg.textContent = String(cmd.text || "");
+        showNote(cmd.text);
       } else if (cmd.kind === "clear") {
         clearPointer();
-        if (banner) banner._msg.textContent = "";
+        showNote("");
       } else if (cmd.kind === "look") {
         sendSnapshot(true);
+      } else if (cmd.kind === "click" || cmd.kind === "type" || cmd.kind === "scroll") {
+        actOn(cmd);
       } else if (cmd.kind === "goto") {
         /* Re-checked here as well as on the server. A page name, never a URL:
            one member of staff able to send another's browser anywhere is an
@@ -1086,6 +1161,48 @@
         if (page === pageName() && !cmd.query) return;
         location.href = page + (cmd.query ? "?" + cmd.query : "");
       }
+    }
+
+    /* Do the thing the helper asked for - but only to the control they meant.
+
+       They clicked a picture that may be seconds old. If the page has moved on
+       since - a list reloaded, a sheet opened, a row added - the control at
+       that position is no longer the one they saw. So the element is found by
+       position and then CHECKED against the signature they were looking at,
+       and if it does not match nothing happens and a fresh picture goes back
+       instead. A ring in the wrong place is a nuisance; a press in the wrong
+       place is somebody's timesheet submitted. */
+    function actOn(cmd) {
+      var nodes = collectNodes();
+      var n = nodes[Number(cmd.i)];
+      if (!n || snapSig(n) !== String(cmd.sig || "")) {
+        // Out of date. Say nothing on this screen, show the helper why.
+        sendSnapshot(true);
+        return;
+      }
+
+      if (cmd.kind === "scroll") {
+        try { n.scrollIntoView({ block: "center", behavior: "smooth" }); } catch (e) { n.scrollIntoView(); }
+        setTimeout(function () { sendSnapshot(true); }, 600);
+        return;
+      }
+
+      if (cmd.kind === "type") {
+        // A helper must not be able to set somebody's password for them.
+        if (isSecret(n)) { sendSnapshot(true); return; }
+        if (!("value" in n)) return;
+        try { n.focus({ preventScroll: true }); } catch (e) { try { n.focus(); } catch (e2) {} }
+        n.value = String(cmd.text == null ? "" : cmd.text);
+        // The page's own listeners have to run, or what is on screen and what
+        // the page believes it has diverge.
+        n.dispatchEvent(new Event("input", { bubbles: true }));
+        n.dispatchEvent(new Event("change", { bubbles: true }));
+      } else {
+        try { n.focus({ preventScroll: true }); } catch (e) {}
+        n.click();
+      }
+      // Show the helper the result of what they just did.
+      setTimeout(function () { sendSnapshot(true); }, 700);
     }
 
     /* Nothing is torn down until the server has confirmed the row is gone.

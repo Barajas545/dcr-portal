@@ -311,3 +311,17 @@ tbody tr:hover { background: var(--surface-2); }
 @media (prefers-reduced-motion:reduce){
   .dcr-assist .pip,.dcr-assist-point{animation:none;}
 }
+
+
+/* What the helper wrote, above the banner. Sized to be read at arm's length
+   on a phone, and it wraps rather than truncating - an instruction that only
+   half arrives is worse than none. */
+.dcr-assist-note{
+  position:fixed; left:50%; transform:translateX(-50%); z-index:2147483000;
+  bottom:calc(66px + env(safe-area-inset-bottom));
+  max-width:min(520px, calc(100vw - 24px));
+  padding:11px 15px; border-radius:12px;
+  background:#12233a; border:1px solid #2f6fb8; color:#eaf2fb;
+  box-shadow:0 6px 28px rgba(0,0,0,.32);
+  font-size:15px; line-height:1.45; font-weight:500;
+}

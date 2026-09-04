@@ -163,7 +163,7 @@
       box.appendChild(empty);
       return;
     }
-    els.forEach(function (e) {
+    els.forEach(function (e, i) {
       var n = document.createElement("span");
       n.className = "as-el as-" + (e.k || "text");
       n.style.left = e.x + "%"; n.style.top = e.y + "%";
@@ -172,10 +172,7 @@
       n.title = (e.t || "") + "  —  click to point at this";
       n.onclick = function (ev) {
         ev.stopPropagation();
-        markAt(e.x + e.w / 2, e.y + e.h / 2);
-        // Point at the middle of the thing, and name it, so the caption on
-        // their screen says what you are pointing at.
-        send({ kind: "point", x: e.x + e.w / 2, y: e.y + e.h / 2, label: e.t || "" });
+        selectEl(i, e);
       };
       box.appendChild(n);
     });
@@ -196,7 +193,35 @@
     return s < 60 ? s + "s ago" : Math.round(s / 60) + "m ago";
   }
 
+  /* Choosing a control and choosing what to do with it are two steps.
+
+     Pressing something on someone else's account is not the same as pointing
+     at it, and a single click that did both would make every mis-click an
+     action. Clicking the picture selects; the buttons that appear act. */
+  var picked = null;
+  function selectEl(i, e) {
+    picked = { i: i, sig: e.s || "", label: e.t || "", kind: e.k || "text" };
+    markAt(e.x + e.w / 2, e.y + e.h / 2);
+    var bar = el("asAct");
+    bar.hidden = false;
+    el("asActWhat").textContent = (e.t || "(unlabelled)");
+    el("asActKind").textContent = e.k || "";
+    // Only a field can be typed into.
+    el("asType").hidden = (e.k !== "field");
+    el("asTypeText").hidden = (e.k !== "field");
+    msg("asMsg", "", "");
+  }
+
+  function actOnPicked(kind, extra) {
+    if (!picked) { msg("asMsg", "err", "Choose something on their screen first."); return; }
+    var body = { kind: kind, i: picked.i, sig: picked.sig };
+    if (extra) Object.keys(extra).forEach(function (k) { body[k] = extra[k]; });
+    send(body);
+  }
+
+  var lastMark = { x: 50, y: 50 };
   function markAt(x, y) {
+    lastMark = { x: x, y: y };
     var box = el("asScreen");
     var old = box.querySelector(".mk");
     if (old) old.remove();
@@ -254,9 +279,28 @@
       var r = this.getBoundingClientRect();
       var x = ((e.clientX - r.left) / r.width) * 100;
       var y = ((e.clientY - r.top) / r.height) * 100;
+      picked = null;
+      el("asAct").hidden = true;
       markAt(x, y);
       send({ kind: "point", x: x, y: y, label: el("asSay").value.trim().slice(0, 60) });
     };
+
+    el("asPoint").onclick = function () {
+      if (!picked) { msg("asMsg", "err", "Choose something on their screen first."); return; }
+      // A caption you wrote beats the control's own text, which reads like a
+      // run-on when a card's title and description are glued together.
+      // point carries coordinates, not an element index - so it is sent
+      // directly rather than through actOnPicked, which addresses a control.
+      var written = el("asSay").value.trim();
+      send({ kind: "point", x: lastMark.x, y: lastMark.y,
+             label: (written || picked.label).slice(0, 60) });
+    };
+    el("asClick").onclick = function () { actOnPicked("click"); };
+    el("asScrollTo").onclick = function () { actOnPicked("scroll"); };
+    el("asType").onclick = function () {
+      actOnPicked("type", { text: el("asTypeText").value });
+    };
+    el("asTypeText").onkeydown = function (ev) { if (ev.key === "Enter") el("asType").click(); };
     el("asLook").onclick = function () { askForLook(); msg("asMsg", "", "Asked for a fresh view…"); };
   });
 })();
