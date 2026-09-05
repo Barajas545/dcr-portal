@@ -128,6 +128,11 @@
         /* "Sent" only ever meant the server stored it. This is what their
            screen actually did with it - including a refusal and the reason,
            which used to be silent. */
+        var f = d.snapshot.focus;
+        el("asFocus").textContent = f
+          ? (f.secret ? "a password box (cannot be filled in from here)"
+                      : ((f.label || "a box") + (f.value ? "  \u2014  \"" + f.value + "\"" : "")))
+          : "nothing yet \u2014 tap a box on their screen";
         var a = d.snapshot.act;
         if (a && a.at && a.at !== lastActAt) {
           lastActAt = a.at;
@@ -178,10 +183,9 @@
       n.style.width = e.w + "%"; n.style.height = e.h + "%";
       n.textContent = e.t || "";
       n.title = (e.t || "") + "  —  click to point at this";
-      n.onclick = function (ev) {
-        ev.stopPropagation();
-        selectEl(i, e);
-      };
+      // The wireframe exists so a tap can be NAMED in the report; the tap
+      // itself goes by position, exactly as a thumb would.
+      n.style.pointerEvents = "none";
       box.appendChild(n);
     });
     var foot = document.createElement("span");
@@ -201,44 +205,29 @@
     return s < 60 ? s + "s ago" : Math.round(s / 60) + "m ago";
   }
 
-  /* Choosing a control and choosing what to do with it are two steps.
+  /* Two ways to work: using their screen, or only pointing at it.
 
-     Pressing something on someone else's account is not the same as pointing
-     at it, and a single click that did both would make every mis-click an
-     action. Clicking the picture selects; the buttons that appear act. */
-  var picked = null;
-  function selectEl(i, e) {
-    picked = { i: i, sig: e.s || "", label: e.t || "", kind: e.k || "text",
-               opts: Array.isArray(e.o) ? e.o : null };
-    markAt(e.x + e.w / 2, e.y + e.h / 2);
-    var bar = el("asAct");
-    bar.hidden = false;
-    el("asActWhat").textContent = (e.t || "(unlabelled)");
-    el("asActKind").textContent = e.k || "";
-    // Only a field can be typed into.
-    var isField = (e.k === "field");
-    el("asType").hidden = !isField;
-    /* A dropdown is chosen, not typed into: assigning a value no option
-       carries is silently ignored by the browser, which reads as the
-       instruction doing nothing at all. Its choices come with the picture, so
-       they are offered here. */
-    var opts = Array.isArray(e.o) ? e.o : null;
-    el("asTypeText").hidden = !isField || !!opts;
-    el("asTypePick").hidden = !isField || !opts;
-    if (opts) {
-      el("asTypePick").innerHTML = opts.map(function (o) {
-        return '<option value="' + esc(o) + '">' + esc(o) + "</option>";
-      }).join("");
-    }
-    el("asType").textContent = opts ? "Choose it" : "Type it";
-    msg("asMsg", "", "");
-  }
-
-  function actOnPicked(kind, extra) {
-    if (!picked) { msg("asMsg", "err", "Choose something on their screen first."); return; }
-    var body = { kind: kind, i: picked.i, sig: picked.sig };
-    if (extra) Object.keys(extra).forEach(function (k) { body[k] = extra[k]; });
-    send(body);
+     Using is the default, because being asked to select a control and then
+     press a button in a panel is not what using a phone feels like - and the
+     helper is looking straight at the screen they are working. Point only is
+     there for talking somebody through something without touching it. */
+  var mode = "use";
+  function setMode(next) {
+    mode = next;
+    el("asModeUse").classList.toggle("on", mode === "use");
+    el("asModePoint").classList.toggle("on", mode === "point");
+    el("asModeUse").setAttribute("aria-pressed", String(mode === "use"));
+    el("asModePoint").setAttribute("aria-pressed", String(mode === "point"));
+    el("asModeHint").textContent = mode === "use"
+      ? "Click to tap, scroll to scroll, type to fill in."
+      : "Click to show them where to look. Nothing is pressed.";
+    var box = el("asScreen");
+    box.classList.toggle("as-use", mode === "use");
+    box.classList.toggle("as-point", mode === "point");
+    box.title = mode === "use"
+      ? "Click to tap it on their screen. Scroll to scroll their page."
+      : "Click to point at that spot on their screen.";
+    el("asKb").style.display = mode === "use" ? "" : "none";
   }
 
   var lastMark = { x: 50, y: 50 };
@@ -301,29 +290,59 @@
       var r = this.getBoundingClientRect();
       var x = ((e.clientX - r.left) / r.width) * 100;
       var y = ((e.clientY - r.top) / r.height) * 100;
-      picked = null;
-      el("asAct").hidden = true;
       markAt(x, y);
-      send({ kind: "point", x: x, y: y, label: el("asSay").value.trim().slice(0, 60) });
+      if (mode === "use") {
+        send({ kind: "tap", x: x, y: y });
+      } else {
+        send({ kind: "point", x: x, y: y, label: el("asSay").value.trim().slice(0, 60) });
+      }
     };
 
-    el("asPoint").onclick = function () {
-      if (!picked) { msg("asMsg", "err", "Choose something on their screen first."); return; }
-      // A caption you wrote beats the control's own text, which reads like a
-      // run-on when a card's title and description are glued together.
-      // point carries coordinates, not an element index - so it is sent
-      // directly rather than through actOnPicked, which addresses a control.
-      var written = el("asSay").value.trim();
-      send({ kind: "point", x: lastMark.x, y: lastMark.y,
-             label: (written || picked.label).slice(0, 60) });
+    /* The wheel over their screen scrolls their page. Batched: every scroll is
+       a write on a list, so one flick of the wheel must not become forty of
+       them. The deltas add up and go as a single movement. */
+    var pendingScroll = 0, scrollTimer = null;
+    el("asScreen").onwheel = function (e) {
+      if (mode !== "use" || !session) return;
+      e.preventDefault();
+      pendingScroll += e.deltaY;
+      clearTimeout(scrollTimer);
+      scrollTimer = setTimeout(function () {
+        // A wheel notch is roughly 100px; express it against their screen.
+        var dy = Math.max(-120, Math.min(120, (pendingScroll / 700) * 100));
+        pendingScroll = 0;
+        if (Math.abs(dy) >= 2) send({ kind: "scrollby", dy: dy }, true);
+      }, 220);
     };
-    el("asClick").onclick = function () { actOnPicked("click"); };
-    el("asScrollTo").onclick = function () { actOnPicked("scroll"); };
-    el("asType").onclick = function () {
-      var usingPicker = picked && Array.isArray(picked.opts) && picked.opts.length;
-      actOnPicked("type", { text: usingPicker ? el("asTypePick").value : el("asTypeText").value });
+
+    /* Typing here goes into whatever is focused on their screen. Sent on a
+       pause rather than per keystroke: every send is a write and the round
+       trip is over a second, so per-keystroke would be neither possible nor
+       pleasant. */
+    var typeTimer = null;
+    el("asKeys").oninput = function () {
+      clearTimeout(typeTimer);
+      var v = this.value;
+      typeTimer = setTimeout(function () { send({ kind: "input", text: v }, true); }, 500);
     };
-    el("asTypeText").onkeydown = function (ev) { if (ev.key === "Enter") el("asType").click(); };
+    el("asKeys").onkeydown = function (ev) {
+      if (ev.key === "Enter") { ev.preventDefault(); el("asKeyEnter").click(); }
+      else if (ev.key === "Tab") { ev.preventDefault(); el("asKeyTab").click(); }
+    };
+    el("asKeyEnter").onclick = function () {
+      // Whatever is half-typed goes first, then the key - otherwise Enter
+      // submits a field the helper has not finished filling in.
+      clearTimeout(typeTimer);
+      send({ kind: "input", text: el("asKeys").value }, true);
+      setTimeout(function () { send({ kind: "key", name: "Enter" }); }, 250);
+    };
+    el("asKeyTab").onclick = function () { send({ kind: "key", name: "Tab" }); };
+    el("asKeyBack").onclick = function () { send({ kind: "key", name: "Backspace" }); };
+
+    el("asModeUse").onclick = function () { setMode("use"); };
+    el("asModePoint").onclick = function () { setMode("point"); };
+    setMode("use");
+
     el("asLook").onclick = function () { askForLook(); msg("asMsg", "", "Asked for a fresh view…"); };
   });
 })();

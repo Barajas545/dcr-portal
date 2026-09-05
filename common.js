@@ -1098,6 +1098,18 @@
         page: pageName(), ar: vw / vh, vw: vw, vh: vh, els: out,
         // What became of the helper's last instruction.
         act: lastAct,
+        /* What is selected on their screen. The helper's keyboard types into
+           this, so they need to see which box it is - typing into thin air
+           because nothing was focused is the obvious way to be confused. */
+        focus: (function () {
+          var f = focusedField();
+          if (!f) return null;
+          return {
+            label: snapLabel(f),
+            secret: isSecret(f),
+            value: (!isSecret(f) && "value" in f) ? String(f.value || "").slice(0, 120) : "",
+          };
+        })(),
       };
     }
 
@@ -1165,6 +1177,9 @@
         sendSnapshot(true);
       } else if (cmd.kind === "click" || cmd.kind === "type" || cmd.kind === "scroll") {
         actOn(cmd);
+      } else if (cmd.kind === "tap" || cmd.kind === "scrollby" ||
+                 cmd.kind === "key" || cmd.kind === "input") {
+        workDevice(cmd);
       } else if (cmd.kind === "goto") {
         /* Re-checked here as well as on the server. A page name, never a URL:
            one member of staff able to send another's browser anywhere is an
@@ -1195,6 +1210,109 @@
        refusal nobody is told about is indistinguishable from a broken feature. */
     var lastAct = null;
     function acted(ok, text) { lastAct = { ok: !!ok, text: String(text || ""), at: Date.now() }; }
+
+    /* Working the device the way its owner would.
+
+       actOn below names a control and verifies it before touching it, which is
+       the careful way. This is the direct way: the helper is looking at the
+       screen and doing what they would do with a thumb - tap there, scroll,
+       type. The page decides what is under the point, exactly as a real tap
+       does, so there is nothing to go stale between the picture and the touch.
+
+       The safety that matters is kept: the assist furniture is never a target,
+       a password box is never filled in, and everything reports what it did. */
+    function deviceTarget(px, py) {
+      var hit = document.elementFromPoint(px, py);
+      if (!hit) return null;
+      // Never let a tap land on our own banner or pointer.
+      if (hit.closest && (hit.closest(".dcr-assist") || hit.closest(".dcr-assist-note") ||
+                          hit.closest(".dcr-assist-point"))) return null;
+      /* A real tap on a card hits whatever text happens to be under the
+         finger; the browser then walks up to the thing that actually does
+         something. Do the same, or a tap on a label inside a button does
+         nothing at all. */
+      var act = hit.closest && hit.closest(
+        "button, a[href], input, select, textarea, label, [role=button], [onclick]");
+      return act || hit;
+    }
+
+    function focusedField() {
+      var a = document.activeElement;
+      if (!a || a === document.body) return null;
+      if (a.closest && a.closest(".dcr-assist")) return null;
+      return a;
+    }
+
+    function workDevice(cmd) {
+      if (cmd.kind === "scrollby") {
+        var dy = (Number(cmd.dy) || 0) / 100 * (window.innerHeight || 600);
+        window.scrollBy({ top: dy, left: 0, behavior: "auto" });
+        acted(true, "");                       // routine; no need to narrate
+        setTimeout(function () { sendSnapshot(true); }, 350);
+        return;
+      }
+
+      if (cmd.kind === "tap") {
+        var px = (Number(cmd.x) || 0) / 100 * (window.innerWidth || 1);
+        var py = (Number(cmd.y) || 0) / 100 * (window.innerHeight || 1);
+        var t = deviceTarget(px, py);
+        if (!t) { acted(false, "Nothing to tap there."); sendSnapshot(true); return; }
+        try { t.focus({ preventScroll: true }); } catch (e) {}
+        try { t.click(); } catch (e) {}
+        acted(true, "Tapped " + (plainText(snapLabel(t)) || "it") + ".");
+        setTimeout(function () { sendSnapshot(true); }, 700);
+        return;
+      }
+
+      var f = focusedField();
+      if (!f) {
+        acted(false, "Nothing is selected on their screen - tap a box first.");
+        sendSnapshot(true);
+        return;
+      }
+
+      if (cmd.kind === "input") {
+        if (isSecret(f)) {
+          acted(false, "That is a password box - it cannot be filled in from here.");
+          sendSnapshot(true);
+          return;
+        }
+        if (!("value" in f)) {
+          acted(false, "What is selected does not take text.");
+          sendSnapshot(true);
+          return;
+        }
+        var want = String(cmd.text == null ? "" : cmd.text);
+        f.value = want;
+        f.dispatchEvent(new Event("input", { bubbles: true }));
+        f.dispatchEvent(new Event("change", { bubbles: true }));
+        acted(true, want ? "Typed \"" + want + "\"." : "Cleared it.");
+        setTimeout(function () { sendSnapshot(true); }, 700);
+        return;
+      }
+
+      // A key, into whatever is focused.
+      var name = String(cmd.name || "");
+      if (name === "Backspace" && "value" in f && !isSecret(f)) {
+        f.value = String(f.value || "").slice(0, -1);
+        f.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+      ["keydown", "keyup"].forEach(function (type) {
+        f.dispatchEvent(new KeyboardEvent(type, {
+          key: name, code: name, bubbles: true, cancelable: true,
+        }));
+      });
+      /* Enter on a form field means submit, and a synthetic key event does not
+         do that by itself - the page only submits if its own handler chose to.
+         Where the field sits in a real form with a submit button, press it,
+         which is what Enter does on a phone. */
+      if (name === "Enter" && f.form) {
+        var submit = f.form.querySelector("button[type=submit], input[type=submit]");
+        if (submit) { try { submit.click(); } catch (e) {} }
+      }
+      acted(true, name + ".");
+      setTimeout(function () { sendSnapshot(true); }, 700);
+    }
 
     function actOn(cmd) {
       var nodes = collectNodes();
