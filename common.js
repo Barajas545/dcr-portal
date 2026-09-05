@@ -967,6 +967,15 @@
       return plainText(t).slice(0, 44);
     }
 
+    /* A dropdown's choices, so the helper picks one instead of guessing at
+       the spelling over a two-second round trip. */
+    function snapOptions(n) {
+      if (n.tagName !== "SELECT" || !n.options) return null;
+      return Array.prototype.slice.call(n.options, 0, 20)
+        .map(function (o) { return plainText(o.textContent) || String(o.value || ""); })
+        .filter(function (v) { return v !== ""; });
+    }
+
     /* How a control is recognised again a few seconds later.
 
        Its kind and its accessible NAME - never its current value, or typing
@@ -1082,10 +1091,14 @@
         return {
           x: (r.left / vw) * 100, y: (r.top / vh) * 100,
           w: (r.width / vw) * 100, h: (r.height / vh) * 100,
-          k: snapKind(n), t: snapLabel(n), s: snapSig(n),
+          k: snapKind(n), t: snapLabel(n), s: snapSig(n), o: snapOptions(n),
         };
       });
-      return { page: pageName(), ar: vw / vh, vw: vw, vh: vh, els: out };
+      return {
+        page: pageName(), ar: vw / vh, vw: vw, vh: vh, els: out,
+        // What became of the helper's last instruction.
+        act: lastAct,
+      };
     }
 
     var snapping = false, lastSnapKey = "";
@@ -1172,34 +1185,87 @@
        and if it does not match nothing happens and a fresh picture goes back
        instead. A ring in the wrong place is a nuisance; a press in the wrong
        place is somebody's timesheet submitted. */
+    /* What happened to the last instruction, in words, sent back with the next
+       picture.
+
+       Every refusal here used to be a silent `return`. The helper's panel said
+       "Sent" - which only ever meant the server stored the instruction - and
+       then nothing happened on the screen, with nothing to say why. Refusing
+       is often the RIGHT answer (the page moved, it is a password box), but a
+       refusal nobody is told about is indistinguishable from a broken feature. */
+    var lastAct = null;
+    function acted(ok, text) { lastAct = { ok: !!ok, text: String(text || ""), at: Date.now() }; }
+
     function actOn(cmd) {
       var nodes = collectNodes();
       var n = nodes[Number(cmd.i)];
       if (!n || snapSig(n) !== String(cmd.sig || "")) {
-        // Out of date. Say nothing on this screen, show the helper why.
+        acted(false, "That control is not where it was - the screen has moved on. Try again on the fresh view.");
         sendSnapshot(true);
         return;
       }
 
       if (cmd.kind === "scroll") {
         try { n.scrollIntoView({ block: "center", behavior: "smooth" }); } catch (e) { n.scrollIntoView(); }
+        acted(true, "Scrolled to it.");
         setTimeout(function () { sendSnapshot(true); }, 600);
         return;
       }
 
       if (cmd.kind === "type") {
         // A helper must not be able to set somebody's password for them.
-        if (isSecret(n)) { sendSnapshot(true); return; }
-        if (!("value" in n)) return;
+        if (isSecret(n)) {
+          acted(false, "That is a password box - it cannot be filled in from here.");
+          sendSnapshot(true);
+          return;
+        }
+        var want = String(cmd.text == null ? "" : cmd.text);
+
+        /* A dropdown is chosen, not typed into. Assigning a value no option
+           carries is silently ignored by the browser - which is exactly how
+           this looked like nothing happening at all. Match the option by its
+           text or its value, and if none matches, say so and name them. */
+        if (n.tagName === "SELECT") {
+          var opts = Array.prototype.slice.call(n.options || []);
+          var norm = function (v) { return plainText(v).toLowerCase(); };
+          var hit = null;
+          for (var oi = 0; oi < opts.length; oi++) {
+            if (norm(opts[oi].value) === norm(want) || norm(opts[oi].textContent) === norm(want)) {
+              hit = opts[oi];
+              break;
+            }
+          }
+          if (!hit) {
+            var names = opts.map(function (o) { return plainText(o.textContent) || o.value; })
+                            .filter(Boolean).slice(0, 8).join(", ");
+            acted(false, "No choice called \"" + want + "\". The options are: " + (names || "(none)"));
+            sendSnapshot(true);
+            return;
+          }
+          n.value = hit.value;
+          n.dispatchEvent(new Event("input", { bubbles: true }));
+          n.dispatchEvent(new Event("change", { bubbles: true }));
+          acted(true, "Chose \"" + (plainText(hit.textContent) || hit.value) + "\".");
+          setTimeout(function () { sendSnapshot(true); }, 700);
+          return;
+        }
+
+        if (!("value" in n)) {
+          acted(false, "That is not something text can be entered into.");
+          sendSnapshot(true);
+          return;
+        }
         try { n.focus({ preventScroll: true }); } catch (e) { try { n.focus(); } catch (e2) {} }
-        n.value = String(cmd.text == null ? "" : cmd.text);
+        n.value = want;
         // The page's own listeners have to run, or what is on screen and what
         // the page believes it has diverge.
         n.dispatchEvent(new Event("input", { bubbles: true }));
         n.dispatchEvent(new Event("change", { bubbles: true }));
+        acted(true, want ? "Entered \"" + want + "\"." : "Cleared it.");
       } else {
         try { n.focus({ preventScroll: true }); } catch (e) {}
         n.click();
+        acted(true, "Pressed it.");
       }
       // Show the helper the result of what they just did.
       setTimeout(function () { sendSnapshot(true); }, 700);

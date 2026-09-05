@@ -65,6 +65,7 @@
       .as-act-in{padding:7px 10px; border:1px solid var(--border); border-radius:7px;
         background:var(--surface); color:var(--text); font-size:13px; min-width:170px;}
       .as-act-in[hidden]{display:none;}
+      select.as-act-in{cursor:pointer;}
       .as-act button[hidden]{display:none;}
       .as-msg{font-size:13px; min-height:18px; margin-top:10px;}
       .as-msg.err{color:var(--danger);} .as-msg.ok{color:var(--ok);}
@@ -127,6 +128,7 @@
           <span class="as-act-kind" id="asActKind"></span>
           <span style="flex:1"></span>
           <input id="asTypeText" class="as-act-in" placeholder="text to enter" maxlength="200" hidden />
+          <select id="asTypePick" class="as-act-in" hidden></select>
           <button class="btn btn-ghost btn-sm" id="asPoint">Point at it</button>
           <button class="btn btn-ghost btn-sm" id="asScrollTo">Scroll to it</button>
           <button class="btn btn-ghost btn-sm" id="asType" hidden>Type it</button>

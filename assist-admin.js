@@ -30,7 +30,7 @@
     ["logs.html", "Log History"],
   ];
 
-  var session = null, watch = null, lastWhere = null, snapAt = null;
+  var session = null, watch = null, lastWhere = null, snapAt = null, lastActAt = 0;
 
   function msg(where, kind, text) {
     var n = el(where);
@@ -125,6 +125,14 @@
       if (d.snapshot && d.snapshot.at !== snapAt) {
         snapAt = d.snapshot.at;
         drawSnapshot(d.snapshot);
+        /* "Sent" only ever meant the server stored it. This is what their
+           screen actually did with it - including a refusal and the reason,
+           which used to be silent. */
+        var a = d.snapshot.act;
+        if (a && a.at && a.at !== lastActAt) {
+          lastActAt = a.at;
+          msg("asMsg", a.ok ? "ok" : "err", a.text || (a.ok ? "Done." : "Nothing happened."));
+        }
       }
     } catch (e) { /* transient; the next tick will say */ }
   }
@@ -200,15 +208,29 @@
      action. Clicking the picture selects; the buttons that appear act. */
   var picked = null;
   function selectEl(i, e) {
-    picked = { i: i, sig: e.s || "", label: e.t || "", kind: e.k || "text" };
+    picked = { i: i, sig: e.s || "", label: e.t || "", kind: e.k || "text",
+               opts: Array.isArray(e.o) ? e.o : null };
     markAt(e.x + e.w / 2, e.y + e.h / 2);
     var bar = el("asAct");
     bar.hidden = false;
     el("asActWhat").textContent = (e.t || "(unlabelled)");
     el("asActKind").textContent = e.k || "";
     // Only a field can be typed into.
-    el("asType").hidden = (e.k !== "field");
-    el("asTypeText").hidden = (e.k !== "field");
+    var isField = (e.k === "field");
+    el("asType").hidden = !isField;
+    /* A dropdown is chosen, not typed into: assigning a value no option
+       carries is silently ignored by the browser, which reads as the
+       instruction doing nothing at all. Its choices come with the picture, so
+       they are offered here. */
+    var opts = Array.isArray(e.o) ? e.o : null;
+    el("asTypeText").hidden = !isField || !!opts;
+    el("asTypePick").hidden = !isField || !opts;
+    if (opts) {
+      el("asTypePick").innerHTML = opts.map(function (o) {
+        return '<option value="' + esc(o) + '">' + esc(o) + "</option>";
+      }).join("");
+    }
+    el("asType").textContent = opts ? "Choose it" : "Type it";
     msg("asMsg", "", "");
   }
 
@@ -298,7 +320,8 @@
     el("asClick").onclick = function () { actOnPicked("click"); };
     el("asScrollTo").onclick = function () { actOnPicked("scroll"); };
     el("asType").onclick = function () {
-      actOnPicked("type", { text: el("asTypeText").value });
+      var usingPicker = picked && Array.isArray(picked.opts) && picked.opts.length;
+      actOnPicked("type", { text: usingPicker ? el("asTypePick").value : el("asTypeText").value });
     };
     el("asTypeText").onkeydown = function (ev) { if (ev.key === "Enter") el("asType").click(); };
     el("asLook").onclick = function () { askForLook(); msg("asMsg", "", "Asked for a fresh view…"); };
