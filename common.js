@@ -1040,7 +1040,7 @@
        was a sixth of native, a 195px-wide bitmap the admin's panel then blew
        up until no label could be read. Start at the device's ratio (capped at
        2) and step down only if the result is too big. */
-    async function captureImage() {
+    async function captureImage(sharp) {
       var h2c = await ensureRenderer();
       if (!h2c) return "";
       var vw = window.innerWidth, vh = window.innerHeight;
@@ -1057,12 +1057,18 @@
       };
       /* At the fast end a sharp picture would still be arriving when the next
          one was due, so the top of the ladder is pulled down with the pace. A
-         prompt rough picture beats a late sharp one. */
-      var top = Math.min(window.devicePixelRatio || 1, 2) * (pace.scale || 1);
+         prompt rough picture beats a late sharp one.
+
+         Sharp ignores the pace: it is the one frame the helper asked for
+         because they need to read something, so it goes at full detail and is
+         allowed to take its time. */
+      var dpr = Math.min(window.devicePixelRatio || 1, 2);
+      var top = sharp ? dpr : dpr * (pace.scale || 1);
       var ladder = [top, Math.min(top, 1), 0.7];
+      var q = sharp ? 0.85 : (pace.quality || 0.55);
       for (var i = 0; i < ladder.length; i++) {
         var canvas = await h2c(document.documentElement, Object.assign({ scale: ladder[i] }, opts));
-        var url = canvas.toDataURL("image/jpeg", pace.quality || 0.55);
+        var url = canvas.toDataURL("image/jpeg", q);
         if (url.length <= 600000) return url;
       }
       return "";     // still too big: the wireframe alone will have to do
@@ -1129,14 +1135,17 @@
        page should cost nothing. The key is where things are and what they
        say, which moves with scrolling and typing - if that is identical, so
        is the picture. */
-    async function sendSnapshot(force) {
+    async function sendSnapshot(force, sharp) {
       if (!session || snapping) return;    // never two renders at once on a phone
       snapping = true;
       try {
         var snap = collectSnapshot();
         var key = JSON.stringify([snap.page, snap.vw, snap.vh, snap.els]);
-        if (!force && key === lastSnapKey) return;
-        try { snap.img = await captureImage(); } catch (e) { snap.img = ""; }
+        // A sharp shot is always sent: it was asked for precisely because the
+        // helper wants to look at this screen, unchanged or not.
+        if (!force && !sharp && key === lastSnapKey) return;
+        try { snap.img = await captureImage(sharp); } catch (e) { snap.img = ""; }
+        snap.sharp = !!sharp;
         if (!session) return;                // ended while we were drawing
         lastSnapKey = key;
         await DCR.api("/api/portal?action=assist", {
@@ -1152,18 +1161,33 @@
        Refresh. Twelve seconds: often enough to follow along, seldom enough
        that a phone is not rendering itself continuously. Only while visible,
        and it stops itself the moment the session ends. */
-    var snapTimer = null, snapEvery = 0;
+    /* The next picture is scheduled AFTER the last one finishes, not on a
+       fixed clock.
+
+       On a clock, an interval shorter than the phone takes to render means
+       every other tick finds the previous one still running and is dropped -
+       so asking for 600ms on a slower handset quietly delivered 1200. Waiting
+       for completion and then pausing means a fast phone runs at the pace
+       asked for and a slow one runs as fast as it honestly can, instead of
+       halving itself. */
+    var snapTimer = null, snapRunning = false;
     function keepSnapping() {
-      var every = Math.max(600, Number(pace.look) || 2500);
-      // Already running at this pace: leave it alone rather than restarting
-      // the clock on every poll, which would stop it ever firing.
-      if (snapTimer && snapEvery === every) return;
-      clearInterval(snapTimer);
-      snapEvery = every;
-      snapTimer = setInterval(function () {
-        if (!session) { clearInterval(snapTimer); snapTimer = null; snapEvery = 0; return; }
-        if (document.visibilityState === "visible") sendSnapshot();
-      }, every);
+      if (snapRunning) return;             // already looping
+      snapRunning = true;
+      (function loop() {
+        clearTimeout(snapTimer);
+        var every = Math.max(400, Number(pace.look) || 2500);
+        snapTimer = setTimeout(function () {
+          if (!session) { snapRunning = false; snapTimer = null; return; }
+          if (document.visibilityState !== "visible") return loop();
+          Promise.resolve(sendSnapshot()).then(loop, loop);
+        }, every);
+      })();
+    }
+    function stopSnapping() {
+      clearTimeout(snapTimer);
+      snapTimer = null;
+      snapRunning = false;
     }
 
     function runCommand(cmd) {
@@ -1186,7 +1210,7 @@
         clearPointer();
         showNote("");
       } else if (cmd.kind === "look") {
-        sendSnapshot(true);
+        sendSnapshot(true, cmd.sharp === true);
       } else if (cmd.kind === "click" || cmd.kind === "type" || cmd.kind === "scroll") {
         actOn(cmd);
       } else if (cmd.kind === "tap" || cmd.kind === "scrollby" ||
@@ -1425,7 +1449,7 @@
       }
       gen++;
       session = null;
-      clearInterval(snapTimer); snapTimer = null;
+      stopSnapping();
       hideBanner();
       schedule();
     }
@@ -1453,7 +1477,7 @@
         } else if (session) {
           gen++;
           session = null;
-          clearInterval(snapTimer); snapTimer = null;
+          stopSnapping();
           hideBanner();
         }
       } catch (e) {

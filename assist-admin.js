@@ -36,7 +36,7 @@
      working at. Checking faster than it can send is pure waste; slower and the
      picture is stale before it is drawn. Slightly ahead of the phone so a
      fresh one is never sitting there unclaimed. */
-  var WATCH_MS = { steady: 2500, brisk: 1200, fast: 700 };
+  var WATCH_MS = { steady: 2500, brisk: 1200, fast: 700, rapid: 400 };
   function watchAt(paceName) {
     var ms = WATCH_MS[paceName] || WATCH_MS.brisk;
     clearInterval(watch);
@@ -157,6 +157,8 @@
   }
 
   function askForLook() { send({ kind: "look" }, true); }
+  // One frame at full detail, whatever the pace is set to.
+  function askForSharp() { send({ kind: "look", sharp: true }, true); }
 
   /* Draw what is actually on their screen: real positions, real labels, real
      scroll position. Not a picture of it - a picture would mean shipping their
@@ -205,7 +207,9 @@
     var foot = document.createElement("span");
     foot.className = "lbl";
     foot.textContent = hasImg
-      ? "Their screen, " + ageText(snap.at) + " — click anything to point at it"
+      ? "Their screen, " + ageText(snap.at) +
+        (snap.sharp ? " · full detail" : "") +
+        " — click anything to point at it"
       : "Their screen — click anything to point at it";
     box.appendChild(foot);
   }
@@ -372,5 +376,9 @@
     setMode("use");
 
     el("asLook").onclick = function () { askForLook(); msg("asMsg", "", "Asked for a fresh view…"); };
+    el("asSharp").onclick = function () {
+      askForSharp();
+      msg("asMsg", "", "Asked for one picture at full detail…");
+    };
   });
 })();
