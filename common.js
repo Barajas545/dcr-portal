@@ -850,7 +850,11 @@
      tab all day should cost nothing. */
   (function () {
     var IDLE_MS = 10000;    // "is anyone helping me?"
-    var LIVE_MS = 1500;     // "what next?"
+    var LIVE_MS = 1500;     // "what next?" - replaced by the helper's pace
+    /* How hard to work while a session is live. The helper chooses it and it
+       arrives with every poll; these are only the values used before the first
+       answer comes back. */
+    var pace = { look: 2500, poll: 1000, scale: 1, quality: 0.5 };
     var timer = null, session = null, lastSeq = 0, banner = null, pointer = null, stopped = false;
     // Bumped whenever the session is dropped on purpose, so a poll that was
     // already in flight when End was pressed cannot come back and re-attach it.
@@ -1051,10 +1055,14 @@
                                     n.classList.contains("dcr-assist-point")));
         },
       };
-      var ladder = [Math.min(window.devicePixelRatio || 1, 2), 1, 0.7];
+      /* At the fast end a sharp picture would still be arriving when the next
+         one was due, so the top of the ladder is pulled down with the pace. A
+         prompt rough picture beats a late sharp one. */
+      var top = Math.min(window.devicePixelRatio || 1, 2) * (pace.scale || 1);
+      var ladder = [top, Math.min(top, 1), 0.7];
       for (var i = 0; i < ladder.length; i++) {
         var canvas = await h2c(document.documentElement, Object.assign({ scale: ladder[i] }, opts));
-        var url = canvas.toDataURL("image/jpeg", 0.55);
+        var url = canvas.toDataURL("image/jpeg", pace.quality || 0.55);
         if (url.length <= 600000) return url;
       }
       return "";     // still too big: the wireframe alone will have to do
@@ -1144,14 +1152,18 @@
        Refresh. Twelve seconds: often enough to follow along, seldom enough
        that a phone is not rendering itself continuously. Only while visible,
        and it stops itself the moment the session ends. */
-    var SNAP_EVERY_MS = 12000;
-    var snapTimer = null;
+    var snapTimer = null, snapEvery = 0;
     function keepSnapping() {
+      var every = Math.max(600, Number(pace.look) || 2500);
+      // Already running at this pace: leave it alone rather than restarting
+      // the clock on every poll, which would stop it ever firing.
+      if (snapTimer && snapEvery === every) return;
       clearInterval(snapTimer);
+      snapEvery = every;
       snapTimer = setInterval(function () {
-        if (!session) { clearInterval(snapTimer); snapTimer = null; return; }
+        if (!session) { clearInterval(snapTimer); snapTimer = null; snapEvery = 0; return; }
         if (document.visibilityState === "visible") sendSnapshot();
-      }, SNAP_EVERY_MS);
+      }, every);
     }
 
     function runCommand(cmd) {
@@ -1426,13 +1438,17 @@
                               encodeURIComponent(pageName()));
         if (g !== gen) return schedule();    // answered a poll from before End: ignore it
         if (d && d.session) {
+          if (d.pace && typeof d.pace === "object") pace = d.pace;
           if (!session) {
             session = d.session; lastSeq = 0; showBanner(d.session.operator);
             lastSnapKey = "";
             sendSnapshot(true);   // so the helper sees the screen straight away
-            keepSnapping();
+          } else {
+            session = d.session;
           }
-          else { session = d.session; }
+          // Every poll, so changing the pace mid-session takes effect without
+          // waiting for the session to be restarted.
+          keepSnapping();
           runCommand(d.command);
         } else if (session) {
           gen++;
@@ -1453,7 +1469,7 @@
     function schedule() {
       clearTimeout(timer);
       if (stopped) return;
-      timer = setTimeout(tick, session ? LIVE_MS : IDLE_MS);
+      timer = setTimeout(tick, session ? Math.max(400, Number(pace.poll) || LIVE_MS) : IDLE_MS);
     }
 
     function start() {

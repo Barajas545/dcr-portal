@@ -32,6 +32,17 @@
 
   var session = null, watch = null, lastWhere = null, snapAt = null, lastActAt = 0;
 
+  /* How often to look for a new picture, matched to the pace the phone is
+     working at. Checking faster than it can send is pure waste; slower and the
+     picture is stale before it is drawn. Slightly ahead of the phone so a
+     fresh one is never sitting there unclaimed. */
+  var WATCH_MS = { steady: 2500, brisk: 1200, fast: 700 };
+  function watchAt(paceName) {
+    var ms = WATCH_MS[paceName] || WATCH_MS.brisk;
+    clearInterval(watch);
+    watch = setInterval(pollWatch, ms);
+  }
+
   function msg(where, kind, text) {
     var n = el(where);
     n.className = "as-msg" + (kind ? " " + kind : "");
@@ -97,9 +108,8 @@
       el("asWhoLive").textContent = name || email;
       el("asPanel").hidden = false;
       msg("asStartMsg", "ok", "Session started. The banner appears on their screen within a few seconds.");
-      clearInterval(watch);           // never two watches for one panel
       pollWatch();
-      watch = setInterval(pollWatch, 4000);
+      watchAt(el("asPace").value);
     } catch (e) {
       msg("asStartMsg", "err", e.message || "Could not start.");
     } finally {
@@ -113,6 +123,10 @@
       var d = await DCR.api("/api/portal?action=assist&op=watch&sessionId=" +
                             encodeURIComponent(session.id));
       if (!d.session) { stopWatching("They ended the session."); return; }
+      if (d.session.pace && d.session.pace !== el("asPace").value) {
+        el("asPace").value = d.session.pace;
+        watchAt(d.session.pace);
+      }
       var where = d.session.where || "";
       el("asWhere").textContent = where || "(not reported yet)";
       // Stale means their page has stopped checking in - closed tab, asleep,
@@ -338,6 +352,20 @@
     };
     el("asKeyTab").onclick = function () { send({ kind: "key", name: "Tab" }); };
     el("asKeyBack").onclick = function () { send({ kind: "key", name: "Backspace" }); };
+
+    el("asPace").onchange = async function () {
+      var v = this.value;
+      watchAt(v);                       // look at the new rate straight away
+      if (!session) return;
+      try {
+        await DCR.api("/api/portal?action=assist", {
+          method: "POST", body: { op: "pace", sessionId: session.id, pace: v },
+        });
+        askForLook();                   // do not wait a whole interval to see it
+      } catch (e) {
+        msg("asMsg", "err", e.message || "Could not change the speed.");
+      }
+    };
 
     el("asModeUse").onclick = function () { setMode("use"); };
     el("asModePoint").onclick = function () { setMode("point"); };
