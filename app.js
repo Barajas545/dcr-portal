@@ -9,6 +9,9 @@
     var ts = profile.tsScope;
     var isLeadOrMgr = ts === "*" || (ts && ts.managed && ts.managed.length);
     var flags = profile.flags || {};
+    // Accepting a submission files a bill, so it needs the same write as one.
+    var canReview = ["Admin", "Manager", "Accountant"].indexOf(profile.role) !== -1 &&
+      pp.expenses === "write";
     // salesEstimates flag; tokens issued before the flag existed fall back to role
     var canSales = "salesEstimates" in flags
       ? flags.salesEstimates === true
@@ -38,6 +41,7 @@
       { href: "vehicles.html", ic: "🚚", tt: "Vehicles", ds: "Fleet board: oil changes, services due, history.", show: !!pp.vehicleInformation },
       { href: "data.html", ic: "🗄️", tt: "Data Browser", ds: "Browse and edit any SharePoint table directly.", show: profile.role === "Admin" },
       { href: "assist.html", ic: "🤝", tt: "Guided Assist", ds: "Show someone how to use the portal on their own phone, tablet or PC.", show: profile.role === "Admin" },
+      { href: "submissions.html", ic: "📥", tt: "Sub Submissions", ds: "Invoices and change orders sent in by subcontractors.", show: canReview },
       { href: "admin.html", ic: "🔐", tt: "Admin", ds: "User accounts, roles, and permissions.", show: profile.role === "Admin" },
       { href: "backup.html", ic: "🗄️", tt: "Backup", ds: "Snapshot the whole database, and see how old the last one is.", show: profile.role === "Admin" },
     ]});

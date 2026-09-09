@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DCR Portal — Subcontractor submissions</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+      [hidden] { display: none !important; }
+      .sb { max-width: 1000px; margin: auto; padding: 20px;
+        --acc:#2f80d8; --gold:#b8860b; --ok:#1f9d55; --err:#c8371f; }
+      .sb-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; flex-wrap: wrap; }
+      .sb-head h2 { margin: 0; font-size: 22px; font-weight: 700; }
+      .sb-lead { color: var(--text-muted); font-size: 13.5px; margin: 0 0 16px; }
+
+      .sb-tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+      .sb-tabs button { padding: 8px 14px; border-radius: 999px; cursor: pointer;
+        border: 1px solid var(--border); background: var(--surface); color: var(--text);
+        font-size: 13px; font-weight: 600; font-family: inherit; }
+      .sb-tabs button[aria-pressed="true"] { border-color: var(--acc); background: rgba(47,128,216,.12);
+        color: var(--acc); }
+
+      .sb-card { border: 1px solid var(--border); border-radius: 12px; padding: 16px;
+        margin-bottom: 14px; background: var(--surface); box-shadow: var(--shadow); }
+      .sb-card.pending { border-left: 4px solid var(--gold); }
+      .sb-top { display: flex; justify-content: space-between; gap: 12px; align-items: baseline;
+        flex-wrap: wrap; }
+      .sb-who { font-size: 16px; font-weight: 700; }
+      .sb-kind { font-size: 10.5px; font-weight: 800; letter-spacing: .05em; padding: 2px 7px;
+        border-radius: 5px; vertical-align: middle; margin-left: 6px; }
+      .sb-kind.inv { background: rgba(47,128,216,.15); color: var(--acc); border: 1px solid var(--acc); }
+      .sb-kind.co { background: rgba(184,134,11,.15); color: var(--gold); border: 1px solid var(--gold); }
+      .sb-amt { font-size: 19px; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+      .sb-meta { font-size: 12.5px; color: var(--text-muted); margin-top: 3px; }
+      .sb-desc { font-size: 13.5px; margin: 10px 0; white-space: pre-line;
+        border-left: 3px solid var(--border); padding-left: 10px; }
+      .sb-files { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+      .sb-files a, .sb-nodoc { font-size: 12.5px; padding: 6px 10px; border-radius: 7px;
+        border: 1px solid var(--border); text-decoration: none; color: var(--acc); }
+      .sb-nodoc { color: var(--err); border-color: var(--err); font-weight: 700; }
+      .sb-warn { font-size: 12.5px; color: var(--gold); margin: 8px 0; font-weight: 600; }
+      .sb-acts { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; align-items: center; }
+      .sb-acts select, .sb-acts input { padding: 8px 10px; border: 1px solid var(--border);
+        border-radius: 7px; background: var(--surface); color: var(--text); font-size: 13px;
+        font-family: inherit; }
+      .sb-acts select { max-width: 320px; }
+      .sb-acts input { flex: 1; min-width: 160px; }
+      .btn-accept { background: var(--ok); color: #fff; border: 0; padding: 9px 16px;
+        border-radius: 7px; font-weight: 700; font-size: 13px; cursor: pointer; font-family: inherit; }
+      .btn-reject { background: none; border: 1px solid var(--border); color: var(--text-muted);
+        padding: 9px 14px; border-radius: 7px; font-size: 13px; cursor: pointer; font-family: inherit; }
+      .btn-reject:hover { border-color: var(--err); color: var(--err); }
+      .sb-msg { font-size: 12.5px; margin-top: 8px; }
+      .sb-msg.err { color: var(--err); font-weight: 600; }
+      .sb-done { font-size: 12.5px; color: var(--text-muted); margin-top: 8px; }
+      .sb-empty { text-align: center; padding: 40px 20px; color: var(--text-muted); }
+      .sb-sig { max-height: 60px; border: 1px solid var(--border); border-radius: 6px;
+        background: #fff; padding: 2px 6px; vertical-align: middle; }
+    </style>
+  </head>
+  <body>
+    <div class="topbar">
+      <div class="brand"><img src="logo.png" alt="" class="logo" /><span id="companyName">Portal</span></div>
+      <div class="top-actions">
+        <span class="pill" id="userPill"></span>
+        <a class="btn btn-ghost btn-sm" href="dashboard.html">Dashboard</a>
+        <button class="btn btn-ghost btn-sm" id="logoutBtn">Log out</button>
+      </div>
+    </div>
+
+    <div class="sb">
+      <div class="sb-head">
+        <h2>Subcontractor submissions</h2>
+        <span class="pill" id="sbCount"></span>
+      </div>
+      <p class="sb-lead">
+        Invoices and change orders sent in by subcontractors through the public form.
+        Accepting an invoice files it as a bill awaiting approval; accepting a change order
+        records it as a commitment on the job. Accepting is not approving — releasing money
+        still needs approve authority.
+      </p>
+
+      <div class="sb-tabs">
+        <button id="sbTabPending" aria-pressed="true">Waiting</button>
+        <button id="sbTabAccepted" aria-pressed="false">Accepted</button>
+        <button id="sbTabRejected" aria-pressed="false">Rejected</button>
+        <span style="flex:1"></span>
+        <button id="sbRefresh">&#8635; Refresh</button>
+      </div>
+
+      <div id="sbList"><div class="sb-empty">Loading…</div></div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="common.js"></script>
+    <script src="submissions.js"></script>
+  </body>
+</html>
