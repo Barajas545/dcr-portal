@@ -104,17 +104,14 @@
         // The approve button refuses without the paperwork, so the queue says
         // which ones are one click away and which need a scan first.
         (b.hasDocument ? "" : '<span class="nodoc">needs the invoice attached</span>') +
-        // A money-blind reader (a lead) is told an invoice is waiting and on
-        // which job, but not what it is worth.
-        '</td><td class="amt">' + (d.pricesHidden ? "" : money(b.amount)) + "</td>" +
+        '</td><td class="amt">' + money(b.amount) + "</td>" +
         '<td class="amt"><a class="go" href="pm.html?id=' + encodeURIComponent(b.projectID) +
         '">Open &rarr;</a></td></tr>';
     }).join("");
 
     slot.innerHTML = '<div class="hm-ap"><h3>⚑ ' + sum.count +
       (sum.count === 1 ? " invoice waiting for approval" : " invoices waiting for approval") + "</h3>" +
-      '<div class="sub">' + esc(
-        (d.pricesHidden ? "across the company" : money(sum.amount) + " in total") +
+      '<div class="sub">' + esc(money(sum.amount) + " in total" +
         (sum.missingDocument ? " · " + sum.missingDocument + " still need the invoice attached" : "") +
         (d.canApprove ? "" : " · only a manager or admin can approve these")) + "</div>" +
       "<table>" + rows + "</table>" +
