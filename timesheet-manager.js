@@ -22,6 +22,9 @@ var LEAVE_TYPES = ["Holiday","Vacation","Sick","Day Off"];
    have moved since, and what colour that person is. */
 var pmConfirm = {};
 var pmMe = { email:"", name:"", role:"", canConfirm:false };
+// Set when the server could not read sign-off at all, so the column can say
+// "unknown" rather than draw the blank that means "nobody has checked".
+var pmConfirmDown = "";
 function isLeaveType(t){ return LEAVE_TYPES.indexOf(t)!==-1; }
 
 function el(id){ return document.getElementById(id); }
@@ -145,6 +148,12 @@ function pmWhen(iso){
    as "never checked" when what actually happened is "checked, then the hours
    moved" - and that second thing is the one worth someone's attention. */
 function pmConfirmCell(emp){
+  /* Sign-off could not be read at all. An empty column would read as "nobody
+     has checked this week", which is a claim we cannot make - so it says it
+     does not know instead. */
+  if(pmConfirmDown){
+    return '<span class="pm-conf-none" title="'+pmEsc(pmConfirmDown)+'">?</span>';
+  }
   var wk=pmWeekOf(emp.name);
   var marks=(wk&&wk.marks)||[];
   var mine=pmMyMark(wk);
@@ -596,7 +605,10 @@ async function loadAllData(){
       if(w.weekStart===thisWeek) pmConfirm[String(w.employeeName||"").trim().toLowerCase()]=w;
     });
     pmMe=ts.confirmMe||{ email:"", name:"", role:"", canConfirm:false };
-    var bulk=el("pmConfirmAllBtn"); if(bulk) bulk.style.display=pmMe.canConfirm?"":"none";
+    pmConfirmDown=ts.confirmUnavailable||"";
+    var bulk=el("pmConfirmAllBtn");
+    // Nothing to sign with if sign-off itself is down.
+    if(bulk) bulk.style.display=(pmMe.canConfirm && !pmConfirmDown)?"":"none";
     pmAllItems=(ts.items||[]).map(function(it){
       it.timeSheetWorkStatTime=pmIsoToDisplay(it.timeSheetWorkStatTime);
       it.timeSheetWorkEndTime=pmIsoToDisplay(it.timeSheetWorkEndTime);
