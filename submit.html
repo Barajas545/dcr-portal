@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Submit an invoice or change order — DCR Framing</title>
+    <!-- A public page. No portal session, no nav, nothing that links back into
+         the company's own screens. -->
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+      /* A display rule beats the hidden attribute, so every flex box on this
+         page would ignore [hidden] and show itself. That put an empty green
+         "job selected" panel on screen before any job was selected. */
+      [hidden] { display: none !important; }
+      .sf { max-width: 640px; margin: 0 auto; padding: 20px 16px 60px;
+        --acc:#2f80d8; --gold:#b8860b; --ok:#1f9d55; --err:#c8371f; }
+      .sf-head { text-align: center; margin-bottom: 22px; }
+      .sf-head img { height: 56px; width: auto; border-radius: 8px; }
+      .sf-head h1 { font-size: 21px; margin: 12px 0 4px; }
+      .sf-head p { margin: 0; color: var(--text-muted); font-size: 14px; }
+
+      .sf-card { background: var(--surface); border: 1px solid var(--border);
+        border-radius: 12px; padding: 18px 16px; margin-bottom: 16px; box-shadow: var(--shadow); }
+      .sf-card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em;
+        color: var(--text-muted); margin: 0 0 12px; font-weight: 700; }
+
+      .sf label { display: block; font-size: 13px; font-weight: 600; margin: 12px 0 4px; }
+      .sf label .opt { font-weight: 400; color: var(--text-muted); }
+      .sf input[type=text], .sf input[type=email], .sf input[type=tel],
+      .sf input[type=date], .sf input[type=number], .sf textarea, .sf select {
+        width: 100%; padding: 11px 12px; font-size: 16px;  /* 16px: iOS zooms below it */
+        border: 1px solid var(--border); border-radius: 8px;
+        background: var(--surface); color: var(--text); font-family: inherit; }
+      .sf textarea { min-height: 96px; resize: vertical; }
+      .sf .row { display: flex; gap: 10px; }
+      .sf .row > * { flex: 1; min-width: 0; }
+
+      .sf-kind { display: flex; gap: 10px; }
+      .sf-kind button { flex: 1; padding: 14px 10px; border-radius: 10px; cursor: pointer;
+        border: 2px solid var(--border); background: var(--surface); color: var(--text);
+        font-size: 14px; font-weight: 700; font-family: inherit; }
+      .sf-kind button .sub { display: block; font-weight: 400; font-size: 11.5px;
+        color: var(--text-muted); margin-top: 3px; }
+      .sf-kind button[aria-pressed="true"] { border-color: var(--acc); background: rgba(47,128,216,.10); }
+
+      .sf-hits { border: 1px solid var(--border); border-radius: 8px; margin-top: 6px;
+        max-height: 260px; overflow: auto; }
+      .sf-hits div { padding: 10px 12px; cursor: pointer; border-bottom: 1px solid var(--border); font-size: 14px; }
+      .sf-hits div:last-child { border-bottom: 0; }
+      .sf-hits div:hover, .sf-hits div:focus { background: rgba(47,128,216,.10); outline: none; }
+      .sf-hits b { display: block; }
+      .sf-hits span { color: var(--text-muted); font-size: 12.5px; }
+      .sf-picked { display: flex; justify-content: space-between; align-items: center; gap: 10px;
+        border: 2px solid var(--ok); border-radius: 8px; padding: 10px 12px; margin-top: 8px;
+        background: rgba(31,157,85,.08); font-size: 14px; }
+      .sf-picked button { background: none; border: 0; color: var(--acc); cursor: pointer;
+        font-size: 13px; font-family: inherit; }
+
+      .sf-file { display: flex; gap: 10px; flex-wrap: wrap; }
+      .sf-file button { flex: 1; min-width: 140px; padding: 14px 10px; border-radius: 10px;
+        border: 2px dashed var(--border); background: var(--surface); color: var(--text);
+        font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
+      .sf-file button:hover { border-color: var(--acc); color: var(--acc); }
+      .sf-doc { margin-top: 10px; font-size: 13.5px; display: flex; justify-content: space-between;
+        align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px;
+        background: rgba(31,157,85,.08); border: 1px solid var(--ok); }
+
+      /* The signature. Fixed internal resolution, scaled by CSS, so what is
+         drawn on a phone and on a laptop produce the same PNG. */
+      .sf-sig-wrap { position: relative; border: 2px solid var(--border); border-radius: 10px;
+        background: #fff; overflow: hidden; }
+      .sf-sig-wrap.signed { border-color: var(--ok); }
+      #sfSig { display: block; width: 100%; height: 170px; touch-action: none; cursor: crosshair; }
+      .sf-sig-line { position: absolute; left: 16px; right: 16px; bottom: 42px;
+        border-bottom: 1px solid #c9d2dd; pointer-events: none; }
+      .sf-sig-hint { position: absolute; left: 18px; bottom: 18px; font-size: 12px;
+        color: #8a97a8; pointer-events: none; }
+      .sf-sig-bar { display: flex; justify-content: space-between; align-items: center;
+        margin-top: 8px; font-size: 12.5px; color: var(--text-muted); }
+      .sf-sig-bar button { background: none; border: 0; color: var(--acc); cursor: pointer;
+        font-size: 13px; font-family: inherit; }
+
+      .sf-declare { display: flex; gap: 10px; align-items: flex-start; margin-top: 14px;
+        font-size: 13px; line-height: 1.5; }
+      .sf-declare input { width: 18px; height: 18px; margin-top: 2px; flex: none; }
+
+      .sf-go { width: 100%; padding: 16px; font-size: 16px; font-weight: 700; border: 0;
+        border-radius: 10px; background: var(--brand); color: #fff; cursor: pointer;
+        font-family: inherit; }
+      .sf-go:disabled { opacity: .55; cursor: default; }
+      .sf-msg { margin-top: 12px; font-size: 13.5px; white-space: pre-line; }
+      .sf-msg.err { color: var(--err); font-weight: 600; }
+      .sf-msg.busy { color: var(--text-muted); }
+
+      .sf-done { text-align: center; padding: 30px 18px; }
+      .sf-done .tick { font-size: 44px; }
+      .sf-done h2 { font-size: 20px; margin: 10px 0 6px; text-transform: none;
+        letter-spacing: 0; color: var(--text); }
+      .sf-ref { display: inline-block; font-size: 24px; font-weight: 800; letter-spacing: .06em;
+        padding: 10px 18px; border: 2px dashed var(--acc); border-radius: 10px;
+        margin: 14px 0; font-variant-numeric: tabular-nums; }
+      .sf-foot { text-align: center; font-size: 12px; color: var(--text-muted); margin-top: 18px; }
+
+      /* A field no person ever sees. Anything typed in it filled the form
+         automatically. Not display:none — some bots skip hidden inputs. */
+      .sf-hp { position: absolute; left: -5000px; width: 1px; height: 1px; overflow: hidden; }
+    </style>
+  </head>
+  <body>
+    <div class="sf">
+      <div class="sf-head">
+        <img id="sfLogo" alt="" />
+        <h1>Submit an invoice or change order</h1>
+        <p>For subcontractors working with DCR Framing. No account needed.</p>
+      </div>
+
+      <form id="sfForm" autocomplete="on" novalidate>
+        <div class="sf-card">
+          <h2>What are you sending?</h2>
+          <div class="sf-kind">
+            <button type="button" id="sfKindInv" aria-pressed="true">
+              Invoice<span class="sub">Billing for work done</span>
+            </button>
+            <button type="button" id="sfKindCo" aria-pressed="false">
+              Change order<span class="sub">Extra work, for approval</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="sf-card">
+          <h2>Which job</h2>
+          <label for="sfSearch">Search by address, job name or number</label>
+          <input type="text" id="sfSearch" placeholder="e.g. 7405 Atascadero Ave" autocomplete="off" />
+          <div class="sf-hits" id="sfHits" hidden></div>
+          <div class="sf-picked" id="sfPicked" hidden>
+            <span id="sfPickedText"></span>
+            <button type="button" id="sfClearPick">Change</button>
+          </div>
+        </div>
+
+        <div class="sf-card">
+          <h2>Your details</h2>
+          <label for="sfCompany">Company</label>
+          <input type="text" id="sfCompany" autocomplete="organization" />
+          <label for="sfContact">Your name</label>
+          <input type="text" id="sfContact" autocomplete="name" />
+          <div class="row">
+            <div>
+              <label for="sfEmail">Email</label>
+              <input type="email" id="sfEmail" autocomplete="email" inputmode="email" />
+            </div>
+            <div>
+              <label for="sfPhone">Phone <span class="opt">(optional)</span></label>
+              <input type="tel" id="sfPhone" autocomplete="tel" />
+            </div>
+          </div>
+        </div>
+
+        <div class="sf-card">
+          <h2 id="sfMoneyHead">The invoice</h2>
+          <div class="row">
+            <div>
+              <label for="sfAmount">Amount ($)</label>
+              <input type="text" id="sfAmount" inputmode="decimal" placeholder="0.00" />
+            </div>
+            <div>
+              <label for="sfNumber" id="sfNumberLabel">Your invoice # <span class="opt">(optional)</span></label>
+              <input type="text" id="sfNumber" />
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <label for="sfDate" id="sfDateLabel">Invoice date <span class="opt">(optional)</span></label>
+              <input type="date" id="sfDate" />
+            </div>
+            <div>
+              <label for="sfDue">Due date <span class="opt">(optional)</span></label>
+              <input type="date" id="sfDue" />
+            </div>
+          </div>
+          <label for="sfDesc" id="sfDescLabel">What is this for?</label>
+          <textarea id="sfDesc" placeholder="Describe the work"></textarea>
+        </div>
+
+        <div class="sf-card">
+          <h2>Attach the paperwork</h2>
+          <p style="margin:0 0 10px;font-size:13px;color:var(--text-muted)">
+            A photo, scan or PDF. Nothing can be approved for payment without it.
+          </p>
+          <div class="sf-file">
+            <button type="button" id="sfScan">Take a photo</button>
+            <button type="button" id="sfPick">Choose a file</button>
+          </div>
+          <input type="file" id="sfCam" accept="image/*" capture="environment" hidden />
+          <input type="file" id="sfFile" accept="image/jpeg,image/png,image/heic,image/heif,image/webp,application/pdf" hidden />
+          <div class="sf-doc" id="sfDoc" hidden>
+            <span id="sfDocName"></span>
+            <button type="button" id="sfDocClear" style="background:none;border:0;color:var(--acc);cursor:pointer;font-family:inherit">Remove</button>
+          </div>
+        </div>
+
+        <div class="sf-card">
+          <h2>Sign</h2>
+          <label for="sfSigName">Your full name</label>
+          <input type="text" id="sfSigName" autocomplete="name" />
+          <label>Signature</label>
+          <div class="sf-sig-wrap" id="sfSigWrap">
+            <canvas id="sfSig" width="900" height="340"></canvas>
+            <div class="sf-sig-line"></div>
+            <div class="sf-sig-hint" id="sfSigHint">Sign here with your finger or mouse</div>
+          </div>
+          <div class="sf-sig-bar">
+            <span id="sfSigState">Not signed</span>
+            <button type="button" id="sfSigClear">Clear</button>
+          </div>
+
+          <label class="sf-declare">
+            <input type="checkbox" id="sfAgree" />
+            <span>I confirm the information above is true and correct, that the work described
+              has been carried out or agreed, and that this signature is my electronic
+              signature on this document.</span>
+          </label>
+
+          <div class="sf-hp" aria-hidden="true">
+            <label for="sfWebsite">Website</label>
+            <input type="text" id="sfWebsite" tabindex="-1" autocomplete="off" />
+          </div>
+        </div>
+
+        <button class="sf-go" type="submit" id="sfGo">Submit</button>
+        <div class="sf-msg" id="sfMsg"></div>
+      </form>
+
+      <div id="sfDone" hidden></div>
+      <div class="sf-foot" id="sfFoot"></div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="submit.js"></script>
+  </body>
+</html>
