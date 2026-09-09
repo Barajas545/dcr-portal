@@ -66,6 +66,61 @@
     el("hmSections").innerHTML = html;
   }
 
+  /* Invoices waiting for approval, across every project.
+
+     Shown to anyone who can read bills — which is wider than who can approve
+     them, and deliberately so: a lead should see that an invoice is sitting on
+     their job even though only a manager or admin can sign it off. The server
+     decides both; this only draws what it sends.
+
+     It never blocks the page. The dashboard is the way in to everything else,
+     so a failure here leaves the cards alone and says nothing rather than
+     replacing the launcher with an error. */
+  var AP_MAX = 8;
+  // pm-chart.js is not loaded on this page, so the dashboard formats its own.
+  function money(v) {
+    var n = Number(v) || 0;
+    return "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  async function renderApprovals() {
+    var slot = el("hmApprovals");
+    if (!slot) return;
+    var d;
+    try {
+      d = await DCR.api("/api/portal?action=pm&approvals=1");
+    } catch (e) { return; }                       // no access, or offline
+    var q = (d && d.queue) || [];
+    if (!q.length) return;                        // nothing waiting: say nothing
+
+    var sum = d.summary || {};
+    var rows = q.slice(0, AP_MAX).map(function (b) {
+      var late = b.dueDate && d.today && String(b.dueDate).slice(0, 10) < d.today;
+      return "<tr><td>" +
+        '<span class="who">' + esc(b.vendor || "(no vendor)") + "</span>" +
+        (b.invoiceNumber ? ' <span class="meta">#' + esc(b.invoiceNumber) + "</span>" : "") +
+        '<div class="meta">' + esc(b.projectLabel || "") +
+          (b.dueDate ? " · due " + esc(String(b.dueDate).slice(0, 10)) : "") + "</div>" +
+        (late ? '<span class="late">OVERDUE</span> ' : "") +
+        // The approve button refuses without the paperwork, so the queue says
+        // which ones are one click away and which need a scan first.
+        (b.hasDocument ? "" : '<span class="nodoc">needs the invoice attached</span>') +
+        '</td><td class="amt">' + money(b.amount) + "</td>" +
+        '<td class="amt"><a class="go" href="pm.html?id=' + encodeURIComponent(b.projectID) +
+        '">Open &rarr;</a></td></tr>';
+    }).join("");
+
+    slot.innerHTML = '<div class="hm-ap"><h3>⚑ ' + sum.count +
+      (sum.count === 1 ? " invoice waiting for approval" : " invoices waiting for approval") + "</h3>" +
+      '<div class="sub">' + esc(money(sum.amount) + " in total" +
+        (sum.missingDocument ? " · " + sum.missingDocument + " still need the invoice attached" : "") +
+        (d.canApprove ? "" : " · only a manager or admin can approve these")) + "</div>" +
+      "<table>" + rows + "</table>" +
+      (q.length > AP_MAX
+        ? '<div class="more">and ' + (q.length - AP_MAX) + " more…</div>"
+        : "") +
+      "</div>";
+  }
+
   function goSearch() {
     var q = el("hmSearch").value.trim();
     if (q.length >= 2) location.href = "search.html?q=" + encodeURIComponent(q);
@@ -119,5 +174,6 @@
     el("hmGo").onclick = goSearch;
     el("hmSearch").addEventListener("keydown", function (e) { if (e.key === "Enter") goSearch(); });
     render(profile);
+    renderApprovals();
   });
 })();

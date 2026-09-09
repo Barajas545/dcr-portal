@@ -91,6 +91,27 @@
       .pm-card .n{font-size:10.5px; margin-top:1px; color:var(--text-muted);}
       /* Money waiting on somebody, and money already late, are the two things
          worth colouring in a row of otherwise neutral totals. */
+      /* The approval queue tile. Louder than .warn on purpose: this is the one
+         number on the chart somebody has to act on today, and an invoice nobody
+         approves is an invoice nobody pays. */
+      .pm-card.due{border-color:var(--err); border-width:2px; background:rgba(217,97,79,.10);}
+      .pm-card.due .k,.pm-card.due .v,.pm-card.due .n{color:var(--err);}
+      .pm-card.due .v{font-size:18px;}
+
+      /* Billed and paid against one agreed price. Billed sits behind paid, so
+         the gap between the two fills IS the money owed. */
+      .pm-paidbar{position:relative; height:6px; border-radius:999px; margin:5px 0 2px;
+        background:var(--border); overflow:hidden;}
+      .pm-paidbar .b,.pm-paidbar .p{position:absolute; left:0; top:0; bottom:0; border-radius:999px;}
+      .pm-paidbar .b{background:var(--acc); opacity:.35;}
+      .pm-paidbar .p{background:var(--ok);}
+      .pm-paidbar.over{box-shadow:0 0 0 1px var(--err);}
+      .pm-paidbar.over .b{background:var(--err); opacity:.45;}
+      .pm-paidnote.over{color:var(--err); font-weight:700;}
+      .pm-co{display:inline-block; font-size:9.5px; font-weight:800; letter-spacing:.05em;
+        padding:1px 5px; border-radius:4px; background:var(--warm); color:var(--gold);
+        border:1px solid var(--gold); vertical-align:middle;}
+
       .pm-card.warn{border-color:var(--gold);}
       .pm-card.warn .v,.pm-card.warn .n{color:var(--gold);}
       .pm-card.bad{border-color:var(--err);}

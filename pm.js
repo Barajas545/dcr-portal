@@ -501,6 +501,7 @@
       };
       el("exCancel").onclick = function () { el("exForm").style.display = "none"; el("exMsg").textContent = ""; };
       el("exSave").onclick = function () { saveCost("ex", null, function () { render(); }); };
+      wireCostKind("ex");
     }
     var root = el("pmRoot");
     root.querySelectorAll("#pmExList .expDel").forEach(function (b) {
@@ -622,7 +623,12 @@
           if (owe > 0 && b.expenseDueDate && String(b.expenseDueDate) < today) overdueAmt += owe;
         });
         cards.push(["Billed to us", billedIn]);
-        cards.push(["Awaiting approval", waitAmt, waitN ? waitN + (waitN === 1 ? " bill" : " bills") : "", waitN ? "warn" : ""]);
+        /* The one tile somebody has to act on. "warn" was too quiet for a
+           number that means an invoice is sitting unpaid and unapproved, so it
+           gets its own loud class the moment there is anything in it. */
+        cards.push(["⚑ Invoices to approve", waitAmt,
+          waitN ? waitN + (waitN === 1 ? " invoice waiting" : " invoices waiting") : "none waiting",
+          waitN ? "due" : ""]);
         cards.push(["Due to pay", dueAmt, overdueAmt > 0 ? C.money(overdueAmt) + " overdue" : "", overdueAmt > 0 ? "bad" : ""]);
       } else {
         cards.push(["Sub invoices", inv], ["Paid to subs", paid]);
@@ -823,11 +829,76 @@
      has always joined them — so anything added here shows up there too, and
      several rows per item is the normal case, not a special one.
      Leave the link off and the cost is an extra that nobody estimated. */
+  /* "Invoice received" is not a kind of cost note — it is a bill somebody has
+     to approve before we pay it. It is kept in this list because that is where
+     people look for it, but choosing it opens the invoice fields and files an
+     Expenses row that enters the approval queue, rather than a number in the
+     cost-analysis ledger that nobody can ever approve. That mismatch is why the
+     Awaiting-approval tile could sit at $0.00 with invoices already typed in. */
   var COST_KINDS = [
     { k: "materials", label: "Material / supplier" },
     { k: "contractors", label: "Subcontractor" },
-    { k: "invoice", label: "Invoice received" },
+    { k: "invoice", label: "Invoice received — needs approval" },
   ];
+
+  /* Every quote and change order on the project, as options for "what is this
+     invoice against". Sorted so the awarded ones a sub is actually working to
+     come first — that is what an incoming invoice almost always bills. */
+  /* The server's roll-up for one quote or change order, or null. */
+  function rollOf(quoteId) {
+    var c = (state.payload || {}).commitments;
+    if (!c || !c.commitments) return null;
+    var hit = null;
+    c.commitments.forEach(function (x) {
+      if (String(x.id) === String(quoteId)) hit = x.roll;
+    });
+    return hit;
+  }
+
+  /* Billed and paid against the agreed price, as one bar.
+
+     Two fills, not two bars: billed sits behind paid, so the gap between them
+     IS the money owed, without anybody doing arithmetic. Over-billing paints
+     the whole thing red rather than clipping at 100% — a sub past their quote
+     is the thing this is here to surface, and a bar that stops at full would
+     hide exactly that. */
+  function paidBarHtml(r) {
+    if (!r || r.pctPaid === null) return "";      // no agreed price: nothing to be a percentage of
+    var billed = Math.min(100, Math.max(0, r.pctBilled || 0));
+    var paid = Math.min(100, Math.max(0, r.pctPaid || 0));
+    var cls = r.overBilled ? " over" : "";
+    var note = r.overBilled
+      ? "Billed " + C.money(r.overBilledBy) + " past the agreed price"
+      : C.money(r.paid) + " paid of " + C.money(r.committed) +
+        (r.billed > r.paid ? " · " + C.money(r.billed - r.paid) + " billed and unpaid" : "");
+    return '<div class="pm-paidbar' + cls + '" title="' + esc(note) + '">' +
+      '<span class="b" style="width:' + billed.toFixed(1) + '%"></span>' +
+      '<span class="p" style="width:' + paid.toFixed(1) + '%"></span>' +
+      "</div>" +
+      '<div class="pm-sub pm-paidnote' + cls + '">' + esc(
+        Math.round(r.pctPaid) + "% paid" +
+        (r.waitingCount ? " · " + r.waitingCount + " awaiting approval" : "") +
+        (r.paidUnapproved > 0 ? " · " + C.money(r.paidUnapproved) + " paid unapproved" : "") +
+        (r.overBilled ? " · OVER by " + C.money(r.overBilledBy) : "")
+      ) + "</div>";
+  }
+
+  function commitmentOptions(selectedId) {
+    var qs = ((state.payload || {}).quotes || []).slice().sort(function (a, b) {
+      var aw = (b.quoteStatus === "Awarded") - (a.quoteStatus === "Awarded");
+      return aw || String(a.vendorCompany || "").localeCompare(String(b.vendorCompany || ""));
+    });
+    var opts = '<option value="">— not against a quote (extra / supplier) —</option>';
+    qs.forEach(function (q) {
+      var kind = q.quoteKind === "Change order" ? "CO" : "Quote";
+      var amt = Number(q.quoteAmount) > 0 ? " · " + C.money(q.quoteAmount) : "";
+      opts += '<option value="' + esc(String(q.id)) + '"' +
+        (String(q.id) === String(selectedId || "") ? " selected" : "") + ">" +
+        esc(kind + " · " + (q.vendorCompany || q.vendorName || "vendor") +
+            (q.taskGroupingName ? " · " + q.taskGroupingName : "") + amt) + "</option>";
+    });
+    return opts;
+  }
   function costTotal(e) { return (e.materials || 0) + (e.contractors || 0) + (e.invoice || 0); }
   function costKindOf(e) {
     if (e.invoice) return "Invoice";
@@ -847,6 +918,18 @@
       "</div>" +
       '<label>What was it for</label><input id="' + idp + 'Desc" placeholder="e.g. concrete pump rental">' +
       '<label>Amount</label><input id="' + idp + 'Amt" type="number" inputmode="decimal" step="0.01">' +
+      /* Shown only for an invoice. A bill without a vendor and a number is not
+         a document anyone can match to a statement a year from now, and the
+         commitment link is what turns a pile of part-invoices into "70% paid". */
+      '<div id="' + idp + 'Inv" style="display:none">' +
+        '<div style="display:flex;gap:8px">' +
+          '<div style="flex:1"><label>Who sent it</label><input id="' + idp + 'Who" placeholder="Sub or supplier"></div>' +
+          '<div style="flex:1"><label>Their invoice #</label><input id="' + idp + 'Num"></div>' +
+        "</div>" +
+        '<label>Against which quote or change order</label>' +
+        '<select id="' + idp + 'Quote">' + commitmentOptions("") + "</select>" +
+        '<label>Due date</label><input type="date" id="' + idp + 'Due">' +
+      "</div>" +
       (forItem ? "" : '<label>Which part of the job (optional)</label><input id="' + idp + 'Grp" placeholder="e.g. Concrete">') +
       '<div style="display:flex;gap:8px;margin-top:10px">' +
       '<button class="btn btn-sm" id="' + idp + 'Save">＋ Add cost</button>' +
@@ -868,6 +951,20 @@
     }).join("");
   }
 
+  /* Show the invoice fields only when the kind is an invoice, and rename the
+     button so it is obvious this one goes somewhere different. */
+  function wireCostKind(idp) {
+    var k = el(idp + "Kind"), box = el(idp + "Inv"), btn = el(idp + "Save");
+    if (!k || !box) return;
+    var sync = function () {
+      var isInv = k.value === "invoice";
+      box.style.display = isInv ? "" : "none";
+      if (btn) btn.textContent = isInv ? "＋ Add invoice for approval" : "＋ Add cost";
+    };
+    k.onchange = sync;
+    sync();
+  }
+
   // One place that writes a cost row, used by the item drawer and the
   // extras panel — the only difference is whether the item link is stamped.
   async function saveCost(idp, link, onDone) {
@@ -878,6 +975,45 @@
     if (!desc) { if (m) m.textContent = "Say what the cost was for."; return; }
     var kind = (el(idp + "Kind") || {}).value || "materials";
     var d = (el(idp + "Date") || {}).value || todayISO();
+
+    /* An invoice goes to the Expenses list, where it can be approved, paid and
+       counted against its quote. Everything else stays a cost-analysis row. */
+    if (kind === "invoice") {
+      var who = String((el(idp + "Who") || {}).value || "").trim();
+      if (!who) { if (m) m.textContent = "Say who sent the invoice."; return; }
+      var num = String((el(idp + "Num") || {}).value || "").trim();
+      var qid = String((el(idp + "Quote") || {}).value || "").trim();
+      if (m) m.textContent = "Saving…";
+      var r;
+      /* Carry the estimate item across, exactly as the cost path does.
+
+         Without it the bill lands with no taskItemID and no grouping, so
+         pm-chart.js cannot match it to a lane and drops it into unlinkedBills:
+         the invoice is filed correctly and simply never appears on the item it
+         was entered from. Somebody watching the drawer not change enters it a
+         second time, and now two invoices are queued for approval. */
+      var bf = {
+        title: who + (num ? " " + num : ""),
+        expenseVendorCompany: who, expenseKind: "Subcontractor",
+        expenseInvoiceNumber: num, expenseAmount: amt,
+        expenseInvoiceDate: d, expenseDueDate: (el(idp + "Due") || {}).value || "",
+        expenseDescription: desc,
+        quoteID: qid ? Number(qid) : "",
+      };
+      if (link && link.rowId) bf.taskItemID = Number(link.rowId);
+      var grpName = (link && link.grouping) || String((el(idp + "Grp") || {}).value || "").trim();
+      if (grpName) bf.taskGroupingName = grpName;
+      if (link && link.estimateName) bf.taskEstimateName = link.estimateName;
+      try {
+        r = await mnPost("bilAdd", { projectId: PID, fields: bf });
+      } catch (e) { if (m) m.textContent = e.message || "Could not save that invoice."; return; }
+      await load();
+      if (onDone) onDone();
+      // Straight on to the paperwork: it cannot be approved without it.
+      if (r && r.id) mnAttach(String(r.id));
+      return;
+    }
+
     var fields = { description: desc, expenseDate: new Date(d + "T12:00:00Z").toISOString() };
     fields[kind] = amt;
     if (link && link.rowId) fields.expenseOriginalEstimateNumber = String(link.rowId);
@@ -1069,6 +1205,15 @@
         costRows.push(e);
       }
     });
+    /* Invoices filed against this item are BILLS, on a different list from the
+       cost notes above. They have to appear here too: an invoice entered from
+       this drawer that leaves no mark on it reads as a failed save, and the
+       natural response is to enter it again. */
+    var itemBills = (p.bills || []).filter(function (b) {
+      if (b.taskItemID && l.rowIds.indexOf(String(b.taskItemID)) !== -1) return true;
+      return !b.taskItemID && b.taskGroupingName && b.taskGroupingName === l.groupingName;
+    });
+    itemBills.forEach(function (b) { costs += Number(b.expenseAmount) || 0; });
     var itemTasks = tasksForLane(l);
 
     var lbn = l.laborNames || [], mtn = l.materialNames || [];
@@ -1160,6 +1305,8 @@
         : "";
       var invStrip = money3;
       return '<tr><td><b>' + esc(q.vendorCompany || q.vendorName || "(vendor)") + "</b>" +
+        (q.quoteKind === "Change order"
+          ? ' <span class="pm-co" title="A change order — extra work at an agreed price, tracked separately from the original quote">CHANGE ORDER</span>' : "") +
         (q.vendorTrade ? ' <span class="pm-sub">' + esc(q.vendorTrade) + "</span>" : "") +
         (q._ambiguous ? ' <span class="pm-sub" title="Matched by grouping name only">≈</span>' : "") +
         '<div class="pm-sub">' + esc([q.quoteRequestDate ? "req " + q.quoteRequestDate : "",
@@ -1168,6 +1315,7 @@
             : "",
           q.quoteReceivedDate ? "rec " + q.quoteReceivedDate : ""].filter(Boolean).join(" · ")) + "</div>" +
         (q.documentUrl && /^https:\/\//i.test(q.documentUrl) ? '<a href="' + esc(q.documentUrl) + '" target="_blank" rel="noopener noreferrer">📎 quote doc</a>' : "") +
+        (hidden ? "" : paidBarHtml(rollOf(q.id))) +
         menu + invStrip + "</td>" +
         '<td style="text-align:right;white-space:nowrap">' + amt +
         '<div><span class="pm-st ' + esc(stOdd ? "Requested" : stRaw) + '"' +
@@ -1184,6 +1332,10 @@
         '<div style="flex:1"><label>Trade</label><input id="qtTrade" value="' + esc(seed.trade) + '"></div></div>' +
         '<div style="display:flex;gap:8px"><div style="flex:1"><label>Email</label><input id="qtEmail" type="email" value="' + esc(seed.email) + '"></div>' +
         '<div style="flex:1"><label>Phone</label><input id="qtPhone" value="' + esc(seed.phone) + '"></div></div>' +
+        '<label>Kind</label><select id="qtKind">' +
+          '<option value="Quote">Quote — their price for the work</option>' +
+          '<option value="Change order">Change order — extra work at an agreed price</option>' +
+        "</select>" +
         (hidden ? "" : '<label>Quoted amount (if already known)</label><input id="qtAmt" type="number" inputmode="decimal">') +
         '<label>Notes</label><textarea id="qtNotes" rows="2"></textarea>' +
         '<label>Quote document URL (optional)</label><input id="qtDoc" placeholder="https://…">' +
@@ -1242,14 +1394,29 @@
 
       // Costs and invoices against this item — as many as it takes.
       section("costs", "Invoices, payments & expenses",
-        (costRows.length ? costRows.length + (hidden ? "" : " · " + C.money(costs)) : ""),
+        (costRows.length + itemBills.length
+          ? (costRows.length + itemBills.length) + (hidden ? "" : " · " + C.money(costs)) : ""),
+        /* Invoices come first: they are the ones somebody has to act on, and an
+           invoice entered from this drawer that left no mark on it would read
+           as a failed save — which is how the same invoice gets entered twice. */
+        (hidden ? "" : itemBills.map(function (b) {
+          var waiting = !String(b.approvedDate || "").trim();
+          return '<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;' +
+            'font-size:12px;padding:4px 0;border-bottom:1px solid var(--border)">' +
+            "<span>" + esc(String(b.expenseInvoiceDate || "").slice(0, 10)) + " · " +
+            esc(b.expenseVendorCompany || b.expenseVendorName || "invoice") +
+            (b.expenseInvoiceNumber ? " #" + esc(b.expenseInvoiceNumber) : "") +
+            ' <span class="pm-sub">' + (waiting ? "invoice · awaiting approval" : "invoice · approved") +
+            "</span></span><span style='white-space:nowrap'><b>" +
+            C.money(b.expenseAmount) + "</b></span></div>";
+        }).join("")) +
         '<div id="pmCostList">' + costRowsHtml(costRows, can.estimate, hidden) + "</div>" +
         (can.estimate
           ? '<div style="margin-top:6px"><button class="btn btn-ghost btn-sm" id="icAdd">＋ Add a cost or invoice</button></div>' +
             costFormHtml("ic", true)
           : "") +
         (costRows.length ? '<a class="pm-sub" href="project.html?id=' + esc(PID) + '&tab=expenses">Open the Expenses tab →</a>' : ""),
-        costRows.length > 0) +
+        costRows.length + itemBills.length > 0) +
 
       // Tasks raised against this item.
       section("tasks", "Tasks", itemTasks.length || "",
@@ -1514,6 +1681,8 @@
         documentUrl: (el("qtDoc") || {}).value || "",
       };
       if (status) f.quoteStatus = status;
+      var kEl = el("qtKind");
+      if (kEl && kEl.value) f.quoteKind = kEl.value;
       var amtEl = el("qtAmt");
       if (amtEl && amtEl.value !== "" && Number(amtEl.value) > 0) f.quoteAmount = Number(amtEl.value);
       return f;
@@ -1639,8 +1808,9 @@
       };
       el("icCancel").onclick = function () { el("icForm").style.display = "none"; el("icMsg").textContent = ""; };
       el("icSave").onclick = function () {
-        saveCost("ic", { rowId: l.rowIds[0], grouping: l.groupingName }, function () { renderDrawer(); });
+        saveCost("ic", { rowId: l.rowIds[0], grouping: l.groupingName, estimateName: l.estimateName }, function () { renderDrawer(); });
       };
+      wireCostKind("ic");
     }
     d.querySelectorAll(".expDel").forEach(function (b) {
       b.onclick = function () { deleteCost(b.dataset.e).then(function () { renderDrawer(); }); };

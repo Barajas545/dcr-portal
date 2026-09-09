@@ -39,6 +39,31 @@
       .hm-card .links a{font-size:11px; font-weight:600; color:var(--acc); text-decoration:none;
         padding:2px 8px; border:1px solid var(--border); border-radius:10px;}
       .hm-card .links a:hover{background:var(--tint);}
+      /* Invoices waiting for someone to approve them. Above the app cards on
+         purpose: it is the only thing on this screen that is somebody's job
+         today, and a queue you have to go looking for is a queue nobody works. */
+      /* --err and --gold are defined inside .pm-app on the chart page, not
+         globally; the global palette calls it --danger and has no gold at all.
+         Naming them here keeps the banner red where it has to be red — an
+         undefined var makes the whole declaration invalid, which would have
+         quietly dropped the border and the colour that make this thing shout. */
+      #hmApprovals{--err:var(--danger); --gold:#b8860b;}
+      .hm-ap{border:2px solid var(--err); border-radius:12px; padding:14px 16px; margin-bottom:18px;
+        background:rgba(217,97,79,.08);}
+      .hm-ap h3{margin:0 0 2px; font-size:15px; font-weight:800; color:var(--err);}
+      .hm-ap .sub{font-size:12px; color:var(--text-muted); margin-bottom:10px;}
+      .hm-ap table{width:100%; border-collapse:collapse; font-size:12.5px;}
+      .hm-ap td{padding:6px 4px; border-top:1px solid var(--border); vertical-align:top;}
+      .hm-ap tr:first-child td{border-top:0;}
+      .hm-ap .amt{text-align:right; white-space:nowrap; font-weight:700; font-variant-numeric:tabular-nums;}
+      .hm-ap .who{font-weight:700;}
+      .hm-ap .meta{color:var(--text-muted); font-size:11px;}
+      .hm-ap .late{color:var(--err); font-weight:700;}
+      .hm-ap .nodoc{color:var(--gold); font-weight:700;}
+      .hm-ap a.go{color:var(--acc); text-decoration:none; white-space:nowrap;}
+      .hm-ap a.go:hover{text-decoration:underline;}
+      .hm-ap .more{font-size:12px; color:var(--text-muted); padding-top:8px;}
+
       .hm-sec{font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.07em;
         color:var(--text-muted); margin:22px 0 10px;}
     </style>
@@ -76,6 +101,7 @@
         <div id="installSlot" style="margin-top:14px"></div>
       </div>
 
+      <div id="hmApprovals"></div>
       <div id="hmSections"></div>
     </div>
 
