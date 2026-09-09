@@ -17,6 +17,11 @@ var pmDayKeys = [];
 var PM_ORDER_KEY = "pm_employee_order_v1";
 var pmDragSrcIndex = null;
 var LEAVE_TYPES = ["Holiday","Vacation","Sick","Day Off"];
+/* Sign-off, keyed by lower-cased employee name for the week on screen.
+   Everything in here is decided by the server: who signed, whether the hours
+   have moved since, and what colour that person is. */
+var pmConfirm = {};
+var pmMe = { email:"", name:"", role:"", canConfirm:false };
 function isLeaveType(t){ return LEAVE_TYPES.indexOf(t)!==-1; }
 
 function el(id){ return document.getElementById(id); }
@@ -110,6 +115,217 @@ function pmBuildWriteFields(prefix, empName, empId, project, date, hours, work){
   return f;
 }
 
+/* ── sign-off ── */
+/* The week start as a plain local date.
+
+   pmFmtDate goes through toISOString, which is UTC: a local-midnight Saturday
+   east of Greenwich comes back as the Friday before, and the server would then
+   refuse it as "not a week start". Reading the parts off the local date keeps
+   the key the same one the grid is showing, wherever it is being read. */
+function pmLocalDate(d){
+  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+}
+function pmWeekKey(){ return pmWeekStart?pmLocalDate(pmWeekStart):""; }
+function pmWeekOf(name){ return pmConfirm[String(name||"").trim().toLowerCase()] || null; }
+function pmMyMark(wk){
+  if(!wk||!pmMe.email) return null;
+  return (wk.marks||[]).find(function(m){
+    return String(m.confirmedByEmail||"").toLowerCase()===pmMe.email.toLowerCase();
+  })||null;
+}
+function pmWhen(iso){
+  var d=new Date(iso); if(isNaN(d)) return "";
+  return d.toLocaleDateString("en-US",{month:"short",day:"numeric"})+" "+
+         d.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"});
+}
+
+/* One tick per person who has checked this week.
+
+   A stale tick is drawn differently rather than hidden. Hiding it would read
+   as "never checked" when what actually happened is "checked, then the hours
+   moved" - and that second thing is the one worth someone's attention. */
+function pmConfirmCell(emp){
+  var wk=pmWeekOf(emp.name);
+  var marks=(wk&&wk.marks)||[];
+  var mine=pmMyMark(wk);
+  /* The name is NOT interpolated into an onclick.
+
+     pmEsc + backslash-escaping is not a faithful round trip: a name containing
+     a backslash comes back through the handler with it stripped, and the
+     confirmation would then be filed against an employee who does not exist.
+     The row already carries the name in data-emp, which the DOM gives back
+     exactly as it went in, so the handler is attached after render instead. */
+  var h='<div class="pm-conf-cell" title="'+
+        (marks.length?"Who has checked this week":"Not checked yet")+'">';
+  marks.forEach(function(m){
+    h+='<span class="pm-conf-tick'+(m.stale?" stale":"")+'" style="--tick:'+pmEsc(m.color)+'"'+
+       ' title="'+pmEsc(m.confirmedBy||m.confirmedByEmail)+
+       (m.stale?" — hours changed after this check":" — checked "+pmWhen(m.confirmedAt))+'">'+
+       pmEsc(m.initials)+'</span>';
+  });
+  if(!marks.length){
+    /* No hours, nothing to vouch for. Offering "Confirm" on every blank row
+       would put eighteen calls to action on a screen where one week actually
+       needs checking, and a tick against an empty week says nothing anyway. */
+    h+= (pmMe.canConfirm && emp.total>0)
+      ? '<span class="pm-conf-add">Confirm</span>'
+      : '<span class="pm-conf-none">&mdash;</span>';
+  } else if(pmMe.canConfirm && !mine){
+    h+='<span class="pm-conf-plus" title="Add your confirmation">+</span>';
+  }
+  h+='</div>';
+  return h;
+}
+
+/* Whose week the open panel is about. Held here rather than threaded back
+   through the button markup, for the same round-trip reason as above. */
+var pmConfFor = "";
+
+function showConfirmDetail(empName){
+  pmConfFor=String(empName||"");
+  var wk=pmWeekOf(empName);
+  var marks=(wk&&wk.marks)||[];
+  var mine=pmMyMark(wk);
+  var hrs=wk?wk.hours:0;
+
+  var h='<div class="pm-detail-box" style="width:460px;"><div class="pm-detail-header">'+
+        '<h3>'+pmEsc(empName)+' &mdash; hours checked?</h3>'+
+        '<button class="pm-detail-close" onclick="closePmModal()">&times;</button></div>';
+  h+='<div class="pm-conf-week">'+el("pmWeekLabel").textContent+' &middot; <b>'+hrs+' hrs</b></div>';
+
+  if(!marks.length){
+    h+='<div class="pm-conf-empty">Nobody has confirmed this week yet.</div>';
+  } else {
+    h+='<div class="pm-conf-list">';
+    marks.forEach(function(m){
+      h+='<div class="pm-conf-row'+(m.stale?" stale":"")+'">'+
+         '<span class="pm-conf-tick'+(m.stale?" stale":"")+'" style="--tick:'+pmEsc(m.color)+'">'+pmEsc(m.initials)+'</span>'+
+         '<div class="pm-conf-who"><div><b>'+pmEsc(m.confirmedBy||m.confirmedByEmail)+'</b>'+
+         '<span class="pm-conf-role">'+pmEsc(m.confirmedByRole)+'</span></div>'+
+         '<div class="pm-conf-meta">'+
+         (m.stale
+            ? "Checked "+pmEsc(m.hoursAtConfirm)+" hrs on "+pmEsc(pmWhen(m.confirmedAt))+" &mdash; the hours have changed since"
+            : "Confirmed "+pmEsc(m.hoursAtConfirm)+" hrs on "+pmEsc(pmWhen(m.confirmedAt)))+
+         '</div></div>';
+      if(pmMe.role==="Admin" || String(m.confirmedByEmail||"").toLowerCase()===pmMe.email.toLowerCase()){
+        h+='<button class="pm-conf-undo" data-undo="'+pmEsc(String(m.id))+'" title="Withdraw this confirmation">&times;</button>';
+      }
+      h+='</div>';
+    });
+    h+='</div>';
+  }
+
+  h+='<div id="pmConfMsg" class="pm-form-msg"></div><div class="pm-form-actions">';
+  h+='<button class="pm-btn-cancel" onclick="closePmModal()">Close</button>';
+  if(pmMe.canConfirm){
+    h+= (mine && !mine.stale)
+      ? '<button class="pm-btn-cancel" id="pmConfBtn" data-undo="'+pmEsc(String(mine.id))+'">Withdraw my confirmation</button>'
+      : '<button class="pm-btn-save" id="pmConfBtn">&#10003; '+
+        (mine?"Re-confirm these hours":"Confirm these hours")+'</button>';
+  }
+  h+='</div></div>';
+  showPmModal(h);
+  document.querySelectorAll("[data-undo]").forEach(function(b){
+    b.onclick=function(){ doUnconfirm(pmConfFor, b.getAttribute("data-undo")); };
+  });
+  var main=el("pmConfBtn");
+  if(main && !main.hasAttribute("data-undo")) main.onclick=function(){ doConfirm(pmConfFor); };
+}
+
+async function pmPostConfirm(body){
+  return DCR.api("/api/portal?action=timesheets&part=confirm",{ method:"POST", body:body });
+}
+
+async function doConfirm(empName){
+  var btn=el("pmConfBtn"), msg=el("pmConfMsg");
+  if(btn){ btn.disabled=true; }
+  if(msg) pmMsg(msg,"Saving your confirmation…",1);
+  var wk=pmWeekOf(empName);
+  try{
+    /* Send the fingerprint of the hours THIS SCREEN was showing. The server
+       recomputes its own and refuses if they differ, so a confirmation can
+       only ever describe hours the confirmer actually had in front of them. */
+    await pmPostConfirm({ op:"confirm", employeeName:empName, weekStart:pmWeekKey(),
+                          seenFingerprint:(wk&&wk.fingerprint)||"" });
+    closePmModal();
+    await loadAllData();
+  }catch(e){
+    /* 409: the hours moved between this screen being drawn and the click.
+       Reloading is the whole remedy - the manager gets the real numbers and
+       decides again, rather than having signed for something never seen. */
+    if(e && e.status===409){
+      closePmModal();
+      await loadAllData();
+      DCR.alert(e.message||"These hours changed while you were looking at them.",
+                { title:"Nothing was confirmed" });
+      return;
+    }
+    if(msg) pmMsg(msg,e.message||"Could not confirm.");
+    else DCR.alert(e.message||"Could not confirm.");
+    if(btn) btn.disabled=false;
+  }
+}
+
+async function doUnconfirm(empName,confirmationId){
+  var btn=el("pmConfBtn"), msg=el("pmConfMsg");
+  if(btn){ btn.disabled=true; }
+  if(msg) pmMsg(msg,"Withdrawing…",1);
+  try{
+    await pmPostConfirm({ op:"unconfirm", employeeName:empName,
+                          weekStart:pmWeekKey(), confirmationId:confirmationId });
+    closePmModal();
+    await loadAllData();
+  }catch(e){
+    if(msg) pmMsg(msg,e.message||"Could not withdraw.");
+    else DCR.alert(e.message||"Could not withdraw.");
+    if(btn) btn.disabled=false;
+  }
+}
+
+/* Sign off every row on screen that this person has not already signed.
+
+   Payroll is done a week at a time, so confirming nineteen rows one modal at a
+   time is the difference between a feature being used and being ignored. Only
+   rows with hours are touched: a tick against a blank week says nothing. */
+async function confirmAllVisible(){
+  if(!pmMe.canConfirm) return;
+  var employees=getWeekData().filter(function(e){
+    if(!(e.total>0)) return false;
+    var mine=pmMyMark(pmWeekOf(e.name));
+    return !mine || mine.stale;      // re-confirm the ones that went stale
+  });
+  if(!employees.length){ DCR.alert("Every week on screen with hours already carries your confirmation."); return; }
+  var ok=await DCR.confirm(
+    "Confirm the hours for "+employees.length+" employee"+(employees.length===1?"":"s")+
+    " for this week?", { title:"Confirm hours", okText:"Confirm all" });
+  if(!ok) return;
+
+  /* Nineteen rows is nineteen round trips, so the button carries the count.
+     Without it the screen sits still and the natural response is to click
+     again, which is how you get a second pass over rows already signed. */
+  var btn=el("pmConfirmAllBtn"), label=btn?btn.innerHTML:"";
+  if(btn) btn.disabled=true;
+  var week=pmWeekKey(), failed=[], changed=[];
+  for(var i=0;i<employees.length;i++){
+    if(btn) btn.textContent="Confirming "+(i+1)+" of "+employees.length+"…";
+    var w=pmWeekOf(employees[i].name);
+    try{ await pmPostConfirm({ op:"confirm", employeeName:employees[i].name, weekStart:week,
+                               seenFingerprint:(w&&w.fingerprint)||"" }); }
+    catch(e){ (e&&e.status===409?changed:failed).push(employees[i].name); }
+  }
+  if(btn){ btn.innerHTML=label; btn.disabled=false; }
+  await loadAllData();
+  /* One row failing must not read as all of them succeeding - the whole point
+     of this screen is that a tick means something. A week whose hours moved
+     while the screen was open is reported apart from one that errored: the
+     first needs looking at again, the second needs trying again. */
+  if(changed.length) DCR.alert(
+    "The hours changed while this screen was open, so these were not confirmed: "+
+    changed.join(", ")+". The week has been reloaded — please check them again.",
+    { title:"Some weeks changed" });
+  if(failed.length) DCR.alert("Could not confirm: "+failed.join(", "),{ title:"Some rows were not confirmed" });
+}
+
 /* ── saved row order (per device) ── */
 function loadSavedOrder(){ try{var s=localStorage.getItem(PM_ORDER_KEY);return s?JSON.parse(s):null;}catch(e){return null;} }
 function saveOrder(names){ try{localStorage.setItem(PM_ORDER_KEY,JSON.stringify(names));}catch(e){} }
@@ -170,21 +386,46 @@ function renderTable(){
   if(!employees.length){ area.innerHTML='<div class="pm-no-data">No employees found for this week.</div>'; updateStats(employees); return; }
   var h='<table class="pm-table"><thead><tr><th>Employee</th>';
   for(var i=0;i<7;i++){ var d=new Date(pmWeekStart); d.setDate(d.getDate()+i); var cls=(i===0||i===1)?"weekend":""; h+='<th class="'+cls+'">'+pmDayNames[i]+'<br><span style="font-weight:400;font-size:10px;">'+pmFormatDateShort(d)+'</span></th>'; }
-  h+='<th class="col-total">Total</th></tr></thead><tbody>';
+  h+='<th class="col-total">Total</th><th class="col-conf">Confirmed</th></tr></thead><tbody>';
   employees.forEach(function(emp,rowIdx){
-    var safeName=pmEsc(emp.name).replace(/'/g,"\\'"); var safeId=pmEsc(emp.id).replace(/'/g,"\\'");
-    h+='<tr data-emp="'+pmEsc(emp.name)+'" data-idx="'+rowIdx+'" draggable="true" ondragstart="pmDragStart(event,'+rowIdx+')" ondragover="pmDragOver(event,'+rowIdx+')" ondragleave="pmDragLeave(event)" ondrop="pmDrop(event,'+rowIdx+')" ondragend="pmDragEnd(event)">';
+    var wk=pmWeekOf(emp.name);
+    var rowCls=wk&&wk.confirmed ? " pm-row-confirmed" : (wk&&wk.staleCount ? " pm-row-stale" : "");
+    h+='<tr class="'+rowCls.trim()+'" data-emp="'+pmEsc(emp.name)+'" data-empid="'+pmEsc(emp.id)+'" data-idx="'+rowIdx+'" draggable="true" ondragstart="pmDragStart(event,'+rowIdx+')" ondragover="pmDragOver(event,'+rowIdx+')" ondragleave="pmDragLeave(event)" ondrop="pmDrop(event,'+rowIdx+')" ondragend="pmDragEnd(event)">';
     h+='<td><div class="pm-emp-cell"><span class="pm-drag-handle" title="Drag to reorder">&#9776;</span><div class="pm-emp-name"><div class="pm-emp-avatar">'+pmInitials(emp.name)+'</div><div class="pm-emp-details"><div>'+pmEsc(emp.name)+'</div>';
     if(emp.id) h+='<div class="pm-emp-id">ID: '+pmEsc(emp.id)+'</div>';
     h+='</div></div></div></td>';
-    for(var i=0;i<7;i++){ var key=pmDayKeys[i]; var hrs=emp.days[key]||0; var wknd=(i===0||i===1); var c="pm-cell-hrs"; if(hrs>8)c+=" overtime"; else if(hrs>0&&wknd)c+=" weekend-hrs"; else if(hrs>0)c+=" has-hours"; else c+=" zero"; var content=hrs>0?hrs:'<span class="pm-missing-dot"></span>'; h+='<td><span class="'+c+'" onclick="showDayDetail(\''+safeName+'\',\''+safeId+'\',\''+key+'\')">'+content+'</span></td>'; }
+    for(var i=0;i<7;i++){ var key=pmDayKeys[i]; var hrs=emp.days[key]||0; var wknd=(i===0||i===1); var c="pm-cell-hrs"; if(hrs>8)c+=" overtime"; else if(hrs>0&&wknd)c+=" weekend-hrs"; else if(hrs>0)c+=" has-hours"; else c+=" zero"; var content=hrs>0?hrs:'<span class="pm-missing-dot"></span>'; h+='<td><span class="'+c+'" data-day="'+key+'">'+content+'</span></td>'; }
     var tc="pm-cell-total"; if(emp.total>=40)tc+=" over"; else if(emp.total>=39.5)tc+=" good"; else if(emp.total>0)tc+=" low";
-    h+='<td><span class="'+tc+'">'+emp.total+'</span></td></tr>';
+    h+='<td><span class="'+tc+'">'+emp.total+'</span></td>';
+    h+='<td>'+pmConfirmCell(emp)+'</td></tr>';
   });
   h+='</tbody>';
   var dayTotals=[],grand=0; for(var i=0;i<7;i++){ var s=0; employees.forEach(function(emp){s+=emp.days[pmDayKeys[i]]||0;}); dayTotals.push(s); grand+=s; }
-  h+='<tfoot><tr><td>All Employees</td>'; for(var i=0;i<7;i++) h+='<td>'+dayTotals[i]+'</td>'; h+='<td>'+grand+'</td></tr></tfoot></table>';
+  var okCount=employees.filter(function(e){ var w=pmWeekOf(e.name); return w&&w.confirmed; }).length;
+  var withHours=employees.filter(function(e){ return e.total>0; }).length;
+  h+='<tfoot><tr><td>All Employees</td>'; for(var i=0;i<7;i++) h+='<td>'+dayTotals[i]+'</td>';
+  h+='<td>'+grand+'</td><td>'+okCount+' / '+withHours+'</td></tr></tfoot></table>';
   area.innerHTML=h; updateStats(employees);
+  area.querySelectorAll(".pm-conf-cell").forEach(function(cell){
+    cell.onclick=function(){
+      var tr=cell.closest("tr");
+      if(tr) showConfirmDetail(tr.getAttribute("data-emp"));
+    };
+  });
+  /* The day cells too. These predate the sign-off column but sat in this same
+     loop with the same flaw: the name was HTML-escaped into an onclick and then
+     backslash-escaped for the JS string inside it, which is not a faithful
+     round trip. A name carrying a backslash left the handler unparseable, so
+     every day cell on that row was silently dead and the day detail could not
+     be opened at all. Read back off the row, the DOM cannot misquote it. */
+  area.querySelectorAll("[data-day]").forEach(function(cell){
+    cell.onclick=function(){
+      var tr=cell.closest("tr");
+      if(!tr) return;
+      showDayDetail(tr.getAttribute("data-emp"), tr.getAttribute("data-empid")||"",
+                    cell.getAttribute("data-day"));
+    };
+  });
 }
 
 /* ── drag & drop ── */
@@ -204,6 +445,14 @@ function updateStats(employees){
   c[1].innerHTML='<div class="pm-stat-value">'+active+' / '+employees.length+'</div><div class="pm-stat-label">Employees Reporting</div>';
   c[2].innerHTML='<div class="pm-stat-value">'+totalEntries+'</div><div class="pm-stat-label">Time Entries</div>';
   c[3].innerHTML='<div class="pm-stat-value">'+Object.keys(proj).length+'</div><div class="pm-stat-label">Active Projects</div>';
+  if(c[4]){
+    var withHours=employees.filter(function(e){ return e.total>0; });
+    var okCount=withHours.filter(function(e){ var w=pmWeekOf(e.name); return w&&w.confirmed; }).length;
+    var staleCount=withHours.filter(function(e){ var w=pmWeekOf(e.name); return w&&!w.confirmed&&w.staleCount; }).length;
+    c[4].className="pm-stat-card"+(staleCount?" warn":(withHours.length&&okCount===withHours.length?" success":""));
+    c[4].innerHTML='<div class="pm-stat-value">'+okCount+' / '+withHours.length+'</div>'+
+      '<div class="pm-stat-label">'+(staleCount?"Confirmed &middot; "+staleCount+" need re-check":"Hours Confirmed")+'</div>';
+  }
 }
 
 /* ── modals ── */
@@ -333,11 +582,21 @@ async function loadAllData(){
   el("pmTableArea").innerHTML='<div class="pm-no-data">Loading time sheets…</div>';
   var seq=++pmLoadSeq;
   try{
-    var results=await Promise.all([ DCR.api("/api/portal?action=timesheets"+pmWeekRangeQS()), DCR.api("/api/portal?action=roster") ]);
+    var results=await Promise.all([ DCR.api("/api/portal?action=timesheets&confirm=1"+pmWeekRangeQS()), DCR.api("/api/portal?action=roster") ]);
     if(seq!==pmLoadSeq) return;   // a newer week was asked for while this was in flight
     var ts=results[0], roster=results[1];
     pmScope=ts.scope;
     pmProjectNames=ts.projectNames||[];
+    /* Keep only the week on screen. The server may answer with neighbouring
+       weeks when a range straddles them, and a tick from last week sitting on
+       this week's row would be a lie about which hours were checked. */
+    var thisWeek=pmWeekKey();
+    pmConfirm={};
+    (ts.confirmWeeks||[]).forEach(function(w){
+      if(w.weekStart===thisWeek) pmConfirm[String(w.employeeName||"").trim().toLowerCase()]=w;
+    });
+    pmMe=ts.confirmMe||{ email:"", name:"", role:"", canConfirm:false };
+    var bulk=el("pmConfirmAllBtn"); if(bulk) bulk.style.display=pmMe.canConfirm?"":"none";
     pmAllItems=(ts.items||[]).map(function(it){
       it.timeSheetWorkStatTime=pmIsoToDisplay(it.timeSheetWorkStatTime);
       it.timeSheetWorkEndTime=pmIsoToDisplay(it.timeSheetWorkEndTime);

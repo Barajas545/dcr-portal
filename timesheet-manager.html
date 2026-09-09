@@ -17,7 +17,8 @@
       .pm-header h2 { margin: 0; font-size: 22px; font-weight: 700; color: var(--text); }
       .pm-header-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 
-      .pm-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 1.5rem; }
+      .pm-stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 1.5rem; }
+      @media (max-width: 780px) { .pm-stats { grid-template-columns: repeat(2, 1fr); } }
       .pm-stat-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; text-align: center; }
       .pm-stat-value { font-size: 28px; font-weight: 700; color: var(--acc); }
       .pm-stat-label { font-size: 12px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 2px; }
@@ -82,6 +83,51 @@
 
       .pm-no-data { text-align: center; padding: 2rem; color: var(--text-muted); font-size: 14px; }
       .pm-missing-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--border); }
+
+      /* ── sign-off ──────────────────────────────────────────────────────
+         One tick per person who has checked the week. The colour IS the
+         identity: --tick is set per tick from the server so the same person is
+         the same colour on every screen and a manager can read a row without
+         hovering anything. */
+      .col-conf { text-align: center; white-space: nowrap; }
+      .pm-conf-cell { display: flex; align-items: center; justify-content: center;
+        gap: 3px; flex-wrap: wrap; cursor: pointer; min-height: 24px; padding: 2px 4px;
+        border-radius: 6px; }
+      .pm-conf-cell:hover { background: var(--tint); }
+      .pm-conf-tick { display: inline-flex; align-items: center; justify-content: center;
+        width: 22px; height: 22px; border-radius: 50%; font-size: 9.5px; font-weight: 700;
+        letter-spacing: -0.02em; color: #fff; background: var(--tick, #2fa679);
+        border: 2px solid transparent; }
+      /* Stale reads as an outline, not a fill: checked once, but the hours have
+         moved since, so it must not carry the weight of a live tick. */
+      .pm-conf-tick.stale { background: transparent; color: var(--tick, #2fa679);
+        border-color: var(--tick, #2fa679); border-style: dashed; opacity: 0.85; }
+      .pm-conf-add { font-size: 11px; font-weight: 700; color: var(--acc);
+        border: 1px dashed var(--acc); border-radius: 999px; padding: 3px 9px; opacity: 0.75; }
+      .pm-conf-cell:hover .pm-conf-add { opacity: 1; background: var(--tint); }
+      .pm-conf-plus { display: inline-flex; align-items: center; justify-content: center;
+        width: 20px; height: 20px; border-radius: 50%; font-size: 13px; font-weight: 700;
+        color: var(--text-muted); border: 1px dashed var(--border); }
+      .pm-conf-cell:hover .pm-conf-plus { color: var(--acc); border-color: var(--acc); }
+      .pm-conf-none { color: var(--text-muted); opacity: 0.5; }
+
+      .pm-table tbody tr.pm-row-confirmed { background: rgba(47,166,121,0.07); }
+      .pm-table tbody tr.pm-row-confirmed td:first-child { box-shadow: inset 3px 0 0 var(--ok); }
+      .pm-table tbody tr.pm-row-stale td:first-child { box-shadow: inset 3px 0 0 var(--gold); }
+
+      .pm-conf-week { font-size: 13px; color: var(--text-muted); margin-bottom: 0.75rem; }
+      .pm-conf-empty { font-size: 13px; color: var(--text-muted); padding: 0.75rem 0; }
+      .pm-conf-list { display: flex; flex-direction: column; gap: 8px; }
+      .pm-conf-row { display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px;
+        border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
+      .pm-conf-row.stale { border-color: var(--gold); background: var(--warm); }
+      .pm-conf-who { flex: 1; min-width: 0; font-size: 13px; }
+      .pm-conf-role { font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+        letter-spacing: 0.04em; color: var(--text-muted); margin-left: 7px; }
+      .pm-conf-meta { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; }
+      .pm-conf-undo { background: none; border: none; color: var(--text-muted); cursor: pointer;
+        font-size: 17px; line-height: 1; padding: 0 2px; }
+      .pm-conf-undo:hover { color: var(--err); }
 
       .pm-legend { display: flex; gap: 16px; align-items: center; margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--border); flex-wrap: wrap; }
       .pm-legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-muted); }
@@ -168,6 +214,9 @@
           <h2>Team Time Sheets</h2>
           <div class="pm-header-actions">
             <button class="pm-btn-add" onclick="openAddForm()" style="padding:8px 16px;font-size:13px;">&#43; Add Entry</button>
+            <button class="pm-btn-save" id="pmConfirmAllBtn" onclick="confirmAllVisible()"
+                    style="display:none;padding:8px 16px;font-size:13px;"
+                    title="Confirm every employee shown who has hours this week">&#10003; Confirm week</button>
             <button class="pm-btn-export" onclick="exportCSV()">&#8615; Export CSV</button>
             <a class="pm-btn-reset-order" href="report-timecard.html" style="text-decoration:none">🖨 Time card</a>
             <button class="pm-btn-reset-order" onclick="resetOrder()">&#8634; Reset order</button>
@@ -180,6 +229,7 @@
           <div class="pm-stat-card"><div class="pm-stat-value">-</div><div class="pm-stat-label">Employees</div></div>
           <div class="pm-stat-card"><div class="pm-stat-value">-</div><div class="pm-stat-label">Entries</div></div>
           <div class="pm-stat-card"><div class="pm-stat-value">-</div><div class="pm-stat-label">Projects</div></div>
+          <div class="pm-stat-card"><div class="pm-stat-value">-</div><div class="pm-stat-label">Hours Confirmed</div></div>
         </div>
         <div class="pm-week-nav">
           <button class="pm-week-btn" onclick="changeWeek(-1)">&#9664; Prev week</button>
@@ -204,6 +254,8 @@
           <div class="pm-legend-item"><span style="color:var(--ok);font-weight:700;">40</span> = Full week</div>
           <div class="pm-legend-item"><span style="color:var(--err);font-weight:700;">24</span> = Under 40</div>
           <div class="pm-legend-item"><span style="color:var(--gold);font-weight:700;">48</span> = Over 40</div>
+          <div class="pm-legend-item"><span class="pm-conf-tick" style="--tick:var(--ok);width:18px;height:18px;font-size:8px;">CB</span> Confirmed by that person</div>
+          <div class="pm-legend-item"><span class="pm-conf-tick stale" style="--tick:var(--gold);width:18px;height:18px;font-size:8px;">CB</span> Hours changed since &mdash; needs re-checking</div>
         </div>
       </div>
       <div id="pmModalContainer"></div>
