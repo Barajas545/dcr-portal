@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DCR Portal — Your settings</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+      [hidden] { display: none !important; }
+      .st { max-width: 720px; margin: auto; padding: 20px;
+        --acc:#2f80d8; --gold:#b8860b; --ok:#1f9d55; --err:#c8371f; }
+      .st-head h2 { margin: 0 0 4px; font-size: 22px; font-weight: 700; }
+      .st-lead { color: var(--text-muted); font-size: 13.5px; margin: 0 0 20px; }
+
+      .st-sec { border: 1px solid var(--border); border-radius: 14px; background: var(--surface);
+        padding: 18px; margin-bottom: 16px; box-shadow: var(--shadow); }
+      .st-sec h3 { margin: 0 0 3px; font-size: 16px; font-weight: 700; }
+      .st-sec .why { font-size: 12.5px; color: var(--text-muted); margin: 0 0 14px; }
+
+      .st-f { margin-bottom: 13px; }
+      .st-f label { display: block; font-size: 11px; font-weight: 700; letter-spacing: .04em;
+        text-transform: uppercase; color: var(--text-muted); margin-bottom: 5px; }
+      .st-f input, .st-f textarea { width: 100%; padding: 10px 11px; border: 1px solid var(--border);
+        border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; font-size: 14px; }
+      .st-f textarea { min-height: 62px; resize: vertical; }
+      .st-f input:disabled { opacity: .65; cursor: not-allowed; }
+      .st-f .sub { font-size: 11.5px; color: var(--text-muted); margin-top: 5px; }
+      .st-row { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
+      @media (max-width: 520px) { .st-row { grid-template-columns: 1fr; } }
+
+      .st-theme { display: flex; gap: 8px; flex-wrap: wrap; }
+      .st-theme button { flex: 1; min-width: 96px; padding: 11px 8px; border-radius: 9px; cursor: pointer;
+        border: 1px solid var(--border); background: var(--bg); color: var(--text);
+        font: inherit; font-size: 13px; font-weight: 600; }
+      .st-theme button[aria-pressed="true"] { border-color: var(--acc); color: var(--acc);
+        background: rgba(47,128,216,.12); }
+      .st-theme .sw { display: block; height: 26px; border-radius: 6px; margin-bottom: 7px;
+        border: 1px solid rgba(127,127,127,.35); }
+
+      .st-acts { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
+      .st-save { background: var(--acc); color: #fff; border: 0; padding: 10px 18px; border-radius: 8px;
+        font: inherit; font-weight: 700; font-size: 13.5px; cursor: pointer; }
+      .st-save:disabled { opacity: .5; cursor: not-allowed; }
+      .st-msg { font-size: 12.5px; }
+      .st-msg.ok { color: var(--ok); font-weight: 600; }
+      .st-msg.err { color: var(--err); font-weight: 600; }
+      .st-note { font-size: 12.5px; color: var(--gold); font-weight: 600; margin-top: 8px; }
+      .st-unlinked { font-size: 12.5px; color: var(--text-muted); border-left: 3px solid var(--gold);
+        padding-left: 10px; margin-bottom: 14px; }
+    </style>
+    <script>/* theme before first paint; see DCR.theme in common.js */try{var t=localStorage.getItem("dcr_theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t;}catch(e){}</script>
+  </head>
+  <body>
+    <div class="topbar">
+      <div class="brand"><img src="logo.png" alt="" class="brand-logo" /><span id="companyName">Portal</span></div>
+      <div class="top-actions">
+        <span class="pill" id="userPill"></span>
+        <a class="btn btn-ghost btn-sm" href="dashboard.html">Dashboard</a>
+        <button class="btn btn-ghost btn-sm" id="logoutBtn">Log out</button>
+      </div>
+    </div>
+
+    <div class="st">
+      <div class="st-head">
+        <h2>Your settings</h2>
+        <p class="st-lead">Your details, how the portal looks on this device, and your password.</p>
+      </div>
+
+      <!-- ── your details ────────────────────────────────────────────────── -->
+      <div class="st-sec">
+        <h3>Your details</h3>
+        <p class="why">Your name is what appears beside anything you approve, confirm or log.</p>
+
+        <div class="st-unlinked" id="stUnlinked" hidden>
+          Your account is not linked to an employee record, so there is nowhere to keep a phone
+          number and address. An admin can link it in User Management.
+        </div>
+
+        <div class="st-f">
+          <label for="stName">Your name</label>
+          <input id="stName" maxlength="80" autocomplete="name" />
+        </div>
+
+        <div class="st-f">
+          <label for="stEmail">Sign-in email</label>
+          <input id="stEmail" disabled />
+          <div class="sub">This is how you sign in. Ask an admin to change it.</div>
+        </div>
+
+        <div class="st-row">
+          <div class="st-f">
+            <label for="stPhone">Phone</label>
+            <input id="stPhone" maxlength="40" autocomplete="tel" inputmode="tel" />
+          </div>
+          <div class="st-f">
+            <label for="stRole">Role</label>
+            <input id="stRole" disabled />
+          </div>
+        </div>
+
+        <div class="st-f">
+          <label for="stAddress">Address</label>
+          <textarea id="stAddress" maxlength="200" autocomplete="street-address"></textarea>
+        </div>
+
+        <div class="st-acts">
+          <button class="st-save" id="stSave">Save my details</button>
+          <span class="st-msg" id="stMsg"></span>
+        </div>
+        <div class="st-note" id="stNameNote" hidden></div>
+      </div>
+
+      <!-- ── appearance ──────────────────────────────────────────────────── -->
+      <div class="st-sec">
+        <h3>Appearance</h3>
+        <p class="why">Applies to this device only, and takes effect straight away.</p>
+        <div class="st-theme" id="stTheme">
+          <button data-theme="system" aria-pressed="false">
+            <span class="sw" style="background:linear-gradient(90deg,#f4f5f7 50%,#15181d 50%)"></span>
+            Match device
+          </button>
+          <button data-theme="light" aria-pressed="false">
+            <span class="sw" style="background:#f4f5f7"></span>
+            Light
+          </button>
+          <button data-theme="dark" aria-pressed="false">
+            <span class="sw" style="background:#15181d"></span>
+            Dark
+          </button>
+        </div>
+      </div>
+
+      <!-- ── password ────────────────────────────────────────────────────── -->
+      <div class="st-sec">
+        <h3>Password</h3>
+        <p class="why">
+          You will need your current one. Anyone signed in on another device stays signed in
+          until that session expires — except a device where you ticked "keep me signed in",
+          which is signed out as soon as the password changes.
+        </p>
+        <div class="st-f">
+          <label for="stCur">Current password</label>
+          <input id="stCur" type="password" autocomplete="current-password" />
+        </div>
+        <div class="st-row">
+          <div class="st-f">
+            <label for="stNew">New password</label>
+            <input id="stNew" type="password" autocomplete="new-password" placeholder="at least 8 characters" />
+          </div>
+          <div class="st-f">
+            <label for="stNew2">New password again</label>
+            <input id="stNew2" type="password" autocomplete="new-password" />
+          </div>
+        </div>
+        <div class="st-acts">
+          <button class="st-save" id="stPwSave">Change my password</button>
+          <span class="st-msg" id="stPwMsg"></span>
+        </div>
+      </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="common.js"></script>
+    <script src="settings.js"></script>
+  </body>
+</html>

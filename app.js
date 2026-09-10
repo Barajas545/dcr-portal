@@ -47,6 +47,11 @@
       { href: "backup.html", ic: "🗄️", tt: "Backup", ds: "Snapshot the whole database, and see how old the last one is.", show: profile.role === "Admin" },
     ]});
 
+    sections.push({ label: "You", cards: [
+      { href: "settings.html", ic: "⚙️", tt: "Settings", show: true,
+        ds: "Your name and contact details, how the portal looks, and your password." },
+    ]});
+
     return sections;
   }
 
@@ -59,13 +64,23 @@
         vis.map(function (c) {
           var links = c.links
             ? '<div class="links">' + c.links.map(function (l) {
-                return '<a href="' + l[1] + '" onclick="event.stopPropagation()">' + esc(l[0]) + "</a>";
+                return '<a href="' + l[1] + '">' + esc(l[0]) + "</a>";
               }).join("") + "</div>"
             : "";
-          return '<a class="hm-card" href="' + c.href + '">' +
-            '<span class="ic">' + c.ic + '</span>' +
-            '<span class="tt">' + esc(c.tt) + '</span>' +
-            '<span class="ds">' + esc(c.ds) + '</span>' + links + "</a>";
+          /* The card is a DIV wrapping an anchor, not an anchor itself.
+
+             It used to be <a class="hm-card"> with the view links as <a> inside
+             it. Nesting anchors is invalid HTML — the parser closes the outer
+             one as soon as it meets the inner one — so Project Board rendered
+             as a card followed by a second, title-less tile containing three
+             loose links. Both the card and its links are still real anchors, so
+             middle-click and keyboard still open them. */
+          return '<div class="hm-card">' +
+            '<a class="hm-card-go" href="' + c.href + '">' +
+              '<span class="ic">' + c.ic + '</span>' +
+              '<span class="tt">' + esc(c.tt) + '</span>' +
+              '<span class="ds">' + esc(c.ds) + '</span>' +
+            "</a>" + links + "</div>";
         }).join("") + "</div>";
     });
     el("hmSections").innerHTML = html;
@@ -182,7 +197,9 @@
     }
     el("companyName").textContent = DCR.company + " Portal";
     el("userPill").textContent = (profile.displayName || profile.email) + " · " + profile.role;
-    el("pwBtn").onclick = changePassword;
+    /* "Change password" moved into Settings, where the rest of what is yours
+       to change now lives. The function stays: it is a good modal and other
+       screens may want it. */
     el("logoutBtn").onclick = function () { DCR.logout(); };
     var name = (profile.displayName || profile.email || "").split(" ")[0].split("@")[0];
     el("hmGreeting").textContent = "Welcome, " + name;

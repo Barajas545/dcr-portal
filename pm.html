@@ -13,13 +13,21 @@
         --gc0:#2a78d6; --gc1:#eb6834; --gc2:#1baf7a; --gc3:#eda100;
         --gc4:#e87ba4; --gc5:#008300; --gc6:#4a3aa7; --gc7:#e34948;
       }
-      @media (prefers-color-scheme: dark){
-        :root{
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) {
           /* same hues stepped for the dark surface */
           --gc0:#3987e5; --gc1:#d95926; --gc2:#199e70; --gc3:#c98500;
           --gc4:#d55181; --gc5:#008300; --gc6:#9085e9; --gc7:#e66767;
         }
       }
+
+      /* The same, chosen explicitly in Settings rather than read
+         from the operating system. */
+      :root[data-theme="dark"] {
+          /* same hues stepped for the dark surface */
+          --gc0:#3987e5; --gc1:#d95926; --gc2:#199e70; --gc3:#c98500;
+          --gc4:#d55181; --gc5:#008300; --gc6:#9085e9; --gc7:#e66767;
+        }
       /* full-bleed: the chart is the point of this page — use the whole monitor.
          Control rows stay readable: everything except the chart + tasks panel is
          capped and centered so a 4K screen doesn't strand the toolbar. */
@@ -246,6 +254,7 @@
   <link rel="icon" type="image/png" href="icon-192.png" />
   <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
   <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#171d25" />
+    <script>/* theme before first paint; see DCR.theme in common.js */try{var t=localStorage.getItem("dcr_theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t;}catch(e){}</script>
   </head>
   <body>
     <div class="topbar">

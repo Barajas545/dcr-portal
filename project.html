@@ -15,7 +15,13 @@
         /* level-header orange: darker in light mode for contrast on white */
         --lvl-acc:#c2410c;
       }
-      @media (prefers-color-scheme: dark){ :root{ --lvl-acc:#ef8f1f; } }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) { --lvl-acc:#ef8f1f; }
+      }
+
+      /* The same, chosen explicitly in Settings rather than read
+         from the operating system. */
+      :root[data-theme="dark"] { --lvl-acc:#ef8f1f; }
       .pj{
         --acc:#2f80d8; --acc-2:#1f6fc8; --tint:rgba(47,128,216,0.12); --tint-2:rgba(47,128,216,0.22);
         --gold:#d6a13a; --ok:#2fa679; --err:#d9614f;
@@ -574,6 +580,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="DCR Portal" />
+    <script>/* theme before first paint; see DCR.theme in common.js */try{var t=localStorage.getItem("dcr_theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t;}catch(e){}</script>
   </head>
   <body>
     <div class="topbar">

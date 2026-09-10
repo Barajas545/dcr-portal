@@ -10,7 +10,13 @@
       .bt-app { max-width: 800px; margin: auto; font-family: Arial, sans-serif; padding: 20px;
         --acc:#2f80d8; --acc-2:#1f6fc8; --tint:rgba(47,128,216,0.12); --tint-2:rgba(47,128,216,0.22);
         --badge-text:#1f6fc8; --gold:#d6a13a; --warm:rgba(214,161,58,0.16); --ok:#2fa679; --err:#d9614f; }
-      @media (prefers-color-scheme: dark) { .bt-app { --badge-text:#9cc9f5; } }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) .bt-app { --badge-text:#9cc9f5; }
+      }
+
+      /* The same, chosen explicitly in Settings rather than read
+         from the operating system. */
+      :root[data-theme="dark"] .bt-app { --badge-text:#9cc9f5; }
       :root[data-theme="dark"] .bt-app { --badge-text:#9cc9f5; }
       .bt-section { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.5rem; margin-bottom: 1.5rem; box-shadow: var(--shadow); }
       .bt-header { display: flex; align-items: center; gap: 10px; margin-bottom: 1.5rem; }
@@ -108,6 +114,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="DCR Portal" />
+    <script>/* theme before first paint; see DCR.theme in common.js */try{var t=localStorage.getItem("dcr_theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t;}catch(e){}</script>
   </head>
   <body>
     <div class="topbar">

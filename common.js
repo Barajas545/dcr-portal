@@ -342,6 +342,45 @@
     }).then(function (r) { return r ? r.v : null; });
   };
   // confirm() → true/false
+  /* ── theme ───────────────────────────────────────────────────────────────
+
+     styles.css has always known how to be dark: it follows prefers-color-scheme
+     and honours an explicit data-theme on :root. Nothing ever set that
+     attribute, so "match my device" was the only option there was. This is the
+     switch.
+
+     Per device, not per account — the same person wants dark on the phone in a
+     truck at 6am and light on the office monitor, and a preference that follows
+     the login would fight them on one of the two.
+
+     The value is also applied by a tiny inline script in every page's <head>,
+     because applying it from here (bottom of <body>) would paint the wrong
+     theme first and then correct it. */
+  var THEME_KEY = "dcr_theme";
+  DCR.theme = {
+    get: function () {
+      try {
+        var v = localStorage.getItem(THEME_KEY);
+        return v === "light" || v === "dark" ? v : "system";
+      } catch (e) { return "system"; }
+    },
+    set: function (v) {
+      var want = v === "light" || v === "dark" ? v : "system";
+      try {
+        if (want === "system") localStorage.removeItem(THEME_KEY);
+        else localStorage.setItem(THEME_KEY, want);
+      } catch (e) { /* a private window still gets the change for this page */ }
+      DCR.theme.apply();
+      return want;
+    },
+    apply: function () {
+      var want = DCR.theme.get();
+      if (want === "system") delete document.documentElement.dataset.theme;
+      else document.documentElement.dataset.theme = want;
+    },
+  };
+  DCR.theme.apply();
+
   DCR.confirm = function (message, opts) {
     opts = opts || {};
     return DCR.modal({

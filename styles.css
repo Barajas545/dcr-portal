@@ -219,17 +219,32 @@ tbody tr:hover { background: var(--surface-2); }
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #0f141a; --surface: #171d25; --surface-2: #1e252e;
     --border: #2a333d; --text: #e6ebf1; --text-muted: #93a1b1;
     --shadow: 0 1px 3px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
   }
-  .msg.error { background: #3a1712; color: #f6bcae; }
-  .msg.ok { background: #10321f; color: #a7e2c0; }
+  :root:not([data-theme="light"]) .msg.error { background: #3a1712; color: #f6bcae; }
+  :root:not([data-theme="light"]) .msg.ok { background: #10321f; color: #a7e2c0; }
   /* Invert the black artwork to white on the dark bar, and pull it back from
      pure white so it sits with the text rather than shouting over it. */
-  .brand-logo, .topbar .logo { filter: invert(1) brightness(.92); }
+  :root:not([data-theme="light"]) .brand-logo,
+  :root:not([data-theme="light"]) .topbar .logo { filter: invert(1) brightness(.92); }
 }
+
+/* The same, chosen explicitly in Settings rather than read
+   from the operating system. */
+:root[data-theme="dark"] {
+    --bg: #0f141a; --surface: #171d25; --surface-2: #1e252e;
+    --border: #2a333d; --text: #e6ebf1; --text-muted: #93a1b1;
+    --shadow: 0 1px 3px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+  }
+:root[data-theme="dark"] .msg.error { background: #3a1712; color: #f6bcae; }
+:root[data-theme="dark"] .msg.ok { background: #10321f; color: #a7e2c0; }
+/* Invert the black artwork to white on the dark bar, and pull it back from
+     pure white so it sits with the text rather than shouting over it. */
+  :root[data-theme="dark"] .brand-logo,
+  :root[data-theme="dark"] .topbar .logo { filter: invert(1) brightness(.92); }
 
 /* An explicitly chosen dark theme, which prefers-color-scheme does not see.
    Without this the mark stays black artwork on a dark bar — which is exactly
@@ -250,9 +265,14 @@ tbody tr:hover { background: var(--surface-2); }
   border: 1px solid currentColor; border-radius: 8px; background: transparent; color: inherit;
 }
 @media (prefers-color-scheme: dark) {
-  .dcr-live.saved { color: #6fd3a4; }
-  .dcr-live.error, .dcr-live.invalid { color: #f0937f; }
+  :root:not([data-theme="light"]) .dcr-live.saved { color: #6fd3a4; }
+  :root:not([data-theme="light"]) .dcr-live.error, :root:not([data-theme="light"]) .dcr-live.invalid { color: #f0937f; }
 }
+
+/* The same, chosen explicitly in Settings rather than read
+   from the operating system. */
+:root[data-theme="dark"] .dcr-live.saved { color: #6fd3a4; }
+:root[data-theme="dark"] .dcr-live.error, :root[data-theme="dark"] .dcr-live.invalid { color: #f0937f; }
 
 /* ── app dialogs (DCR.modal) ──────────────────────────────────────────────
    Centred in the app and branded, instead of the browser's own prompt box
@@ -285,8 +305,12 @@ tbody tr:hover { background: var(--surface-2); }
 .dcr-mo-ft { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
 .dcr-mo-danger { background: #c44b3b; border-color: #c44b3b; color: #fff; }
 @media (prefers-color-scheme: dark) {
-  .dcr-mo-hd img { filter: invert(1); }
+  :root:not([data-theme="light"]) .dcr-mo-hd img { filter: invert(1); }
 }
+
+/* The same, chosen explicitly in Settings rather than read
+   from the operating system. */
+:root[data-theme="dark"] .dcr-mo-hd img { filter: invert(1); }
 
 
 /* ── guided assist ────────────────────────────────────────────────────────
