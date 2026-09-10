@@ -125,6 +125,11 @@
         border-radius: 8px; padding: 10px 12px; margin: 8px 0; max-height: 190px; overflow: auto;
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace; line-height: 1.5; }
       .ck-none-note { font-size: 12.5px; color: var(--text-muted); }
+      .ac-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+      .ac-tabs a { padding: 9px 16px; font-size: 13.5px; font-weight: 600; text-decoration: none;
+        color: var(--text-muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+      .ac-tabs a:hover { color: var(--text); }
+      .ac-tabs a[aria-current="page"] { color: var(--acc); border-bottom-color: var(--acc); }
     </style>
     <script>/* theme before first paint; see DCR.theme in common.js */try{var t=localStorage.getItem("dcr_theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t;}catch(e){}</script>
   </head>
@@ -139,6 +144,14 @@
     </div>
 
     <div class="ac">
+      <nav class="ac-tabs">
+
+        <a href="accounting.html" aria-current="page">The Books</a>
+
+        <a href="ledger.html">Expenses &amp; receipts</a>
+
+      </nav>
+
       <div class="ac-head">
         <h2>The books</h2>
         <span class="who" id="acGreeting"></span>

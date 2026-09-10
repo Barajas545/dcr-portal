@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DCR Portal — Expenses</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+      [hidden] { display: none !important; }
+
+      /* Built for a 27" monitor. The existing books screen caps at 1180px,
+         which throws away half the desk on the machine this is actually used
+         on. Dense is the point here: she wants forty rows at once, not four. */
+      .lg { max-width: 1860px; margin: auto; padding: 16px 20px 60px;
+        --acc:#2f80d8; --gold:#b8860b; --ok:#1f9d55; --err:#c8371f; --mute:#8b95a1; }
+
+      .lg-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 2px; }
+      .lg-head h2 { margin: 0; font-size: 21px; font-weight: 700; }
+      .lg-lead { color: var(--text-muted); font-size: 13px; margin: 0 0 14px; }
+
+      /* ── tabs ─────────────────────────────────────────────────────────── */
+      .lg-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+      .lg-tabs a { padding: 9px 16px; font-size: 13.5px; font-weight: 600; text-decoration: none;
+        color: var(--text-muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+      .lg-tabs a:hover { color: var(--text); }
+      .lg-tabs a[aria-current="page"] { color: var(--acc); border-bottom-color: var(--acc); }
+
+      /* ── controls ─────────────────────────────────────────────────────── */
+      .lg-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+      .lg-chips { display: flex; gap: 5px; flex-wrap: wrap; }
+      .lg-chip { padding: 6px 11px; border-radius: 999px; cursor: pointer; font: inherit; font-size: 12.5px;
+        font-weight: 600; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+      .lg-chip b { font-weight: 800; }
+      .lg-chip .n { color: var(--text-muted); font-weight: 600; margin-left: 5px; }
+      .lg-chip[aria-pressed="true"] { border-color: var(--acc); background: rgba(47,128,216,.12); color: var(--acc); }
+      .lg-chip[aria-pressed="true"] .n { color: var(--acc); }
+      .lg-search { flex: 1; min-width: 220px; max-width: 420px; padding: 8px 11px; font: inherit;
+        font-size: 13.5px; border: 1px solid var(--border); border-radius: 8px;
+        background: var(--surface); color: var(--text); }
+      .lg-sel { padding: 7px 10px; font: inherit; font-size: 13px; border: 1px solid var(--border);
+        border-radius: 8px; background: var(--surface); color: var(--text); }
+      .lg-b { padding: 7px 12px; border-radius: 8px; cursor: pointer; font: inherit; font-size: 12.5px;
+        font-weight: 600; border: 1px solid var(--border); background: var(--surface);
+        color: var(--text); text-decoration: none; }
+      .lg-b.go { border-color: var(--acc); color: var(--acc); }
+      .lg-toggle { font-size: 12.5px; color: var(--text-muted); display: flex; align-items: center;
+        gap: 6px; cursor: pointer; }
+
+      /* ── the line that says what is NOT on screen ─────────────────────── */
+      .lg-scope { font-size: 12.5px; color: var(--text-muted); margin: 4px 0 14px; line-height: 1.6; }
+      .lg-scope b { color: var(--text); font-weight: 700; }
+      .lg-scope .warn { color: var(--gold); font-weight: 600; }
+
+      /* ── totals ───────────────────────────────────────────────────────── */
+      .lg-tot { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+        gap: 10px; margin-bottom: 16px; }
+      .lg-t { border: 1px solid var(--border); border-radius: 11px; padding: 11px 13px; background: var(--surface); }
+      .lg-t .k { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+        color: var(--text-muted); }
+      .lg-t .v { font-size: 21px; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 3px; }
+      .lg-t .n { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; }
+      .lg-t.muted .v { color: var(--mute); font-weight: 700; }
+      .lg-t.muted { border-style: dashed; }
+      .lg-t.warn { border-color: var(--gold); }
+      .lg-t.warn .v, .lg-t.warn .n { color: var(--gold); }
+
+      /* ── the table ────────────────────────────────────────────────────── */
+      .lg-wrap { border: 1px solid var(--border); border-radius: 12px; overflow: auto; background: var(--surface); }
+      table.lg-t2 { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+      .lg-t2 thead th { position: sticky; top: 0; z-index: 2; background: var(--surface-2);
+        font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted);
+        text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+      .lg-t2 td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+      .lg-t2 tbody tr:hover { background: rgba(127,127,127,.05); }
+      .lg-t2 .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+      .lg-t2 .cost { font-weight: 800; }
+      .lg-t2 .out { color: var(--mute); }
+      .lg-t2 .dt { white-space: nowrap; color: var(--text-muted); }
+      .lg-t2 .desc { max-width: 460px; }
+      .lg-t2 .proj { white-space: nowrap; font-weight: 600; }
+      .lg-t2 .zero td { opacity: .55; }
+
+      tr.lg-grp td { background: var(--surface-2); font-weight: 700; padding: 9px 10px;
+        border-top: 2px solid var(--border); position: sticky; top: 32px; z-index: 1; }
+      tr.lg-grp .lbl { font-size: 13.5px; }
+      tr.lg-grp .sub { font-size: 11.5px; font-weight: 600; color: var(--text-muted); margin-left: 8px; }
+      tr.lg-grp.pin .lbl { color: var(--gold); }
+
+      .lg-tag { font-size: 10px; font-weight: 800; letter-spacing: .04em; padding: 1px 5px;
+        border-radius: 4px; text-transform: uppercase; }
+      .lg-tag.inf { color: var(--gold); border: 1px solid var(--gold); }
+      .lg-tag.rec { color: var(--ok); border: 1px solid var(--ok); }
+
+      .lg-r { font-size: 15px; line-height: 1; cursor: default; }
+      .lg-r.on { color: var(--ok); cursor: pointer; }
+      .lg-r.missing { color: var(--err); }
+      .lg-r.none { color: var(--border); }
+      .lg-r.named { color: var(--text-muted); }
+
+      .lg-card { font: inherit; font-size: 11.5px; padding: 3px 5px; border-radius: 6px;
+        border: 1px solid var(--border); background: var(--bg); color: var(--text); max-width: 150px; }
+      .lg-card.untagged { color: var(--text-muted); border-style: dashed; }
+
+      .lg-none { text-align: center; padding: 44px 20px; color: var(--text-muted); font-size: 13.5px; }
+      .lg-msg { font-size: 12.5px; margin-left: 6px; }
+      .lg-msg.err { color: var(--err); font-weight: 600; }
+      .lg-msg.ok { color: var(--ok); font-weight: 600; }
+
+      /* ── the side blocks ──────────────────────────────────────────────── */
+      .lg-cols { display: grid; grid-template-columns: 1fr 300px; gap: 18px; align-items: start; }
+      @media (max-width: 1320px) { .lg-cols { grid-template-columns: 1fr; } }
+      .lg-side { border: 1px solid var(--border); border-radius: 12px; padding: 14px; background: var(--surface); }
+      .lg-side h3 { margin: 0 0 3px; font-size: 13.5px; font-weight: 700; }
+      .lg-side .why { font-size: 11.5px; color: var(--text-muted); margin: 0 0 10px; line-height: 1.5; }
+      .lg-hrow { display: flex; justify-content: space-between; font-size: 12.5px; padding: 4px 0;
+        border-bottom: 1px solid var(--border); }
+      .lg-hrow b { font-variant-numeric: tabular-nums; }
+      .lg-rule { border: 0; border-top: 2px solid var(--border); margin: 12px 0; }
+      .lg-cant { font-size: 11.5px; color: var(--text-muted); line-height: 1.6; }
+      .lg-cant li { margin-bottom: 5px; }
+    </style>
+    <script>/* theme before first paint; see DCR.theme in common.js */try{var t=localStorage.getItem("dcr_theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t;}catch(e){}</script>
+  </head>
+  <body>
+    <div class="topbar">
+      <div class="brand"><img src="logo.png" alt="" class="brand-logo" /><span id="companyName">Portal</span></div>
+      <div class="top-actions">
+        <span class="pill" id="userPill"></span>
+        <a class="btn btn-ghost btn-sm" href="dashboard.html">Dashboard</a>
+        <button class="btn btn-ghost btn-sm" id="logoutBtn">Log out</button>
+      </div>
+    </div>
+
+    <div class="lg">
+      <nav class="lg-tabs">
+        <a href="accounting.html">The Books</a>
+        <a href="ledger.html" aria-current="page">Expenses &amp; receipts</a>
+      </nav>
+
+      <div class="lg-head"><h2>Expenses</h2><span class="pill" id="lgSpan"></span></div>
+      <p class="lg-lead">
+        Every purchase and cost on the job ledger. Fold it by project, by who spent it, or by
+        what paid for it — the grouping is this same table, so a summary and its rows can never
+        disagree.
+      </p>
+
+      <div class="lg-bar">
+        <div class="lg-chips" id="lgPeriods"></div>
+        <input class="lg-search" id="lgQ" type="search" placeholder="Search description, receipt, project — or type an amount" />
+        <select class="lg-sel" id="lgGroup"></select>
+        <label class="lg-toggle"><input type="checkbox" id="lgZero" /> show rows with no cost</label>
+        <span style="flex:1"></span>
+        <a class="lg-b" id="lgCsv" href="#">&#8615; Export CSV</a>
+      </div>
+
+      <div class="lg-scope" id="lgScope"></div>
+      <div class="lg-tot" id="lgTotals"></div>
+
+      <div class="lg-cols">
+        <div>
+          <div class="lg-wrap"><div id="lgBody"><div class="lg-none">Loading…</div></div></div>
+        </div>
+
+        <div>
+          <div class="lg-side" style="margin-bottom:14px">
+            <h3>Hours worked</h3>
+            <p class="why">
+              From the timesheets, for the same period. Shown beside the money and never turned
+              into it — there is no pay rate stored anywhere in the database, so any labour cost
+              here would be invented.
+            </p>
+            <div id="lgHours"></div>
+          </div>
+
+          <div class="lg-side">
+            <h3>What this screen cannot tell you</h3>
+            <ul class="lg-cant" id="lgCant"></ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="common.js"></script>
+    <script src="ledger.js"></script>
+  </body>
+</html>
