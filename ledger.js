@@ -9,7 +9,23 @@
 (function () {
   var el = function (id) { return document.getElementById(id); };
   var esc = function (v) { return DCR.esc(v); };
-  var state = { d: null, receipts: null, receiptNote: "", busy: false, picked: {} };
+  var state = { d: null, receipts: null, byRow: {}, scanned: null,
+                receiptNote: "", busy: false, picked: {} };
+
+  /* Some descriptions were typed into a rich-text box years ago and carry their
+     own markup. Escaped, "<div>&nbsp;</div>" renders as exactly that on screen,
+     which reads as corrupted data rather than an empty note. */
+  function stripML(v) {
+    return String(v == null ? "" : v)
+      .replace(/<br\s*\/?>/gi, " ")
+      .replace(/<[^>]*>/g, "")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&amp;/gi, "&")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
 
   function money(v) {
     return "$" + (Number(v) || 0).toLocaleString("en-US",
@@ -80,17 +96,41 @@
      false all-clear a second later. The tile said "119 on file" while the table
      underneath it showed 33 of them missing. Whatever the rows show, the tile
      shows. */
+  /* Was this row's job actually looked at?
+
+     Without asking that, a row on a job the scan never reached is
+     indistinguishable from one whose paperwork is genuinely gone — and the
+     screen shouted "18 named but NOT found" at rows nobody had checked. A false
+     alarm about somebody's bookkeeping is its own kind of lie. */
+  function jobScanned(r) {
+    return !!(state.scanned && state.scanned[String(r.projectID)]);
+  }
+
+  /* Every file that belongs to this row. The upload names a receipt
+     "... - ID 145_20251030.jpg", where 145 is the ledger row, so one row can own
+     several — a two-page invoice, a photo and its re-scan. The single name on
+     the record is the fallback when nothing carries the id. */
+  function filesFor(r) {
+    var grouped = (state.byRow && state.byRow[String(r.id)]) || [];
+    if (grouped.length) return grouped;
+    var name = r.expenseReceiptFileName || "";
+    var id = name && state.receipts ? state.receipts[name.toLowerCase()] : null;
+    return id ? [{ id: id, name: name }] : [];
+  }
+
   function receiptCounts(d) {
     if (!state.receipts) {
-      return { checked: false, onFile: 0, missing: 0,
+      return { checked: false, onFile: 0, missing: 0, unchecked: 0,
                named: d.rows.filter(function (r) { return r.expenseReceiptFileName; }).length };
     }
-    var on = 0, miss = 0;
+    var on = 0, miss = 0, un = 0;
     d.rows.forEach(function (r) {
       if (!r.expenseReceiptFileName) return;
-      if (state.receipts[String(r.expenseReceiptFileName).toLowerCase()]) on++; else miss++;
+      if (!jobScanned(r)) un++;
+      else if (filesFor(r).length) on++;
+      else miss++;
     });
-    return { checked: true, onFile: on, missing: miss, named: on + miss };
+    return { checked: true, onFile: on, missing: miss, unchecked: un, named: on + miss + un };
   }
 
   function totals(d) {
@@ -107,9 +147,12 @@
       ["Receipts",
         rc.checked ? rc.onFile + " on file" : rc.named + " named",
         rc.checked
-          ? (rc.missing ? rc.missing + " named but NOT found" : "all " + rc.named + " found")
+          ? [rc.missing ? rc.missing + " NOT found" : "",
+             rc.unchecked ? rc.unchecked + " not checked" : "",
+             (!rc.missing && !rc.unchecked) ? "all " + rc.named + " found" : ""]
+              .filter(Boolean).join(" · ")
           : "not checked yet",
-        rc.checked && rc.missing ? "warn" : (rc.checked ? "" : "muted")],
+        rc.checked && rc.missing ? "warn" : (rc.checked && !rc.unchecked ? "" : "muted")],
       ["Paid-with tagged", t.tagged + " of " + t.count,
         t.tagged === 0 ? "nothing tagged yet" : "", t.tagged === 0 ? "muted" : ""],
       ["Reconciled", t.reconciled + " of " + t.count, "", ""],
@@ -128,9 +171,15 @@
     if (!state.receipts) {
       return '<span class="lg-r named" title="' + esc(name) + '\nNot checked yet">&#128206;</span>';
     }
-    var id = state.receipts[name.toLowerCase()];
-    if (id) {
-      return '<a class="lg-r on" href="#" data-file="' + esc(id) + '" title="' + esc(name) + '">&#128206;</a>';
+    if (!jobScanned(r)) {
+      return '<span class="lg-r named" title="' + esc(name) +
+        '\nThis job has not been checked yet — which is not the same as no receipt">&#128206;</span>';
+    }
+    var files = filesFor(r);
+    if (files.length) {
+      return '<a class="lg-r on" href="#" data-row="' + esc(r.id) + '" title="' + esc(name) +
+        (files.length > 1 ? "\n" + files.length + " files — click to open them" : "\nClick to open") +
+        '">&#128206;' + (files.length > 1 ? '<sup class="lg-rn">' + files.length + "</sup>" : "") + "</a>";
     }
     /* Named but not found is NOT the same as no receipt: one means nobody
        attached paperwork, the other means it was attached and cannot be found. */
@@ -148,6 +197,9 @@
     try {
       var got = await DCR.api("/api/portal?action=ledger&receipts=" + encodeURIComponent(ids.join(",")));
       state.receipts = got.index || {};
+      state.byRow = got.byRow || {};
+      state.scanned = {};
+      (got.scannedProjects || []).forEach(function (p) { state.scanned[String(p)] = true; });
       state.receiptNote = got.note || "";
     } catch (e) {
       state.receipts = null;
@@ -171,7 +223,8 @@
             '">confirm</a>'
           : "")
       : "";
-    var desc = r.description || r.laborExpenseDescription || r.materialExpenseDescription || r.remarks || "";
+    var desc = stripML(r.description || r.laborExpenseDescription ||
+      r.materialExpenseDescription || r.remarks || "");
     return '<tr' + (r.cost ? "" : ' class="zero"') + '>' +
       (can.tag
         ? '<td style="text-align:center"><input type="checkbox" data-pick="' + esc(r.id) + '"' +
@@ -311,8 +364,21 @@
         write({ op: c.checked ? "reconcile" : "unreconcile", ids: [c.getAttribute("data-rec")] });
       };
     });
-    document.querySelectorAll("[data-file]").forEach(function (a) {
-      a.onclick = function (e) { e.preventDefault(); openFile(a.getAttribute("data-file")); };
+    document.querySelectorAll("[data-row]").forEach(function (a) {
+      var rid = a.getAttribute("data-row");
+      var r = (state.d.rows || []).filter(function (x) { return String(x.id) === rid; })[0];
+      if (!r) return;
+      var files = filesFor(r);
+      a.onclick = function (e) { e.preventDefault(); peekHide(); viewShow(files, 0); };
+      /* A short delay, so sweeping the mouse across the column does not fire a
+         request for every row it passes over. */
+      a.onmouseenter = function () {
+        clearTimeout(peekTimer);
+        peekTimer = setTimeout(function () { peekShow(a, files[0]); }, 260);
+      };
+      a.onmouseleave = peekHide;
+      a.onfocus = function () { peekShow(a, files[0]); };
+      a.onblur = peekHide;
     });
     document.querySelectorAll("[data-pick]").forEach(function (c) {
       c.onchange = function () {
@@ -333,16 +399,104 @@
     });
   }
 
-  /* Resolved on click, never up front: a pre-authed download URL is a
-     credential that expires in about an hour, and 124 of them held in a page is
-     124 credentials. */
-  async function openFile(id) {
+  /* ── looking at the paperwork ────────────────────────────────────────────
+
+     One file is resolved at a time, on demand. A pre-authed SharePoint URL is a
+     credential that expires in about an hour, so the table only ever ships ids
+     and only the file she is actually looking at becomes a URL.
+
+     Cached per id, because sweeping the mouse down a column of receipts should
+     not re-ask Graph for the same photo each time. */
+  var infoCache = {};
+  function fileInfo(id) {
+    if (!infoCache[id]) {
+      infoCache[id] = DCR.api("/api/portal?action=drive&fileInfo=" + encodeURIComponent(id))
+        .catch(function (e) { delete infoCache[id]; throw e; });
+    }
+    return infoCache[id];
+  }
+  function isImage(n) { return /\.(jpe?g|png|gif|webp|bmp|heic|tiff?)$/i.test(n || ""); }
+  function isPdf(n) { return /\.pdf$/i.test(n || ""); }
+
+  // ── hover: a peek, not a commitment ────────────────────────────────────
+  var peekTimer = null, peekFor = null;
+  function peekHide() {
+    clearTimeout(peekTimer);
+    peekFor = null;
+    var p = el("lgPeek");
+    if (p) p.hidden = true;
+  }
+  function peekShow(anchor, file) {
+    var p = el("lgPeek");
+    if (!p || !file) return;
+    peekFor = file.id;
+    p.hidden = false;
+    p.innerHTML = '<div class="nm">' + esc(file.name) + '</div><div class="bd">Loading…</div>';
+
+    /* Placed to the left of the icon, flipped when it would fall off an edge, so
+       a row at the bottom of a long ledger still shows its receipt. */
+    var r = anchor.getBoundingClientRect();
+    var w = 340, h = 320;
+    var left = r.left - w - 14;
+    if (left < 12) left = Math.min(r.right + 14, window.innerWidth - w - 12);
+    var top = Math.min(r.top - 10, window.innerHeight - h - 12);
+    p.style.left = Math.max(12, left) + "px";
+    p.style.top = Math.max(12, top) + "px";
+
+    if (!isImage(file.name)) {
+      p.querySelector(".bd").innerHTML =
+        '<div class="doc">' + (isPdf(file.name) ? "PDF" : "FILE") + "<span>click to open</span></div>";
+      return;
+    }
+    fileInfo(file.id).then(function (info) {
+      if (peekFor !== file.id) return;          // she moved on before it arrived
+      p.querySelector(".bd").innerHTML = info && info.downloadUrl
+        ? '<img src="' + esc(info.downloadUrl) + '" alt="">'
+        : "No preview available.";
+    }).catch(function () {
+      if (peekFor === file.id) p.querySelector(".bd").textContent = "Could not load it.";
+    });
+  }
+
+  // ── click: the full thing, and its companions ──────────────────────────
+  var view = { files: [], at: 0, urls: [] };
+  function viewClose() {
+    el("lgView").hidden = true;
+    view.urls.splice(0).forEach(function (u) { URL.revokeObjectURL(u); });
+    view.files = [];
+  }
+  async function viewShow(files, at) {
+    if (!files || !files.length) return;
+    view.files = files;
+    view.at = Math.max(0, Math.min(at || 0, files.length - 1));
+    var f = view.files[view.at];
+    el("lgView").hidden = false;
+    el("lgViewName").textContent = f.name;
+    el("lgViewN").textContent = files.length > 1 ? (view.at + 1) + " of " + files.length : "";
+    el("lgViewPrev").hidden = files.length < 2;
+    el("lgViewNext").hidden = files.length < 2;
+    var box = el("lgViewBody");
+    box.innerHTML = '<div class="wait">Loading…</div>';
     try {
-      var info = await DCR.api("/api/portal?action=drive&fileInfo=" + encodeURIComponent(id));
-      if (info && info.downloadUrl) window.open(info.downloadUrl, "_blank", "noopener");
-      else if (info && info.webViewLink) window.open(info.webViewLink, "_blank", "noopener");
-      else DCR.alert("That file could not be opened.");
-    } catch (e) { DCR.alert(e.message || "That file could not be opened."); }
+      var info = await fileInfo(f.id);
+      if (isImage(f.name) && info.downloadUrl) {
+        box.innerHTML = '<img src="' + esc(info.downloadUrl) + '" alt="' + esc(f.name) + '">';
+      } else if (isPdf(f.name)) {
+        /* SharePoint serves a PDF with a download disposition, so pointing an
+           iframe at that URL downloads it instead of showing it. Fetched as
+           bytes and re-typed, the way the bill screen already does. */
+        var url = await DCR.blobUrl("/api/portal?action=drive&fileId=" + encodeURIComponent(f.id));
+        view.urls.push(url);
+        box.innerHTML = '<iframe src="' + esc(url) + '#view=FitH" title="' + esc(f.name) + '"></iframe>';
+      } else {
+        box.innerHTML = '<div class="wait">This kind of file cannot be shown here. ' +
+          '<a href="' + esc(info.webViewLink || info.downloadUrl || "#") +
+          '" target="_blank" rel="noopener noreferrer">Open it in SharePoint</a></div>';
+      }
+      el("lgViewDl").href = info.downloadUrl || info.webViewLink || "#";
+    } catch (e) {
+      box.innerHTML = '<div class="wait">' + esc(e.message || "Could not open that file.") + "</div>";
+    }
   }
 
   async function write(body) {
@@ -401,6 +555,17 @@
       var ids = Object.keys(state.picked);
       if (ids.length) write({ op: "reconcile", ids: ids });
     };
+
+    el("lgViewClose").onclick = viewClose;
+    el("lgView").onclick = function (e) { if (e.target === el("lgView")) viewClose(); };
+    el("lgViewPrev").onclick = function () { viewShow(view.files, view.at - 1); };
+    el("lgViewNext").onclick = function () { viewShow(view.files, view.at + 1); };
+    document.addEventListener("keydown", function (e) {
+      if (el("lgView").hidden) return;
+      if (e.key === "Escape") viewClose();
+      else if (e.key === "ArrowLeft") viewShow(view.files, view.at - 1);
+      else if (e.key === "ArrowRight") viewShow(view.files, view.at + 1);
+    });
 
     el("lgGroup").onchange = function () { load({}); };
     el("lgZero").onchange = function () { load({}); };

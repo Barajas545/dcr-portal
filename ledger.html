@@ -113,6 +113,36 @@
       .lg-msg.err { color: var(--err); font-weight: 600; }
       .lg-msg.ok { color: var(--ok); font-weight: 600; }
 
+      /* ── hover peek ───────────────────────────────────────────────────── */
+      .lg-peek { position: fixed; z-index: 60; width: 340px; border-radius: 12px;
+        border: 1px solid var(--border); background: var(--surface);
+        box-shadow: 0 12px 40px rgba(0,0,0,.34); padding: 8px; pointer-events: none; }
+      .lg-peek .nm { font-size: 10.5px; color: var(--text-muted); margin-bottom: 6px;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .lg-peek .bd { min-height: 120px; display: flex; align-items: center; justify-content: center;
+        font-size: 12px; color: var(--text-muted); }
+      .lg-peek img { max-width: 100%; max-height: 260px; border-radius: 8px; display: block; }
+      .lg-peek .doc { font-size: 26px; font-weight: 800; color: var(--text-muted); text-align: center; }
+      .lg-peek .doc span { display: block; font-size: 11px; font-weight: 600; margin-top: 4px; }
+      .lg-rn { font-size: 9px; font-weight: 800; vertical-align: super; margin-left: 1px; }
+
+      /* ── the viewer ───────────────────────────────────────────────────── */
+      .lg-view { position: fixed; inset: 0; z-index: 70; background: rgba(0,0,0,.72);
+        display: flex; align-items: center; justify-content: center; padding: 26px; }
+      .lg-view-card { background: var(--surface); border-radius: 14px; width: min(1180px, 96vw);
+        height: min(88vh, 940px); display: flex; flex-direction: column; overflow: hidden;
+        box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+      .lg-view-hd { display: flex; align-items: center; gap: 12px; padding: 11px 14px;
+        border-bottom: 1px solid var(--border); }
+      .lg-view-hd .nm { font-size: 13px; font-weight: 600; flex: 1; overflow: hidden;
+        text-overflow: ellipsis; white-space: nowrap; }
+      .lg-view-hd .n { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+      .lg-view-bd { flex: 1; overflow: auto; display: flex; align-items: center;
+        justify-content: center; background: var(--bg); }
+      .lg-view-bd img { max-width: 100%; max-height: 100%; display: block; }
+      .lg-view-bd iframe { width: 100%; height: 100%; border: 0; background: #fff; }
+      .lg-view-bd .wait { color: var(--text-muted); font-size: 13px; padding: 30px; text-align: center; }
+
       /* ── the side blocks ──────────────────────────────────────────────── */
       .lg-cols { display: grid; grid-template-columns: 1fr 300px; gap: 18px; align-items: start; }
       @media (max-width: 1320px) { .lg-cols { grid-template-columns: 1fr; } }
@@ -192,6 +222,23 @@
             <ul class="lg-cant" id="lgCant"></ul>
           </div>
         </div>
+      </div>
+    </div>
+
+
+    <div class="lg-peek" id="lgPeek" hidden></div>
+
+    <div class="lg-view" id="lgView" hidden>
+      <div class="lg-view-card">
+        <div class="lg-view-hd">
+          <button class="lg-b" id="lgViewPrev" title="Previous (left arrow)">&#8592;</button>
+          <button class="lg-b" id="lgViewNext" title="Next (right arrow)">&#8594;</button>
+          <span class="nm" id="lgViewName"></span>
+          <span class="n" id="lgViewN"></span>
+          <a class="lg-b" id="lgViewDl" href="#" target="_blank" rel="noopener noreferrer">&#8615; Download</a>
+          <button class="lg-b" id="lgViewClose" title="Close (Esc)">&#10005;</button>
+        </div>
+        <div class="lg-view-bd" id="lgViewBody"></div>
       </div>
     </div>
 
