@@ -68,12 +68,72 @@
         location.href = "index.html";
         throw new Error("not signed in");
       }
-      try {
-        return await DCR.api("/api/portal?action=me");
-      } catch (e) {
-        location.href = "index.html";
-        throw e;
+      for (let attempt = 0; ; attempt++) {
+        try {
+          const me = await DCR.api("/api/portal?action=me");
+          /* A remembered session is handed a fresh token on every page load, so
+             the thirty days always runs from the last time it was used. Somebody
+             who opens the portal each week is never asked to sign in again. */
+          if (me && me.token) DCR.setToken(me.token);
+          DCR._offline(false);
+          return me;
+        } catch (e) {
+          /* A 401 means the session really is over — expired, or the account
+             disabled while it was still signed in. api() has already dropped the
+             token and sent them to the login screen. */
+          if (e && e.status === 401) {
+            DCR.clearToken();
+            throw e;
+          }
+
+          /* Anything else is the connection, and this is a portal people open on
+             a phone standing in a field. Bouncing to the login screen over a
+             dropped packet would lose their place and ask them to sign in again
+             — the exact thing the "keep me signed in" tick is there to stop.
+             So: retry once quietly, then say so plainly and hold, keeping the
+             token. The page never half-draws, because we never resolve. */
+          if (attempt === 0) {
+            await new Promise((r) => setTimeout(r, 1500));
+            continue;
+          }
+          DCR._offline(true);
+          await new Promise(() => {});
+        }
       }
+    },
+
+    /* One offline notice for all thirty-odd screens. Every one of them starts
+       by awaiting requireAuth, so this is the only place that knows the portal
+       is unreachable before the page has drawn anything of its own. */
+    _offline(on) {
+      let el = document.getElementById("dcrOffline");
+      if (!on) {
+        if (el) el.remove();
+        return;
+      }
+      if (el) return;
+      el = document.createElement("div");
+      el.id = "dcrOffline";
+      el.setAttribute(
+        "style",
+        "position:fixed;inset:0;z-index:99999;display:flex;align-items:center;" +
+          "justify-content:center;background:rgba(0,0,0,.55);" +
+          "font:14px/1.5 system-ui,-apple-system,'Segoe UI',sans-serif"
+      );
+      el.innerHTML =
+        '<div style="max-width:340px;margin:16px;padding:22px;border-radius:14px;' +
+        'background:#fff;color:#1a1a1a;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,.3)">' +
+        '<div style="font-size:17px;font-weight:700;margin-bottom:6px">Can&rsquo;t reach the portal</div>' +
+        '<div style="color:#666;font-size:13px;margin-bottom:16px">You are still signed in — ' +
+        "this looks like the connection, not your account.</div>" +
+        '<button id="dcrOfflineRetry" style="width:100%;padding:11px;border:0;border-radius:8px;' +
+        'background:#2f80d8;color:#fff;font:inherit;font-weight:700;cursor:pointer">Try again</button>' +
+        '<button id="dcrOfflineOut" style="width:100%;margin-top:8px;padding:9px;border:0;background:none;' +
+        'color:#888;font:inherit;font-size:12.5px;cursor:pointer;text-decoration:underline">Sign out</button>' +
+        "</div>";
+      document.body.appendChild(el);
+      el.querySelector("#dcrOfflineRetry").onclick = function () { location.reload(); };
+      el.querySelector("#dcrOfflineOut").onclick = function () { DCR.logout(); };
     },
 
     logout() {

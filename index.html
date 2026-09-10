@@ -33,12 +33,27 @@
         <label for="password">Password</label>
         <input id="password" name="password" type="password" required autocomplete="current-password" />
 
+        <label class="keepme">
+          <input type="checkbox" id="remember" />
+          <span>Keep me signed in on this device<br />
+            <small>Stay signed in until you sign out. Don’t tick this on a shared computer.</small></span>
+        </label>
+
         <button class="btn btn-block" type="submit" id="submitBtn">Sign In</button>
         <div class="msg error" id="err"></div>
       </form>
       <div id="installSlot" style="text-align:center;margin-top:14px"></div>
       </div>
     </div>
+
+    <style>
+      /* The whole label is the hit target — a 16px tick box is a poor one on a
+         phone, which is where most of these sign-ins happen. */
+      .keepme { display: flex; align-items: flex-start; gap: 10px; margin: 16px 0 4px;
+        font-size: 13.5px; font-weight: 500; cursor: pointer; line-height: 1.45; }
+      .keepme input { width: 18px; height: 18px; margin: 1px 0 0; flex: none; cursor: pointer; }
+      .keepme small { color: var(--text-muted); font-size: 11.5px; font-weight: 400; }
+    </style>
 
     <script src="config.js"></script>
     <script src="common.js"></script>
@@ -53,7 +68,14 @@
           // replace, not assign: a sign-in page that stays in history is a
           // back-target that bounces you straight forward again.
           .then(() => location.replace("dashboard.html"))
-          .catch(() => DCR.clearToken());
+          .catch((e) => {
+            /* Only a real 401 means the session is over. This used to bin the
+               token on ANY error, so one bad moment of signal on the landing
+               page threw away a thirty-day session and asked for the password
+               again — precisely what the tick box exists to prevent. On a
+               connection error we keep the token and let them sign in or retry. */
+            if (e && e.status === 401) DCR.clearToken();
+          });
       }
 
       const form = document.getElementById("loginForm");
@@ -72,6 +94,7 @@
             body: {
               email: document.getElementById("email").value.trim(),
               password: document.getElementById("password").value,
+              remember: document.getElementById("remember").checked,
             },
           });
           DCR.setToken(data.token);
