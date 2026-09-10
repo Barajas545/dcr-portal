@@ -73,6 +73,58 @@
          note beats an accountant discovering it at the import screen. */
       .ac-note { font-size: 11.5px; color: var(--text-muted); margin-top: 8px; line-height: 1.5; }
       .ac-note b { color: var(--gold); }
+
+      /* ── writing checks ────────────────────────────────────────────────
+         A section people work down rather than read, so the payee and the
+         amount are the two things sized to be seen from a standing position. */
+      .ck-row { cursor: pointer; }
+      .ck-row:hover { background: rgba(127, 127, 127, .06); }
+      .ck-payee { font-size: 15px; font-weight: 700; }
+      .ck-for { font-size: 12.5px; color: var(--text-muted); margin-top: 2px; }
+      .ck-part { font-size: 11px; font-weight: 700; color: var(--gold);
+        border: 1px solid var(--gold); border-radius: 4px; padding: 1px 5px; margin-left: 6px; }
+
+      .ck-panel { background: rgba(127, 127, 127, .05); border-radius: 10px;
+        padding: 16px; margin: 4px 0 10px; }
+      .ck-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+        gap: 14px; margin-bottom: 14px; }
+      .ck-f label { display: block; font-size: 11px; font-weight: 700; letter-spacing: .04em;
+        text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px; }
+      .ck-f input { width: 100%; padding: 9px 10px; border: 1px solid var(--border);
+        border-radius: 7px; background: var(--surface); color: var(--text);
+        font: inherit; font-size: 14px; }
+      .ck-f input.big { font-size: 18px; font-weight: 700; }
+      .ck-f .sub { font-size: 11.5px; color: var(--text-muted); margin-top: 4px; }
+      .ck-f .sub.warn { color: var(--gold); font-weight: 600; }
+
+      .ck-docs { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 4px; }
+      .ck-docs h4 { margin: 0 0 8px; font-size: 12px; font-weight: 800; letter-spacing: .04em;
+        text-transform: uppercase; color: var(--text-muted); }
+      .ck-doc { display: flex; align-items: baseline; gap: 8px; font-size: 13px; padding: 3px 0; }
+      .ck-doc .nm { font-weight: 600; }
+      .ck-doc .tag { font-size: 10.5px; color: var(--text-muted); }
+      .ck-doc .tag.guess { color: var(--gold); }
+      .ck-commit { font-size: 13px; padding: 8px 10px; border-radius: 7px;
+        background: rgba(47, 128, 216, .08); border: 1px solid rgba(47, 128, 216, .3); margin: 8px 0; }
+      .ck-commit.guess { background: rgba(184, 134, 11, .08); border-color: rgba(184, 134, 11, .4); }
+      .ck-commit b { font-weight: 700; }
+
+      .ck-acts { display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+        border-top: 1px solid var(--border); padding-top: 12px; margin-top: 12px; }
+
+      /* ── telling the sub ───────────────────────────────────────────────── */
+      .ck-tell { border: 1px solid var(--border); border-radius: 10px; padding: 14px;
+        margin-bottom: 10px; background: var(--surface); }
+      .ck-tell .top { display: flex; justify-content: space-between; gap: 12px;
+        align-items: baseline; flex-wrap: wrap; }
+      .ck-how { font-size: 12.5px; margin: 8px 0; }
+      .ck-how.certain { color: var(--ok); }
+      .ck-how.guess { color: var(--gold); font-weight: 600; }
+      .ck-how.none { color: var(--err); font-weight: 600; }
+      .ck-msg-box { font-size: 12.5px; white-space: pre-line; background: rgba(127,127,127,.06);
+        border-radius: 8px; padding: 10px 12px; margin: 8px 0; max-height: 190px; overflow: auto;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace; line-height: 1.5; }
+      .ck-none-note { font-size: 12.5px; color: var(--text-muted); }
     </style>
   </head>
   <body>

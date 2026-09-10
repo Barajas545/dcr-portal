@@ -9,7 +9,7 @@
   "use strict";
   var el = function (id) { return document.getElementById(id); };
   var esc = function (v) { return DCR.esc(v); };
-  var state = { d: null, picked: {} };
+  var state = { d: null, picked: {}, openCheck: null, detail: null, tell: {} };
 
   function money(v) {
     return "$" + (Number(v) || 0).toLocaleString("en-US",
@@ -83,10 +83,199 @@
       rows.map(render).join("") + "</tbody></table>";
   }
 
+  /* ── checks ──────────────────────────────────────────────────────────────
+
+     Above QuickBooks on purpose. Both sections are about somebody waiting on
+     money; entering a bill in the books is about a keystroke. */
+  function checksToWrite(c, can) {
+    var h = '<div class="ac-sec"><header><h3>Checks to write</h3>' +
+      '<span class="hint">Approved for payment. Write the check, then tell them it is ready ' +
+      'to collect.</span><span class="grow"></span>' +
+      '<span class="hint">' + (c.totals.toWriteCount || 0) + " waiting · " +
+        money(c.totals.toWriteAmount) + "</span></header>";
+
+    if (!c.toWrite.length) {
+      h += '<div class="ac-none">Nothing to pay. Every approved bill has a check against it.</div></div>';
+      return h;
+    }
+    if (!can.pay) {
+      h += '<div class="ac-note">These are approved and waiting for a check, but your account ' +
+        "cannot record payments. Ask an admin for the payments permission.</div>";
+    }
+    h += '<table class="ac-t"><thead><tr><th>Pay to</th><th class="num">Amount</th>' +
+      '<th class="num"></th></tr></thead><tbody>';
+    c.toWrite.forEach(function (b) {
+      var open = String(state.openCheck) === String(b.id);
+      h += '<tr class="ck-row" data-open="' + esc(b.id) + '">' +
+        '<td><div class="ck-payee">' + esc(b.payee || "(no payee on file)") + "</div>" +
+        '<div class="ck-for">' + esc(b.memo || b.projectLabel || "") +
+          (b.partial ? '<span class="ck-part">part paid</span>' : "") + "</div></td>" +
+        '<td class="num"><b>' + money(b.owed) + "</b>" +
+          (b.partial ? '<div class="ck-for">of ' + money(b.approvedFor) + "</div>" : "") + "</td>" +
+        '<td class="num">' + (open ? "Close" : "Write check &rarr;") + "</td></tr>";
+      if (open) h += '<tr><td colspan="3">' + checkPanel(b, can) + "</td></tr>";
+    });
+    h += "</tbody></table></div>";
+    return h;
+  }
+
+  /* The panel: what to write on the check, and everything it is written against. */
+  function checkPanel(b, can) {
+    var d = state.detail;
+    if (!d || String(d.bill.id) !== String(b.id)) {
+      return '<div class="ck-panel"><div class="ac-none">Loading the paperwork…</div></div>';
+    }
+    var c = d.check;
+    var h = '<div class="ck-panel">';
+    if (!c.canWrite) return h + '<div class="ac-note">' + esc(c.reason) + "</div></div>";
+
+    h += '<div class="ck-grid">' +
+      '<div class="ck-f"><label>Make the check out to</label>' +
+        '<input id="ckPayee" class="big" value="' + esc(c.payee) + '" maxlength="120">' +
+        (c.payeeNote
+          ? '<div class="sub warn">' + esc(c.payeeNote) + "</div>"
+          : (c.payeePerson && c.payeePerson !== c.payee
+              ? '<div class="sub">Their invoice was sent by ' + esc(c.payeePerson) + ".</div>"
+              : "")) +
+      "</div>" +
+      '<div class="ck-f"><label>Amount</label>' +
+        '<input id="ckAmount" class="big" inputmode="decimal" value="' + esc(c.max.toFixed(2)) + '">' +
+        '<div class="sub">' + (c.alreadyPaid > 0
+          ? money(c.alreadyPaid) + " already paid of " + money(c.approvedFor) + " approved."
+          : "Approved for " + money(c.approvedFor) + ".") + "</div>" +
+      "</div>" +
+      '<div class="ck-f"><label>Check number</label>' +
+        '<input id="ckNumber" placeholder="e.g. 2041" maxlength="40">' +
+        '<div class="sub">So it can be found again.</div>' +
+      "</div></div>" +
+      '<div class="ck-f" style="margin-bottom:14px"><label>Memo — what the payment is for</label>' +
+        '<input id="ckMemo" value="' + esc(c.memo) + '" maxlength="' + esc(c.memoMax) + '"></div>';
+
+    h += '<div class="ck-docs"><h4>What you are paying against</h4>';
+    if (d.commitment) {
+      h += '<div class="ck-commit' + (d.commitment.sure ? "" : " guess") + '">' +
+        "<b>" + esc(d.commitment.kind) + "</b> — " + esc(d.commitment.vendor) +
+        (d.commitment.amount ? " · " + money(d.commitment.amount) : "") +
+        (d.commitment.status ? " · " + esc(d.commitment.status) : "") +
+        '<div class="ck-for">' + esc(d.commitment.note) + "</div></div>";
+    }
+    if (d.submission) {
+      h += '<div class="ck-doc"><span class="nm">Signed submission ' +
+        esc(d.submission.reference) + '</span><span class="tag">signed by ' +
+        esc(d.submission.signedBy || d.submission.contactName) + "</span></div>";
+    }
+    (d.documents.files || []).forEach(function (f) {
+      var tag = f.label || (f.match === "loose" ? "found by name — may be another bill's" : "");
+      h += '<div class="ck-doc"><span class="nm">' + esc(f.name) + "</span>" +
+        (tag ? '<span class="tag' + (f.match === "loose" ? " guess" : "") + '">' + esc(tag) + "</span>" : "") +
+        "</div>";
+    });
+    (d.documents.links || []).forEach(function (l) {
+      h += '<div class="ck-doc"><a href="' + esc(l.url) + '" target="_blank" rel="noopener noreferrer">' +
+        esc(l.label) + '</a><span class="tag">' + esc(l.why) + "</span></div>";
+    });
+    if (!(d.documents.files || []).length) {
+      h += '<div class="ck-none-note">No files are attached to this bill.</div>';
+    }
+    (d.documents.notes || []).forEach(function (n) {
+      h += '<div class="ck-none-note">' + esc(n) + "</div>";
+    });
+    h += '<div style="margin-top:10px"><a class="ac-b" href="bill.html?id=' +
+      encodeURIComponent(d.bill.id) + "&project=" + encodeURIComponent(d.bill.projectID) +
+      '">Open the paperwork &rarr;</a></div></div>';
+
+    if (d.written && d.written.length) {
+      h += '<div class="ck-docs"><h4>Checks already written</h4>';
+      d.written.forEach(function (w) {
+        h += '<div class="ck-doc"><span class="nm">#' + esc(w.checkNumber) + " · " +
+          money(w.amount) + '</span><span class="tag">' + esc(day(w.writtenDate)) +
+          (w.toldDate ? " · told " + esc(w.toldHow) + " " + esc(day(w.toldDate)) : " · not told yet") +
+          "</span></div>";
+      });
+      h += "</div>";
+    }
+
+    h += '<div class="ck-acts">' +
+      (can.pay ? '<button class="btn-accept" id="ckWrite">&#10003; Record the check</button>' : "") +
+      '<button class="ac-b" id="ckClose">Close</button>' +
+      '<span class="ac-msg" id="ckMsg"></span></div>';
+    return h + "</div>";
+  }
+
+  /* ── telling them it is ready ─────────────────────────────────────────── */
+  function checksToTell(c, can) {
+    var h = '<div class="ac-sec"><header><h3>Written — tell them it is ready</h3>' +
+      '<span class="hint">The check exists. Nobody has told the subcontractor to come and ' +
+      "collect it.</span></header>";
+    if (!c.toTell.length) {
+      return h + '<div class="ac-none">Everyone with a check waiting has been told.</div></div>';
+    }
+    c.toTell.forEach(function (t) {
+      var k = state.tell[t.paymentId] || {};
+      h += '<div class="ck-tell">' +
+        '<div class="top"><div><span class="ck-payee">' + esc(t.payee || "(no payee)") + "</span>" +
+          '<div class="ck-for">Check #' + esc(t.checkNumber) + " · written " +
+          esc(day(t.writtenDate)) + "</div></div>" +
+        '<div class="ck-payee">' + money(t.amount) + "</div></div>";
+
+      if (!k.loaded) {
+        h += '<div class="ck-acts"><button class="ac-b" data-load="' + esc(t.paymentId) +
+          '" data-bill="' + esc(t.billId) + '">How do I reach them?</button></div></div>';
+        return;
+      }
+      var w = k.contact || {};
+      if (!w.email && !w.phone) {
+        h += '<div class="ck-how none">No email or phone on file for them.</div>' +
+          '<div class="ck-none-note">The check is written and waiting. Add a contact on the ' +
+          "project, or tell them next time they call.</div>";
+      } else {
+        h += '<div class="ck-how ' +
+          (w.source === "submission" ? "certain" : (w.needsConfirming ? "guess" : "")) + '">' +
+          esc(w.why || "") + "</div>" +
+          '<div class="ck-none-note">' +
+            (w.email ? "Email: " + esc(w.email) : "") +
+            (w.email && w.phone ? " · " : "") +
+            (w.phone ? "Phone: " + esc(w.phone) : "") + "</div>";
+      }
+      h += '<div class="ck-msg-box">' + esc((k.message && k.message.body) || "") + "</div>" +
+        '<div class="ck-acts">';
+      if (w.email) {
+        h += '<a class="btn-accept" data-mail="' + esc(t.paymentId) + '" href="#">Open the email</a>';
+      }
+      if (w.phone) {
+        h += '<a class="ac-b" href="tel:' + esc(String(w.phone).replace(/[^0-9+]/g, "")) +
+          '">Call ' + esc(w.phone) + "</a>";
+      }
+      h += '<button class="ac-b" data-copy="' + esc(t.paymentId) + '">Copy the message</button>';
+      if (can.pay) {
+        if (w.email) {
+          h += '<button class="ac-b go" data-told="' + esc(t.paymentId) +
+            '" data-how="email">&#10003; Told by email</button>';
+        }
+        if (w.phone) {
+          h += '<button class="ac-b go" data-told="' + esc(t.paymentId) +
+            '" data-how="phone">&#10003; Told by phone</button>';
+        }
+        h += '<button class="ac-b go" data-told="' + esc(t.paymentId) +
+          '" data-how="in person">&#10003; Told in person</button>';
+      }
+      h += '<span class="ac-msg" id="tellMsg' + esc(t.paymentId) + '"></span></div>' +
+        '<div class="ck-none-note" style="margin-top:6px">The portal cannot send email itself — ' +
+        "this opens the message in your own email, already written. Press Send there, then mark " +
+        "it here.</div></div>";
+    });
+    return h + "</div>";
+  }
+
   function render() {
     var d = state.d, can = d.can || {};
     cards(d.totals);
     var h = "";
+
+    if (d.checks) {
+      h += checksToWrite(d.checks, can);
+      h += checksToTell(d.checks, can);
+    }
 
     // ── ready to enter ───────────────────────────────────────────────────
     h += '<div class="ac-sec"><header><h3>Ready to enter in QuickBooks</h3>' +
@@ -186,6 +375,7 @@
     });
     var csv = el("acCsv");
     if (csv) csv.onclick = function (e) { e.preventDefault(); download("bills"); };
+    wireChecks();
     var csvI = el("acCsvInv");
     if (csvI) csvI.onclick = function (e) { e.preventDefault(); download("invoices"); };
     syncPick();
@@ -265,6 +455,179 @@
         body: { op: "unmark", ids: [id] } });
       await load();
     } catch (e) { DCR.alert(e.message || "Could not undo that."); }
+  }
+
+
+  /* ── check actions ────────────────────────────────────────────────────── */
+
+  function wireChecks() {
+    var box = el("acBody");
+
+    box.querySelectorAll("[data-open]").forEach(function (tr) {
+      tr.onclick = async function () {
+        var id = tr.getAttribute("data-open");
+        if (String(state.openCheck) === String(id)) {
+          state.openCheck = null; state.detail = null; return render();
+        }
+        state.openCheck = id; state.detail = null; render();
+        try {
+          state.detail = await DCR.api("/api/portal?action=accounting&bill=" + encodeURIComponent(id));
+        } catch (e) {
+          state.openCheck = null;
+          render();
+          return DCR.alert(e.message || "Could not open that bill.");
+        }
+        render();
+      };
+    });
+
+    var close = el("ckClose");
+    if (close) close.onclick = function (e) {
+      e.stopPropagation();
+      state.openCheck = null; state.detail = null; render();
+    };
+
+    var write = el("ckWrite");
+    if (write) write.onclick = function (e) { e.stopPropagation(); doWriteCheck(); };
+
+    /* The panel lives inside the row, and the row toggles itself shut on click.
+       Without this every keystroke in the amount box would close the panel. */
+    box.querySelectorAll(".ck-panel").forEach(function (p) {
+      p.onclick = function (e) { e.stopPropagation(); };
+    });
+
+    box.querySelectorAll("[data-load]").forEach(function (btn) {
+      btn.onclick = async function () {
+        var pid = btn.getAttribute("data-load");
+        var bid = btn.getAttribute("data-bill");
+        btn.disabled = true;
+        btn.textContent = "Looking…";
+        try {
+          var d = await DCR.api("/api/portal?action=accounting&bill=" + encodeURIComponent(bid));
+          /* THIS check's message, not the bill's. A bill can carry more than one
+             check, and the amount on a pickup notice is a statement about the
+             one piece of paper waiting in the drawer. */
+          var mine = (d.written || []).filter(function (w) { return String(w.id) === String(pid); })[0];
+          if (!mine) {
+            btn.disabled = false;
+            btn.textContent = "How do I reach them?";
+            return DCR.alert("That check is no longer on this bill. Refresh the page.");
+          }
+          state.tell[pid] = { loaded: true, contact: d.contact, message: mine.message };
+        } catch (e) {
+          btn.disabled = false;
+          btn.textContent = "How do I reach them?";
+          return DCR.alert(e.message || "Could not look them up.");
+        }
+        render();
+      };
+    });
+
+    box.querySelectorAll("[data-mail]").forEach(function (a) {
+      a.onclick = function (e) {
+        e.preventDefault();
+        var k = state.tell[a.getAttribute("data-mail")] || {};
+        if (!k.contact || !k.contact.email) return;
+        /* A detached anchor rather than assigning location.href: on some
+           browsers that assignment counts as a navigation and tears the page
+           down, which would lose the "Told them" button before it is pressed. */
+        var link = document.createElement("a");
+        link.href = "mailto:" + encodeURIComponent(k.contact.email) +
+          "?subject=" + encodeURIComponent(k.message.subject) +
+          "&body=" + encodeURIComponent(k.message.body);
+        link.style.display = "none";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      };
+    });
+
+    box.querySelectorAll("[data-copy]").forEach(function (btn) {
+      btn.onclick = async function () {
+        var k = state.tell[btn.getAttribute("data-copy")] || {};
+        try {
+          await navigator.clipboard.writeText((k.message && k.message.body) || "");
+          btn.textContent = "Copied";
+          setTimeout(function () { btn.textContent = "Copy the message"; }, 1500);
+        } catch (e) {
+          /* The clipboard is refused outside a secure context. Saying so beats
+             a button that silently does nothing. */
+          DCR.alert("Could not copy it. Select the message above and copy it by hand.");
+        }
+      };
+    });
+
+    /* How they were told is recorded, not assumed — it is the difference between
+       a record and a guess when somebody rings up next month asking where their
+       check went. One button per way, so it stays one click. */
+    box.querySelectorAll("[data-told]").forEach(function (btn) {
+      btn.onclick = async function () {
+        var pid = btn.getAttribute("data-told");
+        var how = btn.getAttribute("data-how");
+        btn.disabled = true;
+        try {
+          await DCR.api("/api/portal?action=accounting", {
+            method: "POST", body: { op: "told", paymentId: pid, how: how },
+          });
+        } catch (e) {
+          btn.disabled = false;
+          return DCR.alert(e.message || "Could not record that.");
+        }
+        delete state.tell[pid];
+        await load();
+      };
+    });
+  }
+
+  async function doWriteCheck() {
+    var msg = el("ckMsg");
+    var d = state.detail;
+    if (!d) return;
+    var payee = (el("ckPayee").value || "").trim();
+    /* Strip only what people actually type around a figure — a dollar sign,
+       thousands commas, spaces. Anything else is refused rather than cleaned
+       away: stripping a minus sign turns "-100" into a hundred-dollar check,
+       and "1e5" into fifteen. On a number somebody signs, a refusal the
+       accountant retypes beats a silent reinterpretation. */
+    var typed = (el("ckAmount").value || "").trim();
+    var cleaned = typed.replace(/[$,\s]/g, "");
+    var amount = /^\d+(\.\d{1,2})?$/.test(cleaned) ? Number(cleaned) : NaN;
+    var number = (el("ckNumber").value || "").trim();
+    var memo = (el("ckMemo").value || "").trim();
+
+    var bad = !number ? "Enter the check number."
+      : !isFinite(amount) ? "That is not an amount. Type it like 4500.00."
+      : !(amount > 0) ? "Enter the amount."
+      : amount > d.check.max + 0.005
+        ? "That is more than the " + money(d.check.max) + " still authorised on this bill."
+        : "";
+    if (bad) { msg.textContent = bad; msg.className = "ac-msg err"; return; }
+
+    var sure = await DCR.confirm(
+      "Record check #" + number + " for " + money(amount) + " to " +
+      (payee || d.check.payee) + "?",
+      { okText: "Record it" });
+    if (!sure) return;
+
+    el("ckWrite").disabled = true;
+    msg.className = "ac-msg";
+    msg.textContent = "Recording…";
+    try {
+      await DCR.api("/api/portal?action=accounting", {
+        method: "POST",
+        body: { op: "check", billId: d.bill.id, amount: amount,
+                checkNumber: number, payee: payee, memo: memo },
+      });
+    } catch (e) {
+      var b = el("ckWrite");
+      if (b) b.disabled = false;
+      msg.textContent = e.message || "Could not record it.";
+      msg.className = "ac-msg err";
+      return;
+    }
+    state.openCheck = null;
+    state.detail = null;
+    await load();
   }
 
   async function load() {
