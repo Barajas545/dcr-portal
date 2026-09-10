@@ -198,7 +198,8 @@
               (hasDoc ? "" : ' disabled title="Attach the invoice before approving"') + ">Approve</button>";
           }
           if (can.pay && approved && owed > 0) acts += '<button class="mn-b go" data-pay="' + esc(b.id) + '">Pay</button>';
-          return '<div class="mn-row" data-bill="' + esc(b.id) + '">' +
+          return '<div class="mn-row mn-open" data-bill="' + esc(b.id) + '" tabindex="0"' +
+            ' title="Open this invoice — see the document and approve it">' +
             '<span class="mn-dot ' + st.cls + '"></span>' +
             '<span class="mn-main"><b>' + esc(who) + "</b>" +
               '<span class="mn-sub">' + esc([b.expenseInvoiceNumber ? "#" + b.expenseInvoiceNumber : "",
@@ -454,6 +455,23 @@
     });
     document.querySelectorAll("[data-pay]").forEach(function (n) {
       n.onclick = function (e) { e.stopPropagation(); mnPay(n.getAttribute("data-pay")); };
+    });
+    /* The row opens the invoice on its own screen, where the document is on the
+       page beside the numbers.
+
+       The buttons inside it keep working: each one calls stopPropagation, so a
+       manager who only wants to hit Approve from here still can without being
+       taken somewhere else first. Losing that would make the common case slower
+       to serve the uncommon one. */
+    document.querySelectorAll("[data-bill]").forEach(function (n) {
+      var open = function () {
+        location.href = "bill.html?id=" + encodeURIComponent(n.getAttribute("data-bill")) +
+          "&project=" + encodeURIComponent(PID);
+      };
+      n.onclick = open;
+      n.onkeydown = function (e) {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); }
+      };
     });
     document.querySelectorAll("[data-inv]").forEach(function (n) {
       n.onclick = function () { mnEditInvoice(n.getAttribute("data-inv")); };

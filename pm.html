@@ -49,6 +49,10 @@
         border-bottom:1px solid var(--border); cursor:pointer;}
       .mn-row:last-child{border-bottom:none;}
       .mn-row:hover{background:var(--surface-2);}
+      /* Only the bill rows go anywhere; the invoice rows open a modal in
+         place, so they keep the default cursor. */
+      .mn-row.mn-open{cursor:pointer;}
+      .mn-row.mn-open:focus{outline:2px solid var(--acc); outline-offset:-2px;}
       .mn-dot{width:9px; height:9px; border-radius:50%; flex-shrink:0; background:var(--border);}
       .mn-dot.ok{background:var(--ok);} .mn-dot.due{background:var(--acc);}
       .mn-dot.wait{background:var(--gold);} .mn-dot.bad{background:var(--err);}
