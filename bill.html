@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DCR Portal — Invoice</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+      [hidden] { display: none !important; }
+      .bl { max-width: 1240px; margin: auto; padding: 18px 20px 40px;
+        --acc:#2f80d8; --gold:#b8860b; --ok:#1f9d55; --err:#c8371f; }
+
+      .bl-top { display: flex; align-items: flex-start; gap: 14px; flex-wrap: wrap;
+        margin-bottom: 4px; }
+      .bl-top h2 { margin: 0; font-size: 22px; font-weight: 700; }
+      .bl-sub { color: var(--text-muted); font-size: 13px; margin: 2px 0 0; }
+      .bl-amt { margin-left: auto; text-align: right; }
+      .bl-amt .v { font-size: 28px; font-weight: 800; font-variant-numeric: tabular-nums; }
+      .bl-amt .n { font-size: 12px; color: var(--text-muted); }
+
+      .bl-state { display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: .05em;
+        padding: 3px 9px; border-radius: 6px; vertical-align: middle; }
+      .bl-state.wait { background: rgba(184,134,11,.15); color: var(--gold); border: 1px solid var(--gold); }
+      .bl-state.ok { background: rgba(31,157,85,.14); color: var(--ok); border: 1px solid var(--ok); }
+      .bl-state.void { background: var(--surface-2); color: var(--text-muted); border: 1px solid var(--border); }
+
+      /* Paperwork on the left, the facts and the decision on the right. On a
+         phone the viewer drops under the facts — reading the numbers first and
+         scrolling to the page is the right order on a small screen. */
+      .bl-grid { display: grid; grid-template-columns: minmax(0,1.35fr) minmax(320px,1fr);
+        gap: 16px; margin-top: 16px; align-items: start; }
+      @media (max-width: 900px) { .bl-grid { grid-template-columns: 1fr; }
+        .bl-grid .bl-view { order: 2; } .bl-grid .bl-side { order: 1; } }
+
+      .bl-card { background: var(--surface); border: 1px solid var(--border);
+        border-radius: 12px; padding: 16px; margin-bottom: 14px; box-shadow: var(--shadow); }
+      .bl-card h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em;
+        color: var(--text-muted); margin: 0 0 10px; font-weight: 700; }
+
+      .bl-rows { font-size: 13.5px; }
+      .bl-rows > div { display: flex; justify-content: space-between; gap: 12px;
+        padding: 6px 0; border-bottom: 1px solid var(--border); }
+      .bl-rows > div:last-child { border-bottom: 0; }
+      .bl-rows dt, .bl-rows .k { color: var(--text-muted); flex: none; }
+      .bl-rows .v { text-align: right; font-weight: 600; word-break: break-word; }
+      .bl-rows .v.late { color: var(--err); }
+
+      .bl-desc { font-size: 13.5px; white-space: pre-line; line-height: 1.55; }
+
+      .bl-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+      .bl-tabs button { padding: 7px 12px; border-radius: 8px; cursor: pointer; font-size: 12.5px;
+        border: 1px solid var(--border); background: var(--surface); color: var(--text);
+        font-weight: 600; font-family: inherit; max-width: 260px; overflow: hidden;
+        text-overflow: ellipsis; white-space: nowrap; }
+      .bl-tabs button[aria-pressed="true"] { border-color: var(--acc); color: var(--acc);
+        background: rgba(47,128,216,.12); }
+
+      .bl-stage { border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+        background: var(--surface-2); min-height: 460px; display: flex;
+        align-items: center; justify-content: center; }
+      .bl-stage iframe { width: 100%; height: 78vh; min-height: 460px; border: 0; background: #fff; }
+      .bl-stage img { max-width: 100%; max-height: 78vh; display: block; }
+      .bl-stage .msg { padding: 40px 20px; text-align: center; color: var(--text-muted); font-size: 13.5px; }
+      .bl-viewbar { display: flex; gap: 10px; align-items: center; margin-top: 8px;
+        font-size: 12.5px; color: var(--text-muted); flex-wrap: wrap; }
+      .bl-viewbar a { color: var(--acc); }
+
+      .bl-approve { width: 100%; padding: 14px; font-size: 15px; font-weight: 700; border: 0;
+        border-radius: 10px; background: var(--ok); color: #fff; cursor: pointer; font-family: inherit; }
+      .bl-approve:disabled { opacity: .5; cursor: default; }
+      .bl-secondary { display: block; width: 100%; text-align: center; padding: 11px;
+        margin-top: 8px; border-radius: 10px; border: 1px solid var(--border);
+        background: var(--surface); color: var(--text); font-size: 13.5px; font-weight: 600;
+        text-decoration: none; cursor: pointer; font-family: inherit; }
+      .bl-secondary:hover { border-color: var(--acc); color: var(--acc); }
+      .bl-note { width: 100%; padding: 10px 12px; border: 1px solid var(--border);
+        border-radius: 8px; background: var(--surface); color: var(--text); font-size: 13.5px;
+        font-family: inherit; margin-bottom: 8px; }
+      .bl-why { font-size: 12.5px; color: var(--gold); font-weight: 600; margin-bottom: 8px; }
+      .bl-msg { font-size: 12.5px; margin-top: 8px; }
+      .bl-msg.err { color: var(--err); font-weight: 600; }
+      .bl-ok { border: 1px solid var(--ok); background: rgba(31,157,85,.08); border-radius: 8px;
+        padding: 10px 12px; font-size: 13px; }
+    </style>
+  </head>
+  <body>
+    <div class="topbar">
+      <div class="brand"><img src="logo.png" alt="" class="logo" /><span id="companyName">Portal</span></div>
+      <div class="top-actions">
+        <span class="pill" id="userPill"></span>
+        <a class="btn btn-ghost btn-sm" href="dashboard.html">Dashboard</a>
+        <button class="btn btn-ghost btn-sm" id="logoutBtn">Log out</button>
+      </div>
+    </div>
+
+    <div class="bl" id="blRoot">
+      <div class="bl-card" id="blLoading">Loading the invoice…</div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="common.js"></script>
+    <script src="bill.js"></script>
+  </body>
+</html>

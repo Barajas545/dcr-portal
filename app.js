@@ -109,8 +109,11 @@
         // which ones are one click away and which need a scan first.
         (b.hasDocument ? "" : '<span class="nodoc">needs the invoice attached</span>') +
         '</td><td class="amt">' + money(b.amount) + "</td>" +
-        '<td class="amt"><a class="go" href="pm.html?id=' + encodeURIComponent(b.projectID) +
-        '">Open &rarr;</a></td></tr>';
+        // Straight to the invoice itself, not the whole chart: the question
+        // here is whether to authorise THIS, and that needs the paperwork on
+        // screen. The chart is one click on from there.
+        '<td class="amt"><a class="go" href="bill.html?id=' + encodeURIComponent(b.id) +
+        '&project=' + encodeURIComponent(b.projectID) + '">Open &rarr;</a></td></tr>';
     }).join("");
 
     slot.innerHTML = '<div class="hm-ap"><h3>⚑ ' + sum.count +
