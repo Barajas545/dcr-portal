@@ -9,7 +9,10 @@
     var ts = profile.tsScope;
     var isLeadOrMgr = ts === "*" || (ts && ts.managed && ts.managed.length);
     var flags = profile.flags || {};
-    // Accepting a submission files a bill, so it needs the same write as one.
+    /* Accepting a submission files a bill, so it needs the same write as one.
+       The Books tile is deliberately looser (read is enough) because that is what
+       the endpoint itself requires — a hidden tile in front of a working screen
+       is not a permission, it is a secret. */
     var canReview = ["Admin", "Manager", "Accountant"].indexOf(profile.role) !== -1 &&
       pp.expenses === "write";
     // salesEstimates flag; tokens issued before the flag existed fall back to role
@@ -41,7 +44,7 @@
       { href: "vehicles.html", ic: "🚚", tt: "Vehicles", ds: "Fleet board: oil changes, services due, history.", show: !!pp.vehicleInformation },
       { href: "data.html", ic: "🗄️", tt: "Data Browser", ds: "Browse and edit any SharePoint table directly.", show: profile.role === "Admin" },
       { href: "assist.html", ic: "🤝", tt: "Guided Assist", ds: "Show someone how to use the portal on their own phone, tablet or PC.", show: profile.role === "Admin" },
-      { href: "accounting.html", ic: "📒", tt: "The Books", ds: "What is ready to enter in QuickBooks, and what is already in.", show: canReview },
+      { href: "accounting.html", ic: "📒", tt: "The Books", ds: "What is ready to enter in QuickBooks, and what is already in.", show: !!pp.expenses },
       { href: "submissions.html", ic: "📥", tt: "Sub Submissions", ds: "Invoices and change orders sent in by subcontractors.", show: canReview },
       { href: "admin.html", ic: "🔐", tt: "Admin", ds: "User accounts, roles, and permissions.", show: profile.role === "Admin" },
       { href: "backup.html", ic: "🗄️", tt: "Backup", ds: "Snapshot the whole database, and see how old the last one is.", show: profile.role === "Admin" },

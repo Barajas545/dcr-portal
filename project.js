@@ -2620,6 +2620,12 @@
     el("logoutBtn").onclick = function(){ DCR.logout(); };
     if (!PID) { el("pjTitle").textContent = "No project selected"; el("pane-overview").innerHTML='<div class="pj-empty">Open a project from the <a href="board.html" style="color:var(--acc)">Board</a>.</div>'; return; }
 
+    /* A tab that only ever paints "No access to payments." is a support call
+       waiting to happen. Hide it instead. */
+    if (!(state.profile && state.profile.permissions && state.profile.permissions.payments)) {
+      var payTab = document.querySelector('.pj-tab[data-tab="payments"]');
+      if (payTab) payTab.hidden = true;
+    }
     document.querySelectorAll(".pj-tab").forEach(function(t){ t.onclick = function(){ switchTab(t.getAttribute("data-tab")); }; });
     // The page saves itself; this is a "flush now" affordance for anyone who
     // still reaches for Save, and doubles as the manual retry after a failure.
