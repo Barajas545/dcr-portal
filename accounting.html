@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DCR Portal — The books</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+      [hidden] { display: none !important; }
+      .ac { max-width: 1180px; margin: auto; padding: 18px 20px 50px;
+        --acc:#2f80d8; --gold:#b8860b; --ok:#1f9d55; --err:#c8371f; }
+
+      .ac-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+      .ac-head h2 { margin: 0; font-size: 22px; font-weight: 700; }
+      .ac-head .who { color: var(--text-muted); font-size: 13.5px; }
+      .ac-lead { color: var(--text-muted); font-size: 13.5px; margin: 4px 0 16px; }
+
+      .ac-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }
+      @media (max-width: 820px) { .ac-cards { grid-template-columns: repeat(2, 1fr); } }
+      .ac-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+        padding: 13px 15px; }
+      .ac-card .k { font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+        letter-spacing: .05em; color: var(--text-muted); }
+      .ac-card .v { font-size: 24px; font-weight: 800; font-variant-numeric: tabular-nums;
+        margin-top: 1px; }
+      .ac-card .n { font-size: 11px; color: var(--text-muted); }
+      .ac-card.go { border-color: var(--ok); } .ac-card.go .v { color: var(--ok); }
+      .ac-card.late { border-color: var(--err); border-width: 2px; } .ac-card.late .v,
+      .ac-card.late .n { color: var(--err); }
+      .ac-card.wait { border-color: var(--gold); } .ac-card.wait .v { color: var(--gold); }
+
+      .ac-sec { background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+        padding: 16px; margin-bottom: 16px; box-shadow: var(--shadow); }
+      .ac-sec > header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+        flex-wrap: wrap; }
+      .ac-sec h3 { margin: 0; font-size: 15px; font-weight: 700; }
+      .ac-sec .hint { font-size: 12.5px; color: var(--text-muted); }
+      .ac-sec .grow { flex: 1; }
+
+      table.ac-t { width: 100%; border-collapse: collapse; font-size: 13px; }
+      .ac-t th { text-align: left; font-size: 10.5px; text-transform: uppercase;
+        letter-spacing: .05em; color: var(--text-muted); padding: 4px 6px;
+        border-bottom: 1px solid var(--border); font-weight: 700; }
+      .ac-t td { padding: 8px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
+      .ac-t tr:last-child td { border-bottom: 0; }
+      .ac-t .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums;
+        font-weight: 700; }
+      .ac-t .who { font-weight: 700; }
+      .ac-t .meta { color: var(--text-muted); font-size: 11.5px; }
+      .ac-t .late { color: var(--err); font-weight: 700; }
+      .ac-t a { color: var(--acc); text-decoration: none; white-space: nowrap; }
+      .ac-t a:hover { text-decoration: underline; }
+      .ac-t input[type=checkbox] { width: 17px; height: 17px; }
+      .ac-t .reason { color: var(--gold); font-size: 11.5px; font-weight: 600; }
+
+      .ac-b { padding: 8px 13px; border-radius: 8px; font-size: 13px; font-weight: 600;
+        cursor: pointer; font-family: inherit; border: 1px solid var(--border);
+        background: var(--surface); color: var(--text); text-decoration: none; display: inline-block; }
+      .ac-b:hover { border-color: var(--acc); color: var(--acc); }
+      .ac-b.go { background: var(--ok); border-color: var(--ok); color: #fff; }
+      .ac-b.go:disabled { opacity: .5; cursor: default; }
+      .ac-b.go:hover:not(:disabled) { color: #fff; }
+      .ac-ref { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;
+        background: var(--surface); color: var(--text); font-size: 13px; font-family: inherit;
+        width: 190px; }
+      .ac-msg { font-size: 12.5px; margin-top: 8px; white-space: pre-line; }
+      .ac-msg.err { color: var(--err); font-weight: 600; }
+      .ac-none { color: var(--text-muted); font-size: 13px; padding: 14px 4px; }
+
+      /* The one thing this screen is honest about: QuickBooks Online will not
+         import a bill from a CSV on most plans. Saying so on the button's own
+         note beats an accountant discovering it at the import screen. */
+      .ac-note { font-size: 11.5px; color: var(--text-muted); margin-top: 8px; line-height: 1.5; }
+      .ac-note b { color: var(--gold); }
+    </style>
+  </head>
+  <body>
+    <div class="topbar">
+      <div class="brand"><img src="logo.png" alt="" class="logo" /><span id="companyName">Portal</span></div>
+      <div class="top-actions">
+        <span class="pill" id="userPill"></span>
+        <a class="btn btn-ghost btn-sm" href="dashboard.html?all=1">All apps</a>
+        <button class="btn btn-ghost btn-sm" id="logoutBtn">Log out</button>
+      </div>
+    </div>
+
+    <div class="ac">
+      <div class="ac-head">
+        <h2>The books</h2>
+        <span class="who" id="acGreeting"></span>
+      </div>
+      <p class="ac-lead">
+        What is ready to enter in QuickBooks, what is already in, and what is stuck and on whom.
+        Nothing here talks to Intuit — you carry the data across, and the portal remembers
+        what you have done so nothing is entered twice.
+      </p>
+
+      <div class="ac-cards" id="acCards"></div>
+      <div id="acBody"><div class="ac-none">Loading…</div></div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="common.js"></script>
+    <script src="accounting.js"></script>
+  </body>
+</html>
