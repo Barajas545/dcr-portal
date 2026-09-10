@@ -57,10 +57,23 @@ button { font: inherit; cursor: pointer; }
   font-weight: 800; letter-spacing: .5px;
 }
 .brand h1 { font-size: 18px; margin: 0; }
-/* Company logo mark in the top bar. The artwork is black-on-transparent, so it
-   shows as-is on the light theme and is inverted to white for dark mode below. */
-.brand-logo {
-  height: 32px; width: auto; max-width: 170px;
+/* The company mark in the top bar.
+
+   The artwork is black-on-transparent and nearly square, so it is sized by
+   height and left to find its own width. 26px sits on the cap-height of the
+   16px title beside it — big enough to read as a mark, small enough that the
+   bar stays a bar rather than a banner.
+
+   `.logo` is here because three screens were written against that name, and a
+   class with no rules behind it renders the image at its natural 192px. Sizing
+   both is cheaper than relying on everyone remembering which is which.
+
+   The invert is what makes it work on either theme: black artwork stays black
+   on the light one and becomes white on the dark. Slightly softened rather than
+   pure white, because a hard #fff mark next to muted grey text is the loudest
+   thing on the screen and it is only a logo. */
+.brand-logo, .topbar .logo {
+  height: 26px; width: auto; max-width: 150px;
   object-fit: contain; display: block; flex-shrink: 0;
 }
 .subtitle { color: var(--text-muted); margin: 4px 0 24px; font-size: 14px; }
@@ -213,9 +226,18 @@ tbody tr:hover { background: var(--surface-2); }
   }
   .msg.error { background: #3a1712; color: #f6bcae; }
   .msg.ok { background: #10321f; color: #a7e2c0; }
-  /* Invert the black logo artwork to white on the dark top bar. */
-  .brand-logo { filter: invert(1); }
+  /* Invert the black artwork to white on the dark bar, and pull it back from
+     pure white so it sits with the text rather than shouting over it. */
+  .brand-logo, .topbar .logo { filter: invert(1) brightness(.92); }
 }
+
+/* An explicitly chosen dark theme, which prefers-color-scheme does not see.
+   Without this the mark stays black artwork on a dark bar — which is exactly
+   how it looked on the invoice screen. */
+:root[data-theme="dark"] .brand-logo,
+:root[data-theme="dark"] .topbar .logo { filter: invert(1) brightness(.92); }
+:root[data-theme="light"] .brand-logo,
+:root[data-theme="light"] .topbar .logo { filter: none; }
 
 /* ── auto-save status badge (DCR.live) ────────────────────────────────────
    Every screen that saves by itself paints one of these. Deliberately quiet:
