@@ -65,6 +65,12 @@
       .lg-t.warn { border-color: var(--gold); }
       .lg-t.warn .v, .lg-t.warn .n { color: var(--gold); }
 
+      .lg-bulk { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; margin: 6px 0 10px;
+        padding: 9px 12px; border-radius: 10px; border: 1px solid var(--acc);
+        background: rgba(47,128,216,.10); font-size: 13px; }
+      .lg-conf { font-size: 10.5px; font-weight: 700; color: var(--acc); text-decoration: none;
+        margin-left: 4px; }
+      .lg-conf:hover { text-decoration: underline; }
       /* ── the table ────────────────────────────────────────────────────── */
       .lg-wrap { border: 1px solid var(--border); border-radius: 12px; overflow: auto; background: var(--surface); }
       table.lg-t2 { width: 100%; border-collapse: collapse; font-size: 12.5px; }
@@ -152,6 +158,14 @@
         <label class="lg-toggle"><input type="checkbox" id="lgZero" /> show rows with no cost</label>
         <span style="flex:1"></span>
         <a class="lg-b" id="lgCsv" href="#">&#8615; Export CSV</a>
+      </div>
+
+      <div class="lg-bulk" id="lgBulk" hidden>
+        <b id="lgBulkN"></b>
+        <select class="lg-sel" id="lgBulkCard"></select>
+        <button class="lg-b go" id="lgBulkApply">Apply to selected</button>
+        <button class="lg-b" id="lgBulkRec">&#10003; Mark reconciled</button>
+        <button class="lg-b" id="lgBulkClear">Clear</button>
       </div>
 
       <div class="lg-scope" id="lgScope"></div>

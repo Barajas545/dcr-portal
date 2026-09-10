@@ -9,7 +9,7 @@
 (function () {
   var el = function (id) { return document.getElementById(id); };
   var esc = function (v) { return DCR.esc(v); };
-  var state = { d: null, receipts: null, receiptNote: "", busy: false };
+  var state = { d: null, receipts: null, receiptNote: "", busy: false, picked: {} };
 
   function money(v) {
     return "$" + (Number(v) || 0).toLocaleString("en-US",
@@ -158,12 +158,25 @@
 
   // ── the table ───────────────────────────────────────────────────────────
   function row(r, can) {
+    /* An inference that can never become a fact is just a permanent asterisk.
+       Confirm writes the real LaborExpenseEmployeeName, so the guess drains
+       into the recorded column one row at a time and the dotted labels
+       disappear as she works. */
     var who = r.employeeName
       ? esc(r.employeeName) + ' <span class="lg-tag ' + (r.employeeSource === "recorded" ? "rec" : "inf") +
-        '">' + (r.employeeSource === "recorded" ? "recorded" : "inferred") + "</span>"
+        '">' + (r.employeeSource === "recorded" ? "recorded" : "inferred") + "</span>" +
+        (r.employeeSource === "inferred" && can.tag
+          ? ' <a href="#" class="lg-conf" data-confirm="' + esc(r.id) + '" data-name="' +
+            esc(r.employeeName) + '" title="Record this properly against ' + esc(r.employeeName) +
+            '">confirm</a>'
+          : "")
       : "";
     var desc = r.description || r.laborExpenseDescription || r.materialExpenseDescription || r.remarks || "";
     return '<tr' + (r.cost ? "" : ' class="zero"') + '>' +
+      (can.tag
+        ? '<td style="text-align:center"><input type="checkbox" data-pick="' + esc(r.id) + '"' +
+          (state.picked[r.id] ? " checked" : "") + "></td>"
+        : "") +
       '<td class="dt">' + esc(day(r.expenseDate) || "no date") + "</td>" +
       '<td class="proj">' + esc(r.projectLabel || r.projectID || "") + "</td>" +
       '<td class="desc">' + esc(desc) + "</td>" +
@@ -200,15 +213,21 @@
               "Billed out", "Paid with", "Employee", "Receipt", "Rec."];
   var NUMS = { 3: 1, 4: 1, 5: 1, 6: 1, 7: 1 };
 
+  function head0(can) {
+    return "<thead><tr>" + (can.tag ? '<th style="width:26px"></th>' : "") +
+      HEAD.map(function (h, i) {
+        return "<th" + (NUMS[i] ? ' class="num"' : "") + ">" + esc(h) + "</th>";
+      }).join("") + "</tr></thead>";
+  }
+  function span(can) { return HEAD.length + (can.tag ? 1 : 0); }
+
   function render() {
     var d = state.d, can = d.can || {};
     chips(d);
     scope(d);
     totals(d);
 
-    var head = "<thead><tr>" + HEAD.map(function (h, i) {
-      return "<th" + (NUMS[i] ? ' class="num"' : "") + ">" + esc(h) + "</th>";
-    }).join("") + "</tr></thead>";
+    var head = head0(can);
 
     var body = "";
     if (!d.rows.length) {
@@ -217,7 +236,7 @@
         "</div>";
     } else if (d.groups) {
       body = d.groups.map(function (g) {
-        return '<tr class="lg-grp' + (g.pinned ? " pin" : "") + '"><td colspan="' + HEAD.length + '">' +
+        return '<tr class="lg-grp' + (g.pinned ? " pin" : "") + '"><td colspan="' + span(can) + '">' +
           '<span class="lbl">' + esc(g.label) + "</span>" +
           '<span class="sub">' + money(g.cost) + " · " + g.count + " record" + (g.count === 1 ? "" : "s") +
           (g.withReceipt ? " · " + g.withReceipt + " with a receipt" : "") +
@@ -255,7 +274,28 @@
     el("lgCant").innerHTML = cant.map(function (c) { return "<li>" + c + "</li>"; }).join("");
 
     el("lgSpan").textContent = d.span ? day(d.span.from) + " – " + day(d.span.to) : "no dated records";
+    bulk();
     wire();
+  }
+
+  /* Tagging 177 rows one at a time is how a dimension stays empty forever, so
+     the card tag is also a bulk action. The server already accepts up to 200
+     ids in one call; this is the only reason it does. */
+  function bulk() {
+    var n = Object.keys(state.picked).length;
+    var bar = el("lgBulk");
+    if (!bar) return;
+    bar.hidden = n === 0;
+    if (!n) return;
+    var cost = (state.d.rows || []).filter(function (r) { return state.picked[r.id]; })
+      .reduce(function (t, r) { return t + (Number(r.cost) || 0); }, 0);
+    el("lgBulkN").textContent = n + " row" + (n === 1 ? "" : "s") + " selected · " + money(cost);
+    if (!el("lgBulkCard").options.length) {
+      el("lgBulkCard").innerHTML = '<option value="">Set “Paid with”…</option>' +
+        (state.d.cards || []).map(function (c) {
+          return '<option value="' + esc(c.id) + '">' + esc(c.label) + "</option>";
+        }).join("");
+    }
   }
 
   // ── actions ─────────────────────────────────────────────────────────────
@@ -273,6 +313,23 @@
     });
     document.querySelectorAll("[data-file]").forEach(function (a) {
       a.onclick = function (e) { e.preventDefault(); openFile(a.getAttribute("data-file")); };
+    });
+    document.querySelectorAll("[data-pick]").forEach(function (c) {
+      c.onchange = function () {
+        var id = c.getAttribute("data-pick");
+        if (c.checked) state.picked[id] = true; else delete state.picked[id];
+        bulk();
+      };
+    });
+    document.querySelectorAll("[data-confirm]").forEach(function (a) {
+      a.onclick = async function (e) {
+        e.preventDefault();
+        var name = a.getAttribute("data-name");
+        if (!(await DCR.confirm("Record this row against " + name +
+            "? It stops being a guess and becomes the stored employee.",
+            { okText: "Record it" }))) return;
+        write({ op: "employee", ids: [a.getAttribute("data-confirm")], employeeName: name });
+      };
     });
   }
 
@@ -292,8 +349,13 @@
     if (state.busy) return;
     state.busy = true;
     try {
-      await DCR.api("/api/portal?action=ledger", { method: "POST", body: body });
+      var r = await DCR.api("/api/portal?action=ledger", { method: "POST", body: body });
+      state.picked = {};
       await load({});
+      if (r && r.refused && r.refused.length) {
+        DCR.alert(r.refused.length + " row" + (r.refused.length === 1 ? "" : "s") +
+          " could not be changed: " + r.refused.map(function (x) { return x.reason; })[0]);
+      }
     } catch (e) {
       DCR.alert(e.message || "Could not save that.");
       await load({});
@@ -325,6 +387,20 @@
     el("companyName").textContent = DCR.company + " Portal";
     el("userPill").textContent = (profile.displayName || profile.email) + " · " + profile.role;
     el("logoutBtn").onclick = function () { DCR.logout(); };
+
+    /* Selection is cleared on every reload, so a tag can never land on rows she
+       scrolled away from two filters ago. */
+    el("lgBulkClear").onclick = function () { state.picked = {}; render(); };
+    el("lgBulkApply").onclick = function () {
+      var card = el("lgBulkCard").value;
+      var ids = Object.keys(state.picked);
+      if (!card || !ids.length) return;
+      write({ op: "card", ids: ids, cardId: card });
+    };
+    el("lgBulkRec").onclick = function () {
+      var ids = Object.keys(state.picked);
+      if (ids.length) write({ op: "reconcile", ids: ids });
+    };
 
     el("lgGroup").onchange = function () { load({}); };
     el("lgZero").onchange = function () { load({}); };

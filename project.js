@@ -1074,7 +1074,15 @@
   }
 
   function expCsv(rows) {
-    function cell(v) { var s = String(v == null ? "" : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+    /* Quoting is not enough. Excel EXECUTES a cell that begins =, +, - or @, so
+       an expense description typed as "=cmd|..." is live code on whoever opens
+       the export. Prefixing an apostrophe is what spreadsheets read as "this is
+       text". Same rule as csvCell() on the server. */
+    function cell(v) {
+      var s = String(v == null ? "" : v);
+      if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+      return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    }
     var out = [["Date", "Group", "Description", "Estimate", "Invoice", "Materials", "Contractors", "Remarks"].join(",")];
     rows.forEach(function (r) {
       // ISO date so Excel/Sheets import it as a date, not as text
