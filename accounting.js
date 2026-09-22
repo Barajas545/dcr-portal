@@ -91,17 +91,12 @@
      authorised — check, cash, or nothing yet — and that is a fact about the
      bill, not a different kind of screen. */
   var PILES = {
-    write: {
-      key: "toWrite", title: "Checks to write",
-      hint: "Approved to be paid by check. Write it, then tell them it is ready to collect.",
-      empty: "No checks to write. Every bill approved for a check has one against it.",
-      act: "Write check",
-    },
-    cash: {
-      key: "toCash", title: "Cash to pay",
-      hint: "Approved to be settled in cash. Hand it over, then record it here.",
-      empty: "Nothing to pay in cash.",
-      act: "Pay cash",
+    pay: {
+      key: "toPay", title: "Bills to pay",
+      hint: "Approved and still owed. Each row says how it was authorised \u2014 open it to " +
+        "see the invoice and record the payment.",
+      empty: "Nothing owed. Every approved bill has been paid.",
+      act: "Pay",
     },
     decide: {
       key: "toDecide", title: "Approved — but nobody said how to pay",
@@ -111,6 +106,17 @@
       act: "Open",
     },
   };
+
+  var METHOD_CHIP = {
+    check: ["check", "check"],
+    cash: ["cash", "cash"],
+    both: ["either", "check or cash"],
+  };
+  function methodChip(m) {
+    var x = METHOD_CHIP[m];
+    if (!x) return '<span class="ck-method none">not set</span>';
+    return '<span class="ck-method ' + esc(x[0]) + '">' + esc(x[1]) + "</span>";
+  }
 
   function pile(c, can, which) {
     var P = PILES[which];
@@ -132,18 +138,19 @@
       h += '<div class="ac-note">These are approved and waiting to be paid, but your account ' +
         "cannot record payments. Ask an admin for the payments permission.</div>";
     }
-    h += '<table class="ac-t"><thead><tr><th>Pay to</th><th class="num">Amount</th>' +
-      '<th class="num"></th></tr></thead><tbody>';
+    h += '<table class="ac-t"><thead><tr><th>Pay to</th><th>How</th>' +
+      '<th class="num">Amount</th><th class="num"></th></tr></thead><tbody>';
     rows.forEach(function (b) {
       var open = String(state.openCheck) === String(b.id);
       h += '<tr class="ck-row" data-open="' + esc(b.id) + '">' +
         '<td><div class="ck-payee">' + esc(b.payee || "(no payee on file)") + "</div>" +
         '<div class="ck-for">' + esc(b.memo || b.projectLabel || "") +
           (b.partial ? '<span class="ck-part">part paid</span>' : "") + "</div></td>" +
+        "<td>" + methodChip(b.payMethod) + "</td>" +
         '<td class="num"><b>' + money(b.owed) + "</b>" +
           (b.partial ? '<div class="ck-for">of ' + money(b.approvedFor) + "</div>" : "") + "</td>" +
         '<td class="num">' + (open ? "Close" : esc(P.act) + " &rarr;") + "</td></tr>";
-      if (open) h += '<tr><td colspan="3">' + checkPanel(b, can, which) + "</td></tr>";
+      if (open) h += '<tr><td colspan="4">' + checkPanel(b, can, which) + "</td></tr>";
     });
     h += "</tbody></table></div>";
     return h;
@@ -151,7 +158,6 @@
 
   /* The panel: what to write on the check, and everything it is written against. */
   function checkPanel(b, can, which) {
-    var cash = which === "cash";
     var undecided = which === "decide";
     var d = state.detail;
     if (!d || String(d.bill.id) !== String(b.id)) {
@@ -185,13 +191,24 @@
           ? money(c.alreadyPaid) + " already paid of " + money(c.approvedFor) + " approved."
           : "Approved for " + money(c.approvedFor) + ".") + "</div>" +
       "</div>" +
-      '<div class="ck-f"><label>' + (cash ? "Reference (optional)" : "Check number") + "</label>" +
-        '<input id="ckNumber" placeholder="' + (cash ? "e.g. petty cash slip" : "e.g. 2041") +
-        '" maxlength="40">' +
-        '<div class="sub">' + (cash
-          ? "Cash has no number of its own. Anything that helps you find it later."
-          : "So it can be found again.") + "</div>" +
+      '<div class="ck-f"><label id="ckRefLab">Check number</label>' +
+        '<input id="ckNumber" placeholder="e.g. 2041" maxlength="40">' +
+        '<div class="sub" id="ckRefSub">So it can be found again.</div>' +
       "</div></div>" +
+      /* Where the approver said "either", the accountant says which — and may
+         say it twice, because a bill can be settled part cash, part check. The
+         payment row is what records where the money actually went. */
+      (c.allowed && c.allowed.length > 1
+        ? '<div class="ck-f" style="margin-bottom:14px"><label>How are you paying this one?</label>' +
+          '<div class="ck-methods" id="ckHow">' +
+          c.allowed.map(function (m) {
+            return '<button type="button" class="ck-mbtn" data-how="' + esc(m) + '"' +
+              ' aria-pressed="false">' + (m === "cash" ? "In cash" : "By check") + "</button>";
+          }).join("") + "</div>" +
+          '<div class="sub">Approved either way. Pay part of it now and the rest the other ' +
+          "way if that suits — each payment is recorded separately.</div></div>"
+        : '<input type="hidden" id="ckHowFixed" value="' +
+          esc((c.allowed && c.allowed[0]) || "check") + '">') +
       '<div class="ck-f" style="margin-bottom:14px"><label>Memo — what the payment is for</label>' +
         '<input id="ckMemo" value="' + esc(c.memo) + '" maxlength="' + esc(c.memoMax) + '"></div>';
 
@@ -224,24 +241,42 @@
     (d.documents.notes || []).forEach(function (n) {
       h += '<div class="ck-none-note">' + esc(n) + "</div>";
     });
+    /* On the page, not a link away from it. Deciding whether to pay something
+       means looking at the invoice, and a screen that sends her elsewhere to do
+       that is a screen she leaves. */
+    var files = (d.documents.files || []);
+    if (files.length) {
+      h += '<div class="ck-doctabs">' + files.map(function (f, i) {
+        return '<button type="button" class="ck-dtab" data-doc="' + i + '"' +
+          ' aria-pressed="' + (i === 0 ? "true" : "false") + '">' +
+          esc(f.label || f.name) + "</button>";
+      }).join("") + "</div>" +
+        '<div class="ck-viewer" id="ckViewer">Loading the invoice…</div>';
+    }
     h += '<div style="margin-top:10px"><a class="ac-b" href="bill.html?id=' +
       encodeURIComponent(d.bill.id) + "&project=" + encodeURIComponent(d.bill.projectID) +
-      '">Open the paperwork &rarr;</a></div></div>';
+      '">Open the full bill screen &rarr;</a></div></div>';
 
     if (d.written && d.written.length) {
-      h += '<div class="ck-docs"><h4>Checks already written</h4>';
+      var paid = d.written.reduce(function (n, w) { return n + (Number(w.amount) || 0); }, 0);
+      h += '<div class="ck-docs"><h4>Already paid on this bill</h4>';
       d.written.forEach(function (w) {
-        h += '<div class="ck-doc"><span class="nm">#' + esc(w.checkNumber) + " · " +
-          money(w.amount) + '</span><span class="tag">' + esc(day(w.writtenDate)) +
+        var isCash = String(w.method || "").toLowerCase() === "cash";
+        h += '<div class="ck-doc"><span class="nm">' +
+          (isCash ? "Cash" : "Check #" + esc(w.checkNumber)) + " · " + money(w.amount) +
+          "</span>" + methodChip(isCash ? "cash" : "check") +
+          '<span class="tag">' + esc(day(w.writtenDate)) +
           (w.toldDate ? " · told " + esc(w.toldHow) + " " + esc(day(w.toldDate)) : " · not told yet") +
           "</span></div>";
       });
+      h += '<div class="ck-doc"><span class="nm">' + money(paid) + " paid · " +
+        money(c.max) + ' still owed</span></div>';
       h += "</div>";
     }
 
     h += '<div class="ck-acts">' +
       (can.pay ? '<button class="btn-accept" id="ckWrite">&#10003; ' +
-        (cash ? "Record the cash payment" : "Record the check") + "</button>" : "") +
+        "Record the payment" + "</button>" : "") +
       '<button class="ac-b" id="ckClose">Close</button>' +
       '<span class="ac-msg" id="ckMsg"></span></div>';
     return h + "</div>";
@@ -361,8 +396,7 @@
 
     h = todoBlock(d) + h;
     if (d.checks) {
-      h += pile(d.checks, can, "write");
-      h += pile(d.checks, can, "cash");
+      h += pile(d.checks, can, "pay");
       h += pile(d.checks, can, "decide");
       h += checksToTell(d.checks, can);
     }
@@ -550,8 +584,92 @@
 
   /* ── check actions ────────────────────────────────────────────────────── */
 
+  /* The invoice, drawn in the panel.
+
+     Images come straight from SharePoint's pre-authed URL. PDFs are fetched as
+     bytes and re-typed first, because SharePoint serves them with a download
+     disposition and an iframe pointed at that URL downloads the file instead of
+     showing it. */
+  var docUrls = [];
+  function showDoc(i) {
+    var d = state.detail;
+    if (!d) return;
+    var f = (d.documents.files || [])[i];
+    var box = el("ckViewer");
+    if (!f || !box) return;
+    document.querySelectorAll("[data-doc]").forEach(function (b) {
+      b.setAttribute("aria-pressed", Number(b.getAttribute("data-doc")) === i ? "true" : "false");
+    });
+    box.textContent = "Loading\u2026";
+    if (/\.(jpe?g|png|gif|webp|bmp|heic|tiff?)$/i.test(f.name || "")) {
+      box.innerHTML = '<img alt="' + esc(f.name) + '" src="' + esc(f.url) + '">';
+      return;
+    }
+    if (/\.pdf$/i.test(f.name || "")) {
+      DCR.blobUrl("/api/portal?action=drive&fileId=" + encodeURIComponent(f.id))
+        .then(function (u) {
+          docUrls.push(u);
+          box.innerHTML = '<iframe title="' + esc(f.name) + '" src="' + esc(u) + '#view=FitH"></iframe>';
+        })
+        .catch(function (e) {
+          box.innerHTML = '<div class="ck-none-note">' + esc(e.message || "Could not show it.") +
+            ' <a href="' + esc(f.webUrl || f.url) + '" target="_blank" rel="noopener noreferrer">' +
+            "Open it in SharePoint</a></div>";
+        });
+      return;
+    }
+    box.innerHTML = '<div class="ck-none-note">This kind of file cannot be shown here. ' +
+      '<a href="' + esc(f.webUrl || f.url) + '" target="_blank" rel="noopener noreferrer">Open it</a></div>';
+  }
+
+  /* Which method THIS payment is. Fixed when the bill allows only one, chosen
+     when it allows either, and read from the DOM at the moment of recording so
+     it can never drift from the button she pressed. */
+  function chosenMethod() {
+    var fixed = el("ckHowFixed");
+    if (fixed) return fixed.value || "check";
+    var on = document.querySelector("[data-how][aria-pressed='true']");
+    return on ? on.getAttribute("data-how") : "";
+  }
+
+  function paintMethod() {
+    var m = chosenMethod();
+    var lab = el("ckRefLab"), sub = el("ckRefSub"), num = el("ckNumber");
+    if (!lab) return;
+    if (m === "cash") {
+      lab.textContent = "Reference (optional)";
+      sub.textContent = "Cash has no number of its own. Anything that helps you find it later.";
+      if (num) num.placeholder = "e.g. petty cash slip";
+    } else {
+      lab.textContent = "Check number";
+      sub.textContent = "So it can be found again.";
+      if (num) num.placeholder = "e.g. 2041";
+    }
+    var go = el("ckWrite");
+    if (go) {
+      go.textContent = m === "cash" ? "\u2713 Record the cash payment"
+        : m === "check" ? "\u2713 Record the check"
+        : "\u2713 Record the payment";
+      go.disabled = !m;
+    }
+  }
+
   function wireChecks() {
     var box = el("acBody");
+    document.querySelectorAll("[data-doc]").forEach(function (b) {
+      b.onclick = function (e) { e.stopPropagation(); showDoc(Number(b.getAttribute("data-doc"))); };
+    });
+    if (el("ckViewer")) showDoc(0);
+    document.querySelectorAll("[data-how]").forEach(function (b) {
+      b.onclick = function (e) {
+        e.stopPropagation();
+        document.querySelectorAll("[data-how]").forEach(function (x) {
+          x.setAttribute("aria-pressed", x === b ? "true" : "false");
+        });
+        paintMethod();
+      };
+    });
+    paintMethod();
 
     box.querySelectorAll("[data-open]").forEach(function (tr) {
       tr.onclick = async function () {
@@ -685,8 +803,10 @@
     var number = (el("ckNumber").value || "").trim();
     var memo = (el("ckMemo").value || "").trim();
 
-    var cash = (d.check && d.check.payMethod) === "cash";
-    var bad = (!number && !cash) ? "Enter the check number."
+    var method = chosenMethod();
+    var cash = method === "cash";
+    var bad = !method ? "Say whether this is by check or in cash."
+      : (!number && !cash) ? "Enter the check number."
       : !isFinite(amount) ? "That is not an amount. Type it like 4500.00."
       : !(amount > 0) ? "Enter the amount."
       : amount > d.check.max + 0.005
@@ -707,7 +827,7 @@
     try {
       await DCR.api("/api/portal?action=accounting", {
         method: "POST",
-        body: { op: "check", billId: d.bill.id, amount: amount, payMethod: cash ? "cash" : "check",
+        body: { op: "check", billId: d.bill.id, amount: amount, payMethod: method,
                 checkNumber: number, payee: payee, memo: memo },
       });
     } catch (e) {
@@ -722,7 +842,12 @@
     await load();
   }
 
+  function dropDocUrls() {
+    docUrls.splice(0).forEach(function (u) { URL.revokeObjectURL(u); });
+  }
+
   async function load() {
+    dropDocUrls();
     try {
       state.d = await DCR.api("/api/portal?action=accounting");
       render();

@@ -117,7 +117,8 @@
         (Number(b.approvedAmount) > 0 ? "<br>Authorised at <b>" + money(b.approvedAmount) + "</b>" : "") +
         (b.approvedNote ? "<br>" + esc(b.approvedNote) : "") +
         (b.approvedPayMethod
-          ? "<br>To be paid <b>" + (b.approvedPayMethod === "cash" ? "in cash" : "by check") + "</b>"
+          ? "<br>To be paid <b>" + (b.approvedPayMethod === "cash" ? "in cash"
+              : b.approvedPayMethod === "both" ? "by check or in cash" : "by check") + "</b>"
           : "") + "</div>";
       /* Bills approved before the method existed cannot be paid until somebody
          with the authority says how. The accountant cannot choose it — that is
@@ -229,6 +230,7 @@
           { value: "", label: "Choose…" },
           { value: "check", label: "By check" },
           { value: "cash", label: "In cash" },
+          { value: "both", label: "Either — check or cash, split if needed" },
         ],
       }],
       validate: function (v) { return v.m === "check" || v.m === "cash" ? "" : "Choose check or cash."; },
@@ -262,6 +264,7 @@
           { value: "", label: "Choose…" },
           { value: "check", label: "By check" },
           { value: "cash", label: "In cash" },
+          { value: "both", label: "Either — check or cash, split if needed" },
         ],
       }],
       validate: function (v) {
