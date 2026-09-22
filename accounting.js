@@ -26,7 +26,7 @@
     return n === 1 ? "1 day late" : n + " days late";
   }
 
-  function cards(t) {
+  function cardsHtml(t) {
     var c = [
       ["Ready to enter", money(t.readyAmount),
         t.readyCount + (t.readyCount === 1 ? " bill" : " bills"), t.readyCount ? "go" : ""],
@@ -37,12 +37,325 @@
       ["Money in to enter", money(t.arReadyAmount),
         t.arReadyCount + (t.arReadyCount === 1 ? " invoice" : " invoices"), ""],
     ];
-    el("acCards").innerHTML = c.map(function (x) {
+    return c.map(function (x) {
       return '<div class="ac-card' + (x[3] ? " " + x[3] : "") + '">' +
         '<div class="k">' + esc(x[0]) + "</div>" +
         '<div class="v">' + esc(x[1]) + "</div>" +
         '<div class="n">' + esc(x[2]) + "</div></div>";
     }).join("");
+  }
+
+  /* ── the picture ────────────────────────────────────────────────────────
+
+     The tiles say what the numbers are. The picture says where the money is
+     standing and whose move it is, which is the question she opens the screen
+     to ask. Both are drawn from the same payload and neither computes a figure
+     the other does not have — two pictures of one truth, never two truths.
+
+     It is drawn as two bands, not one pipeline, because a bill can be keyed
+     into QuickBooks before it is paid and was, last month. Money leaving the
+     door and keying the books are two errands that happen to share a row. */
+  var VIEW_KEY = "dcr_books_view";
+  function view() {
+    // A blocked or cleared store is not an error; the picture is the default.
+    try { return localStorage.getItem(VIEW_KEY) === "cards" ? "cards" : "picture"; }
+    catch (e) { return "picture"; }
+  }
+  function setView(v) { try { localStorage.setItem(VIEW_KEY, v); } catch (e) { /* fine */ } }
+
+  function plural(n, one, many) { return n + " " + (n === 1 ? one : many); }
+
+  /* Whole days from today to a due date, both as YYYY-MM-DD. Negative is late.
+     Done in UTC noon like day() so a timezone cannot move a due date a day. */
+  function daysUntil(due, todayKey) {
+    var a = String(due || "").slice(0, 10), b = String(todayKey || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(a) || !/^\d{4}-\d{2}-\d{2}$/.test(b)) return null;
+    var at = function (k) { return Date.UTC(+k.slice(0, 4), +k.slice(5, 7) - 1, +k.slice(8, 10)); };
+    return Math.round((at(a) - at(b)) / 86400000);
+  }
+
+  function stageHtml(s, top) {
+    var has = s.count > 0;
+    var cls = !has ? "idle" : s.mine ? "mine" : s.theirs ? "theirs" : s.done ? "done" : "";
+    var pct = has && top > 0 && s.amount ? Math.max(4, Math.round((s.amount / top) * 100)) : 0;
+    return '<button type="button" class="bk-st ' + cls + '"' +
+      (has ? ' data-jump="' + esc(s.to) + '"' : " disabled") +
+      ' aria-label="' + esc(s.label + ": " + s.big + ", " + s.sub + (s.who ? ". " + s.who : "")) + '">' +
+      (has && s.step ? '<span class="bk-step">Step ' + s.step + "</span>" : "") +
+      '<span class="k">' + esc(s.label) + "</span>" +
+      '<span class="v">' + esc(s.big) + "</span>" +
+      '<span class="n">' + esc(s.sub) + "</span>" +
+      (has && s.flag ? '<span class="flag">' + esc(s.flag) + "</span>" : "") +
+      (has && s.chips && s.chips.length
+        ? '<span class="bk-chips">' + s.chips.map(function (c) {
+            return '<span class="bk-chip ' + esc(c[0]) + '">' + esc(c[1]) + "</span>";
+          }).join("") + "</span>"
+        : "") +
+      (pct ? '<span class="bar"><i style="width:' + pct + '%"></i></span>' : "") +
+      (has && s.who ? '<span class="bk-who">' + esc(s.who) + "</span>" : "") +
+      "</button>";
+  }
+
+  /* `seps` is what goes BETWEEN the boxes, and it is not decoration: an arrow
+     is a claim that one thing follows the other. Bills and invoices to key are
+     two inputs to the same errand, not a sequence, so they are joined by a
+     plus. Draw it wrong and the picture teaches something false. */
+  function band(title, caption, total, stages, extra, seps) {
+    var top = stages.reduce(function (n, s) {
+      return s.count && s.amount > n ? s.amount : n;
+    }, 0);
+    var flow = "";
+    stages.forEach(function (s, i) {
+      if (i) {
+        flow += '<span class="bk-arrow" aria-hidden="true">' +
+          ((seps && seps[i - 1]) || "&rarr;") + "</span>";
+      }
+      flow += stageHtml(s, top);
+    });
+    return '<div class="bk-band"><div class="bk-bh"><h4>' + esc(title) + "</h4>" +
+      '<span class="cap">' + esc(caption) + "</span>" +
+      (total ? '<span class="tot">' + esc(total) + "</span>" : "") + "</div>" +
+      '<div class="bk-flow">' + flow + "</div>" + (extra || "") + "</div>";
+  }
+
+  /* The bills that are approved and still cannot be paid.
+
+     Deliberately NOT a box in the chain: a bill only lands here when somebody
+     skipped a step, so it is not a stage every bill passes through, and drawing
+     it as one would say it was. A strip across the flow is also harder to miss
+     than a fourth small box, which is the point — this pile is the one that
+     silently goes nowhere. */
+  function heldHtml(c, step) {
+    if (!c.toDecideCount) return "";
+    return '<button type="button" class="bk-held" data-jump="secDecide">' +
+      '<span class="w">Held up</span>' +
+      "<span>" + esc(plural(c.toDecideCount, "approved bill", "approved bills")) + " — " +
+        money(c.toDecideAmount) + " — cannot be paid: nobody recorded check or cash. " +
+        "A manager or admin sets it on the bill.</span>" +
+      (step ? '<span class="st">Step ' + step + "</span>" : "") +
+      '<span class="go">Show me &rarr;</span></button>';
+  }
+
+  /* NOT DRAWN HERE: the bill checkCap refuses for having no frozen
+     ApprovedAmount. It is approved, it is owed, and deskChecks builds no row
+     for it, so it is in neither queue and no box on this band knows about it.
+
+     A strip announcing it was written and taken back out. Scoped to d.ready it
+     disappeared the moment the bill was keyed into QuickBooks — and then the
+     all-clear printed over it, which is worse than never drawing it. Counting
+     its gross ExpenseAmount it accused a bill already paid in full of being an
+     unpayable debt. Sitting in the band total but not in the aging set it
+     re-created the contradiction the aging line had just been widened to kill.
+
+     So this band claims only what it draws: the header and the aging line both
+     say "approved and still owed" and both mean exactly toPay + toDecide. The
+     bill is still listed, with its money, under "Ready to enter in QuickBooks".
+     Showing it properly means reading d.payments to net off what is settled and
+     covering d.entered as well as d.ready — worth doing, and worth doing on its
+     own rather than as a fourth population bolted onto a drawing. */
+
+  /* How late the money already is.
+
+     Built from the due dates on the very rows in the queues below, so the bar
+     and the tables cannot disagree with each other.
+
+     It covers everything APPROVED and still owed — the "to pay" queue and the
+     held-up pile both. Scoping it to "to pay" alone let it print "Nothing you
+     owe is past due yet" directly underneath a strip announcing $50,000 of
+     approved bills, one of them forty days late, because those sit in the
+     other pile. The sentence now names the set it is talking about, so it
+     cannot be read as covering money it never looked at. */
+  var AGE = [
+    ["late", "Already past due"], ["soon", "Due within 7 days"],
+    ["later", "Later"], ["undated", "No due date"],
+  ];
+  function agingHtml(rows, todayKey) {
+    var b = { late: { n: 0, amt: 0 }, soon: { n: 0, amt: 0 },
+              later: { n: 0, amt: 0 }, undated: { n: 0, amt: 0 } };
+    rows.forEach(function (r) {
+      var n = daysUntil(r.expenseDueDate, todayKey);
+      var k = n === null ? "undated" : n < 0 ? "late" : n <= 7 ? "soon" : "later";
+      b[k].n += 1;
+      b[k].amt += Number(r.owed) || 0;
+    });
+    var total = AGE.reduce(function (n, a) { return n + b[a[0]].amt; }, 0);
+    if (!total) return "";
+    var line = b.late.amt
+      ? "<b class=\"late\">" + money(b.late.amt) + "</b> of the " + money(total) +
+        " approved and still owed is already past due."
+      : "Nothing approved and still owed is past due yet.";
+    return '<div class="bk-age"><div class="ln">' + line + "</div>" +
+      '<div class="bk-agebar" role="img" aria-label="' +
+        esc(AGE.map(function (a) { return b[a[0]].n + " " + a[1].toLowerCase(); }).join(", ")) + '">' +
+      AGE.map(function (a) {
+        var w = (b[a[0]].amt / total) * 100;
+        return w > 0 ? '<span class="' + a[0] + '" style="width:' + w + '%"></span>' : "";
+      }).join("") + "</div>" +
+      '<div class="bk-legend">' + AGE.map(function (a) {
+        return b[a[0]].n
+          ? '<span><i class="' + a[0] + '"></i>' + esc(a[1]) + " — " +
+            esc(plural(b[a[0]].n, "bill", "bills")) + ", " + money(b[a[0]].amt) + "</span>"
+          : "";
+      }).join("") + "</div></div>";
+  }
+
+  /* The step numbers come from the server's own to-do list, so the picture and
+     the list underneath it can never disagree about what comes first. */
+  var STAGE_OF = { check: "pay", cash: "pay", either: "pay", tell: "tell",
+                   waiting: "decide", qbo: "qbo" };
+
+  function picture(d) {
+    var t = d.totals || {};
+    var c = (d.checks && d.checks.totals) || {};
+    var can = d.can || {};
+    var step = {}, n = 0;
+    (d.todo || []).forEach(function (x) {
+      var s = STAGE_OF[x.kind];
+      if (s && !step[s]) step[s] = ++n;
+    });
+
+    /* Exactly what the "Not ready — and who it is on" section lists: bills
+       waiting on an approval AND bills blocked for some other reason. Counting
+       both but totalling only one of them is how a box comes to say
+       "2 bills, $3,400" when the two bills are worth $5,000. */
+    var stuck = (d.waiting || []).concat(d.blocked || []);
+    var stuckAmount = stuck.reduce(function (n, b) {
+      return n + (Number(b.expenseAmount) || 0);
+    }, 0);
+    var chips = [];
+    if (c.checkCount) chips.push(["check", plural(c.checkCount, "check", "checks")]);
+    if (c.cashCount) chips.push(["cash", c.cashCount + " cash"]);
+    if (c.eitherCount) chips.push(["either", c.eitherCount + " either"]);
+
+    var out = [
+      { to: "secWaiting", label: "Not ready", step: 0, theirs: true,
+        count: stuck.length, amount: stuckAmount,
+        big: money(stuckAmount), sub: plural(stuck.length, "bill", "bills"),
+        flag: t.blockedCount
+          ? plural(t.blockedCount, "bill needs", "bills need") + " paperwork first"
+          : "",
+        who: "with a manager" },
+      { to: "secPay", label: "To pay", step: step.pay, mine: !!can.pay,
+        count: c.toPayCount || 0, amount: c.toPayAmount || 0,
+        big: money(c.toPayAmount), sub: plural(c.toPayCount || 0, "bill", "bills"),
+        chips: chips, who: can.pay ? "yours to do" : "needs the payments permission" },
+      { to: "secTell", label: "Paid — tell them to collect", step: step.tell,
+        mine: !!can.pay, count: c.toTellCount || 0, amount: c.toTellAmount || 0,
+        big: money(c.toTellAmount), sub: plural(c.toTellCount || 0, "payment", "payments"),
+        who: can.pay ? "yours to do" : "needs the payments permission" },
+    ];
+
+    /* Bills flow; invoices do not.
+
+       "On the books" is desk.totals.enteredCount, and the only thing in this
+       whole repo that writes the entered marker writes it on the Expenses
+       list. Nothing can mark an invoice keyed. So an arrow from the invoices
+       box into that count would assert a flow that cannot happen, and a step
+       number on it would promise a task that can never be ticked off. The
+       invoices box therefore sits to one side, joined by a dot rather than an
+       arrow, and the band caption says why. */
+    var books = [
+      { to: "secQbo", label: "Bills to key in", step: step.qbo, mine: !!can.mark,
+        count: t.readyCount || 0, amount: t.readyAmount || 0,
+        big: money(t.readyAmount), sub: plural(t.readyCount || 0, "bill", "bills"),
+        who: can.mark ? "yours to do" : "read only",
+        flag: t.overdueCount ? t.overdueCount + " past due · " + money(t.overdueAmount) : "" },
+      { to: "secEntered", label: "Bills on the books", step: 0, done: true,
+        count: t.enteredCount || 0, amount: 0,
+        big: String(t.enteredCount || 0), sub: plural(t.enteredCount || 0, "bill keyed", "bills keyed"),
+        who: "done" },
+      { to: "secAr", label: "Invoices we sent", step: 0, mine: false,
+        count: t.arReadyCount || 0, amount: t.arReadyAmount || 0,
+        big: money(t.arReadyAmount), sub: plural(t.arReadyCount || 0, "invoice", "invoices"),
+        who: "key by hand" },
+    ];
+
+    /* One set, one name, used by the header and by the aging line underneath
+       it — so the two cannot describe different money in the same breath.
+       "Approved and still owed" is exactly the two queues: waiting-on-approval
+       money is not owed yet and keeps to its own box. */
+    var owed = ((d.checks && d.checks.toPay) || []).concat((d.checks && d.checks.toDecide) || []);
+    var owedOut = (c.toPayAmount || 0) + (c.toDecideAmount || 0);
+
+    var h = '<div class="bk">' +
+      band("Money out the door", "Left to right, what happens to a bill.",
+        owedOut ? money(owedOut) + " approved and still owed" : "", out,
+        heldHtml(c, step.decide) + agingHtml(owed, d.today)) +
+      band("Into QuickBooks",
+        "Keying, not money — a bill can be keyed before it is paid. Bills get a done " +
+        "marker; invoices have none, so the portal cannot tell you which of those are keyed.",
+        "", books, "", ["→", "·"]);
+
+    /* The all-clear names the work, rather than asking the boxes whether any of
+       them is non-zero.
+
+       Read off the boxes it was wrong twice over. "Bills on the books" is a
+       finished pile that only grows, so it suppressed the line forever. So does
+       "Invoices we sent": nothing in the repo writes the entered marker to an
+       invoice, so that count never falls either. Both are excluded here BY
+       NAME, and the sentence says "no bill", which is the claim this list
+       actually supports — what has been done with the invoices we sent is not
+       something the portal knows. */
+    var nothingDoing = !stuck.length && !c.toPayCount && !c.toDecideCount &&
+      !c.toTellCount && !(t.readyCount || 0);
+    if (nothingDoing) {
+      h += '<div class="bk-quiet">Nothing anywhere. No bill is waiting on anybody.</div>';
+    }
+    return h + '<div class="bk-foot"><b>Blue</b> is yours to do. <b>Gold</b> is waiting on a ' +
+      "manager and is not yours to action. Click any box to jump to it.</div></div>";
+  }
+
+  /* One slot, two ways of filling it. Not both at once: the picture already
+     carries all four tile figures, and two copies of a number on one screen is
+     two places for it to be wrong. */
+  /* Which button looks pressed. Separate from drawing, because after a failed
+     reload there is nothing to draw but the buttons still have to tell the
+     truth about which view is selected — otherwise she clicks "Numbers",
+     nothing happens, "Picture" stays lit, and the control looks broken. */
+  function paintView() {
+    var group = el("acView");
+    if (!group) return;
+    var as = view();
+    group.querySelectorAll("[data-view]").forEach(function (b) {
+      b.setAttribute("aria-pressed", b.getAttribute("data-view") === as ? "true" : "false");
+    });
+  }
+
+  function summary(d) {
+    var box = el("acCards"), as = view();
+    /* The picture brings its own .bk panel; giving the slot one too drew a
+       bordered card inside an identical bordered card. */
+    box.className = as === "picture" ? "" : "ac-cards";
+    box.innerHTML = as === "picture" ? picture(d) : cardsHtml(d.totals);
+    paintView();
+    box.querySelectorAll("[data-jump]").forEach(function (b) {
+      b.onclick = function () { jump(b.getAttribute("data-jump")); };
+    });
+  }
+
+  /* Scrolled to AND marked. A section that merely arrives on screen is one she
+     then has to find again with her eyes.
+
+     The mark waits for the scrolling to stop. A smooth scroll of three thousand
+     pixels outlasts a one-second flash, so marking it on the way out means she
+     arrives at a section that has already finished announcing itself. */
+  function jump(id) {
+    var s = el(id);
+    if (!s) return;
+    var easy = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    s.scrollIntoView({ behavior: easy ? "auto" : "smooth", block: "start" });
+    var last = null, tries = 0;
+    (function settle() {
+      var y = Math.round(window.scrollY);
+      if (y === last || ++tries > 40) {       // two equal samples, or ~2.5s
+        s.classList.remove("ac-flash");
+        void s.offsetWidth;                   // restart the animation
+        s.classList.add("ac-flash");
+        return;
+      }
+      last = y;
+      setTimeout(settle, 60);
+    })();
   }
 
   function billRow(b, opts) {
@@ -126,7 +439,8 @@
 
     if (!count && which === "decide") return "";      // silent when there is nothing wrong
 
-    var h = '<div class="ac-sec"><header><h3>' + esc(P.title) + "</h3>" +
+    var h = '<div class="ac-sec" id="sec' + (which === "pay" ? "Pay" : "Decide") +
+      '"><header><h3>' + esc(P.title) + "</h3>" +
       '<span class="hint">' + esc(P.hint) + '</span><span class="grow"></span>' +
       '<span class="hint">' + count + " waiting · " + money(amount) + "</span></header>";
 
@@ -284,7 +598,7 @@
 
   /* ── telling them it is ready ─────────────────────────────────────────── */
   function checksToTell(c, can) {
-    var h = '<div class="ac-sec"><header><h3>Written — tell them it is ready</h3>' +
+    var h = '<div class="ac-sec" id="secTell"><header><h3>Written — tell them it is ready</h3>' +
       '<span class="hint">The check exists. Nobody has told the subcontractor to come and ' +
       "collect it.</span></header>";
     if (!c.toTell.length) {
@@ -357,7 +671,7 @@
      "what do I have to do", which is the question she opens the screen to ask,
      and it was previously something she had to work out by reading four
      sections. One line each, with the money, in the order she would do them. */
-  var TODO_ICON = { check: "✎", cash: "◉", tell: "☎", waiting: "⏸", qbo: "⇨" };
+  var TODO_ICON = { check: "✎", cash: "◉", either: "◐", tell: "☎", waiting: "⏸", qbo: "⇨" };
 
   function todoBlock(d) {
     var items = d.todo || [];
@@ -391,7 +705,7 @@
 
   function render() {
     var d = state.d, can = d.can || {};
-    cards(d.totals);
+    summary(d);
     var h = "";
 
     h = todoBlock(d) + h;
@@ -402,7 +716,7 @@
     }
 
     // ── ready to enter ───────────────────────────────────────────────────
-    h += '<div class="ac-sec"><header><h3>Ready to enter in QuickBooks</h3>' +
+    h += '<div class="ac-sec" id="secQbo"><header><h3>Ready to enter in QuickBooks</h3>' +
       '<span class="hint">Approved, with the paperwork behind it.</span>' +
       '<span class="grow"></span>' +
       '<a class="ac-b" id="acCsv">&#8615; Export CSV</a></header>';
@@ -429,7 +743,7 @@
     h += "</div>";
 
     // ── money in ─────────────────────────────────────────────────────────
-    h += '<div class="ac-sec"><header><h3>Money in — invoices we sent</h3>' +
+    h += '<div class="ac-sec" id="secAr"><header><h3>Money in — invoices we sent</h3>' +
       '<span class="hint">Sent to the client and not yet in the books.</span>' +
       '<span class="grow"></span>' +
       '<a class="ac-b" id="acCsvInv">&#8615; Export CSV</a></header>';
@@ -449,7 +763,7 @@
 
     // ── not yours to action ──────────────────────────────────────────────
     if (d.waiting.length || d.blocked.length) {
-      h += '<div class="ac-sec"><header><h3>Not ready — and who it is on</h3>' +
+      h += '<div class="ac-sec" id="secWaiting"><header><h3>Not ready — and who it is on</h3>' +
         '<span class="hint">Nothing here is yours to action; it is here so you are not ' +
         "waiting on it blind.</span></header>";
       var stuck = d.waiting.map(function (b) { return { ...b, reason: "Waiting for a manager or admin to approve it." }; })
@@ -460,7 +774,7 @@
     }
 
     // ── already entered ──────────────────────────────────────────────────
-    h += '<div class="ac-sec"><header><h3>Already entered</h3>' +
+    h += '<div class="ac-sec" id="secEntered"><header><h3>Already entered</h3>' +
       '<span class="hint">' + d.entered.length + " on the books. Undo if you marked one by " +
       "mistake.</span></header>";
     h += d.entered.length
@@ -852,9 +1166,19 @@
       state.d = await DCR.api("/api/portal?action=accounting");
       render();
     } catch (e) {
+      /* The payload is dropped, not kept.
+
+         DCR.api throws on any non-2xx and on a dead connection, and only a 401
+         navigates away — so a 500, a throttle or a dropped Wi-Fi lands here.
+         Holding the previous payload meant the view toggle, which only checks
+         that there IS one, would happily repaint the figures from before the
+         thing she just did. She would read "9 bills ready" over an error
+         message and key six of them a second time. */
+      state.d = null;
       el("acBody").innerHTML = '<div class="ac-sec" style="color:var(--err)">' +
         esc(e.message || "Could not open the books.") + "</div>";
       el("acCards").innerHTML = "";
+      el("acCards").className = "ac-cards";   // or an empty bordered panel is left behind
     }
   }
 
@@ -865,6 +1189,20 @@
     el("logoutBtn").onclick = function () { DCR.logout(); };
     var name = (profile.displayName || profile.email || "").split(" ")[0].split("@")[0];
     el("acGreeting").textContent = name ? "— " + name : "";
+
+    /* Wired once, outside the part that redraws: the choice belongs to her and
+       to this browser, and re-reading the books to change a view would be a
+       Graph round trip for a preference. */
+    var group = el("acView");
+    if (group) {
+      group.querySelectorAll("[data-view]").forEach(function (b) {
+        b.onclick = function () {
+          setView(b.getAttribute("data-view"));
+          paintView();                         // even with nothing to draw
+          if (state.d) summary(state.d);
+        };
+      });
+    }
     load();
   });
 })();
