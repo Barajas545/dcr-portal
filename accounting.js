@@ -87,24 +87,54 @@
 
      Above QuickBooks on purpose. Both sections are about somebody waiting on
      money; entering a bill in the books is about a keystroke. */
-  function checksToWrite(c, can) {
-    var h = '<div class="ac-sec"><header><h3>Checks to write</h3>' +
-      '<span class="hint">Approved for payment. Write the check, then tell them it is ready ' +
-      'to collect.</span><span class="grow"></span>' +
-      '<span class="hint">' + (c.totals.toWriteCount || 0) + " waiting · " +
-        money(c.totals.toWriteAmount) + "</span></header>";
+  /* One renderer, three piles. What separates them is what the approver
+     authorised — check, cash, or nothing yet — and that is a fact about the
+     bill, not a different kind of screen. */
+  var PILES = {
+    write: {
+      key: "toWrite", title: "Checks to write",
+      hint: "Approved to be paid by check. Write it, then tell them it is ready to collect.",
+      empty: "No checks to write. Every bill approved for a check has one against it.",
+      act: "Write check",
+    },
+    cash: {
+      key: "toCash", title: "Cash to pay",
+      hint: "Approved to be settled in cash. Hand it over, then record it here.",
+      empty: "Nothing to pay in cash.",
+      act: "Pay cash",
+    },
+    decide: {
+      key: "toDecide", title: "Approved — but nobody said how to pay",
+      hint: "These were approved before a payment method was recorded, or the approver skipped it. " +
+        "A manager or admin sets it on the bill; it is not yours to choose.",
+      empty: "",
+      act: "Open",
+    },
+  };
 
-    if (!c.toWrite.length) {
-      h += '<div class="ac-none">Nothing to pay. Every approved bill has a check against it.</div></div>';
+  function pile(c, can, which) {
+    var P = PILES[which];
+    var rows = c[P.key] || [];
+    var count = rows.length;
+    var amount = rows.reduce(function (n, b) { return n + (Number(b.owed) || 0); }, 0);
+
+    if (!count && which === "decide") return "";      // silent when there is nothing wrong
+
+    var h = '<div class="ac-sec"><header><h3>' + esc(P.title) + "</h3>" +
+      '<span class="hint">' + esc(P.hint) + '</span><span class="grow"></span>' +
+      '<span class="hint">' + count + " waiting · " + money(amount) + "</span></header>";
+
+    if (!count) {
+      h += '<div class="ac-none">' + esc(P.empty) + "</div></div>";
       return h;
     }
-    if (!can.pay) {
-      h += '<div class="ac-note">These are approved and waiting for a check, but your account ' +
+    if (!can.pay && which !== "decide") {
+      h += '<div class="ac-note">These are approved and waiting to be paid, but your account ' +
         "cannot record payments. Ask an admin for the payments permission.</div>";
     }
     h += '<table class="ac-t"><thead><tr><th>Pay to</th><th class="num">Amount</th>' +
       '<th class="num"></th></tr></thead><tbody>';
-    c.toWrite.forEach(function (b) {
+    rows.forEach(function (b) {
       var open = String(state.openCheck) === String(b.id);
       h += '<tr class="ck-row" data-open="' + esc(b.id) + '">' +
         '<td><div class="ck-payee">' + esc(b.payee || "(no payee on file)") + "</div>" +
@@ -112,15 +142,17 @@
           (b.partial ? '<span class="ck-part">part paid</span>' : "") + "</div></td>" +
         '<td class="num"><b>' + money(b.owed) + "</b>" +
           (b.partial ? '<div class="ck-for">of ' + money(b.approvedFor) + "</div>" : "") + "</td>" +
-        '<td class="num">' + (open ? "Close" : "Write check &rarr;") + "</td></tr>";
-      if (open) h += '<tr><td colspan="3">' + checkPanel(b, can) + "</td></tr>";
+        '<td class="num">' + (open ? "Close" : esc(P.act) + " &rarr;") + "</td></tr>";
+      if (open) h += '<tr><td colspan="3">' + checkPanel(b, can, which) + "</td></tr>";
     });
     h += "</tbody></table></div>";
     return h;
   }
 
   /* The panel: what to write on the check, and everything it is written against. */
-  function checkPanel(b, can) {
+  function checkPanel(b, can, which) {
+    var cash = which === "cash";
+    var undecided = which === "decide";
     var d = state.detail;
     if (!d || String(d.bill.id) !== String(b.id)) {
       return '<div class="ck-panel"><div class="ac-none">Loading the paperwork…</div></div>';
@@ -128,6 +160,15 @@
     var c = d.check;
     var h = '<div class="ck-panel">';
     if (!c.canWrite) return h + '<div class="ac-note">' + esc(c.reason) + "</div></div>";
+    if (undecided) {
+      return h + '<div class="ac-note">This bill was approved for ' + money(c.max) +
+        ", but nobody recorded whether to pay it by check or in cash. A manager or admin " +
+        "sets that on the bill — it is an authorisation, not a bookkeeping choice." +
+        '</div><div class="ck-acts"><a class="ac-b" href="bill.html?id=' +
+        encodeURIComponent(d.bill.id) + "&project=" + encodeURIComponent(d.bill.projectID) +
+        '">Open the bill &rarr;</a>' +
+        '<button class="ac-b" id="ckClose">Close</button></div></div>';
+    }
 
     h += '<div class="ck-grid">' +
       '<div class="ck-f"><label>Make the check out to</label>' +
@@ -144,9 +185,12 @@
           ? money(c.alreadyPaid) + " already paid of " + money(c.approvedFor) + " approved."
           : "Approved for " + money(c.approvedFor) + ".") + "</div>" +
       "</div>" +
-      '<div class="ck-f"><label>Check number</label>' +
-        '<input id="ckNumber" placeholder="e.g. 2041" maxlength="40">' +
-        '<div class="sub">So it can be found again.</div>' +
+      '<div class="ck-f"><label>' + (cash ? "Reference (optional)" : "Check number") + "</label>" +
+        '<input id="ckNumber" placeholder="' + (cash ? "e.g. petty cash slip" : "e.g. 2041") +
+        '" maxlength="40">' +
+        '<div class="sub">' + (cash
+          ? "Cash has no number of its own. Anything that helps you find it later."
+          : "So it can be found again.") + "</div>" +
       "</div></div>" +
       '<div class="ck-f" style="margin-bottom:14px"><label>Memo — what the payment is for</label>' +
         '<input id="ckMemo" value="' + esc(c.memo) + '" maxlength="' + esc(c.memoMax) + '"></div>';
@@ -196,7 +240,8 @@
     }
 
     h += '<div class="ck-acts">' +
-      (can.pay ? '<button class="btn-accept" id="ckWrite">&#10003; Record the check</button>' : "") +
+      (can.pay ? '<button class="btn-accept" id="ckWrite">&#10003; ' +
+        (cash ? "Record the cash payment" : "Record the check") + "</button>" : "") +
       '<button class="ac-b" id="ckClose">Close</button>' +
       '<span class="ac-msg" id="ckMsg"></span></div>';
     return h + "</div>";
@@ -214,8 +259,12 @@
       var k = state.tell[t.paymentId] || {};
       h += '<div class="ck-tell">' +
         '<div class="top"><div><span class="ck-payee">' + esc(t.payee || "(no payee)") + "</span>" +
-          '<div class="ck-for">Check #' + esc(t.checkNumber) + " · written " +
-          esc(day(t.writtenDate)) + "</div></div>" +
+          '<div class="ck-for">' + (t.isCash
+            ? "Cash" + (t.checkNumber ? " · " + esc(t.checkNumber) : "")
+            : "Check #" + esc(t.checkNumber)) +
+          " · " + esc(day(t.writtenDate)) +
+          '<span class="ck-method' + (t.isCash ? " cash" : "") + '">' +
+          (t.isCash ? "cash" : "check") + "</span></div></div>" +
         '<div class="ck-payee">' + money(t.amount) + "</div></div>";
 
       if (!k.loaded) {
@@ -267,13 +316,54 @@
     return h + "</div>";
   }
 
+  /* What is waiting on HER, above everything else.
+
+     The tiles underneath answer "what is the state of the books". This answers
+     "what do I have to do", which is the question she opens the screen to ask,
+     and it was previously something she had to work out by reading four
+     sections. One line each, with the money, in the order she would do them. */
+  var TODO_ICON = { check: "✎", cash: "◉", tell: "☎", waiting: "⏸", qbo: "⇨" };
+
+  function todoBlock(d) {
+    var items = d.todo || [];
+    var sp = d.spend;
+    var h = '<div class="ac-sec ac-todo"><header><h3>What needs doing</h3>' +
+      '<span class="hint">' + (items.length ? "In the order it makes sense to do it."
+        : "Nothing is waiting on you right now.") + "</span></header>";
+
+    if (items.length) {
+      h += '<ul class="ac-todo-list">' + items.map(function (t) {
+        return '<li class="' + esc(t.kind) + '"><span class="ic">' + (TODO_ICON[t.kind] || "•") +
+          "</span><span class=\"tx\">" + esc(t.text) + "</span>" +
+          '<span class="am">' + money(t.amount) + "</span></li>";
+      }).join("") + "</ul>";
+    }
+
+    /* One line about spend, and a door to the screen that actually answers it.
+       Not a second copy of the ledger: two places for one number is two places
+       for it to be wrong. */
+    if (sp && sp.count) {
+      h += '<div class="ac-glance">Last ' + sp.days + " days: <b>" + money(sp.cost) +
+        "</b> across " + sp.count + " purchase" + (sp.count === 1 ? "" : "s") +
+        (sp.noReceipt ? ' · <span class="warn">' + sp.noReceipt + " with no receipt</span>" : "") +
+        ' · <a href="ledger.html">See all expenses &rarr;</a></div>';
+    } else if (sp) {
+      h += '<div class="ac-glance">No purchases recorded in the last ' + sp.days +
+        ' days. <a href="ledger.html">See all expenses &rarr;</a></div>';
+    }
+    return h + "</div>";
+  }
+
   function render() {
     var d = state.d, can = d.can || {};
     cards(d.totals);
     var h = "";
 
+    h = todoBlock(d) + h;
     if (d.checks) {
-      h += checksToWrite(d.checks, can);
+      h += pile(d.checks, can, "write");
+      h += pile(d.checks, can, "cash");
+      h += pile(d.checks, can, "decide");
       h += checksToTell(d.checks, can);
     }
 
@@ -595,7 +685,8 @@
     var number = (el("ckNumber").value || "").trim();
     var memo = (el("ckMemo").value || "").trim();
 
-    var bad = !number ? "Enter the check number."
+    var cash = (d.check && d.check.payMethod) === "cash";
+    var bad = (!number && !cash) ? "Enter the check number."
       : !isFinite(amount) ? "That is not an amount. Type it like 4500.00."
       : !(amount > 0) ? "Enter the amount."
       : amount > d.check.max + 0.005
@@ -604,8 +695,9 @@
     if (bad) { msg.textContent = bad; msg.className = "ac-msg err"; return; }
 
     var sure = await DCR.confirm(
-      "Record check #" + number + " for " + money(amount) + " to " +
-      (payee || d.check.payee) + "?",
+      (cash ? "Record a cash payment of " + money(amount)
+            : "Record check #" + number + " for " + money(amount)) +
+      " to " + (payee || d.check.payee) + "?",
       { okText: "Record it" });
     if (!sure) return;
 
@@ -615,7 +707,7 @@
     try {
       await DCR.api("/api/portal?action=accounting", {
         method: "POST",
-        body: { op: "check", billId: d.bill.id, amount: amount,
+        body: { op: "check", billId: d.bill.id, amount: amount, payMethod: cash ? "cash" : "check",
                 checkNumber: number, payee: payee, memo: memo },
       });
     } catch (e) {

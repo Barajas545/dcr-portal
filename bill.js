@@ -115,7 +115,20 @@
       h += '<div class="bl-ok"><b>Approved</b> by ' + esc(b.approvedByName || "—") +
         (b.approvedDate ? " on " + esc(day(b.approvedDate)) : "") +
         (Number(b.approvedAmount) > 0 ? "<br>Authorised at <b>" + money(b.approvedAmount) + "</b>" : "") +
-        (b.approvedNote ? "<br>" + esc(b.approvedNote) : "") + "</div>";
+        (b.approvedNote ? "<br>" + esc(b.approvedNote) : "") +
+        (b.approvedPayMethod
+          ? "<br>To be paid <b>" + (b.approvedPayMethod === "cash" ? "in cash" : "by check") + "</b>"
+          : "") + "</div>";
+      /* Bills approved before the method existed cannot be paid until somebody
+         with the authority says how. The accountant cannot choose it — that is
+         the point — so the door has to be here, on the approver's screen. */
+      if (!b.approvedPayMethod) {
+        h += '<div class="bl-why">Nobody recorded whether this is paid by check or in cash, so ' +
+          "the accountant cannot pay it." +
+          (can.approve
+            ? '<div style="margin-top:8px"><button class="bl-approve" id="blHow">Say how to pay</button></div>'
+            : " Ask a manager or admin to set it.") + "</div>";
+      }
     } else if (!can.approve) {
       h += '<div class="bl-why">Only a manager or admin with approve authority can sign this off.</div>';
     } else if (!files.length) {
@@ -145,6 +158,8 @@
       });
       show(state.active);
     }
+    var how = el("blHow");
+    if (how) how.onclick = setPayMethod;
     var go = el("blGo");
     if (go) go.onclick = approve;
   }
@@ -200,23 +215,67 @@
       : '<img alt="' + esc(f.name) + '" src="' + url + '">';
   }
 
+  async function setPayMethod() {
+    var b = state.data.bill;
+    var pick = await DCR.modal({
+      title: "How is this paid?",
+      message: "This bill was approved for " + money(b.approvedAmount || b.expenseAmount) +
+        " before a payment method was recorded. Saying how is an authorisation, " +
+        "which is why it is yours and not the accountant's.",
+      okText: "Set it",
+      fields: [{
+        name: "m", label: "Pay this bill", type: "select", value: "",
+        options: [
+          { value: "", label: "Choose…" },
+          { value: "check", label: "By check" },
+          { value: "cash", label: "In cash" },
+        ],
+      }],
+      validate: function (v) { return v.m === "check" || v.m === "cash" ? "" : "Choose check or cash."; },
+    });
+    if (!pick) return;
+    try {
+      await DCR.api("/api/portal?action=project", { method: "POST",
+        body: { op: "billPayMethod", itemId: b.id, payMethod: pick.m } });
+      await load();
+    } catch (e) { DCR.alert(e.message || "Could not set that."); }
+  }
+
   async function approve() {
     var b = state.data.bill;
     var go = el("blGo"), msg = el("blMsg");
     var note = (el("blNote") || {}).value || "";
-    var sure = await DCR.confirm(
-      "Approve " + money(b.expenseAmount) + " to " +
-      (b.expenseVendorCompany || b.expenseVendorName || "this vendor") + " for payment? " +
-      "Your name and today's date are recorded against the bill.",
-      { title: "Approve for payment", okText: "Approve" });
-    if (!sure) return;
+    /* How it is to be paid is part of the approval, so it is asked here rather
+       than left to whoever writes the check. Nothing is pre-selected: a default
+       would get clicked through, and the accountant would be told "check" about
+       a bill somebody meant to settle in cash. */
+    var how = await DCR.modal({
+      title: "Approve for payment",
+      message: "Approve " + money(b.expenseAmount) + " to " +
+        (b.expenseVendorCompany || b.expenseVendorName || "this vendor") +
+        "? Your name and today's date are recorded against the bill, and the " +
+        "accountant is told how to pay it.",
+      okText: "Approve",
+      fields: [{
+        name: "m", label: "How should this be paid?", type: "select", value: "",
+        options: [
+          { value: "", label: "Choose…" },
+          { value: "check", label: "By check" },
+          { value: "cash", label: "In cash" },
+        ],
+      }],
+      validate: function (v) {
+        return v.m === "check" || v.m === "cash" ? "" : "Choose check or cash.";
+      },
+    });
+    if (!how) return;
 
     go.disabled = true;
     msg.textContent = "Approving…";
     msg.className = "bl-msg";
     try {
       var r = await DCR.api("/api/portal?action=project", { method: "POST",
-        body: { op: "billApprove", itemId: b.id, note: note } });
+        body: { op: "billApprove", itemId: b.id, note: note, payMethod: how.m } });
       if (r && r.alreadyApproved) {
         msg.textContent = "It was already approved by " + (r.approvedByName || "somebody else") + ".";
       }
