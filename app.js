@@ -107,6 +107,33 @@
     var n = Number(v) || 0;
     return "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
+  /* The reminder PC's pulse. Silence from an always-on machine looks exactly
+     like "nothing to report", so its last heartbeat is shown here, on the
+     page an admin opens anyway, and goes red when it is old. */
+  async function renderAgentsStatus(profile) {
+    var slot = el("hmAgents");
+    if (!slot || profile.role !== "Admin") return;
+    var d;
+    try {
+      d = await DCR.api("/api/portal?action=agents&feed=status");
+    } catch (e) { return; }
+    var s = d && d.status;
+    if (!s) return;                               // never set up: say nothing
+    var mins = d.minutesAgo;
+    var late = mins === null || mins > 15;
+    var when = mins === null ? "never" : mins < 1 ? "just now" : mins < 60 ? mins + " min ago"
+      : mins < 1440 ? Math.round(mins / 60) + " h ago" : Math.round(mins / 1440) + " days ago";
+    slot.innerHTML = '<div class="hm-ap" style="border-color:' + (late ? "var(--err)" : "var(--border)") + '">' +
+      '<div class="sub" style="margin:0">' +
+      '<span class="who' + (late ? " late" : "") + '">DCR Agents PC</span> · last seen ' + esc(when) +
+      (s.paused ? " · <b>paused</b>" : "") +
+      (late ? " · <span class=\"late\">not reporting — check the PC</span>" : "") +
+      " · today: " + esc(String(s.sentToday || 0)) + " sent, " + esc(String(s.failedToday || 0)) + " failed, " +
+      esc(String(s.repliesToday || 0)) + " replies" +
+      (s.lastError ? ' · <span class="nodoc">' + esc(s.lastError) + "</span>" : "") +
+      "</div></div>";
+  }
+
   async function renderApprovals() {
     var slot = el("hmApprovals");
     if (!slot) return;
@@ -213,5 +240,6 @@
     el("hmSearch").addEventListener("keydown", function (e) { if (e.key === "Enter") goSearch(); });
     render(profile);
     renderApprovals();
+    renderAgentsStatus(profile);
   });
 })();

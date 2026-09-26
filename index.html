@@ -63,12 +63,26 @@
       document.getElementById("companyName").textContent = DCR.company + " Portal";
       document.getElementById("companyLogo").src = DCR.companyInfo.logo;
 
+      /* Where to go after signing in. A page that sent someone here (the
+         timesheet link in a text message, say) names itself in ?next=, and only
+         a bare page name in this folder is honoured - never a full URL, so the
+         sign-in page can never be used to bounce someone off the site. */
+      function nextPage() {
+        var m = /[?&]next=([^&]+)/.exec(location.search);
+        // A truncated or mangled link ("%2E" cut to "%E") makes decode throw;
+        // treated as no ?next= at all, so the sign-in still goes somewhere
+        // rather than stalling with a stored token and a "URI malformed" error.
+        var next = "";
+        try { next = m ? decodeURIComponent(m[1]) : ""; } catch (e) { next = ""; }
+        return /^[a-z][a-z0-9-]*\.html(\?[A-Za-z0-9=&_%.-]*)?$/.test(next) && next !== "index.html"
+          ? next : "dashboard.html";
+      }
       // If already signed in, skip straight to the dashboard.
       if (DCR.getToken()) {
         DCR.api("/api/portal?action=me")
           // replace, not assign: a sign-in page that stays in history is a
           // back-target that bounces you straight forward again.
-          .then(() => location.replace("dashboard.html"))
+          .then(() => location.replace(nextPage()))
           .catch((e) => {
             /* Only a real 401 means the session is over. This used to bin the
                token on ANY error, so one bad moment of signal on the landing
@@ -99,7 +113,7 @@
             },
           });
           DCR.setToken(data.token);
-          location.replace("dashboard.html");
+          location.replace(nextPage());
         } catch (ex) {
           err.textContent = ex.message || "Sign in failed.";
           err.classList.add("show");

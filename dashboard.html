@@ -52,9 +52,12 @@
          globally; the global palette calls it --danger and has no gold at all.
          Naming them here keeps the banner red where it has to be red — an
          undefined var makes the whole declaration invalid, which would have
-         quietly dropped the border and the colour that make this thing shout. */
-      #hmApprovals{--err:var(--danger); --gold:#b8860b;}
-      .hm-ap{border:2px solid var(--err); border-radius:12px; padding:14px 16px; margin-bottom:18px;
+         quietly dropped the border and the colour that make this thing shout.
+         They live on .hm-ap itself, not on one slot: the same block is drawn
+         into #hmAgents as well as #hmApprovals, and when they were scoped to
+         #hmApprovals alone the agents banner's "late" state never turned red. */
+      .hm-ap{--err:var(--danger); --gold:#b8860b;
+        border:2px solid var(--err); border-radius:12px; padding:14px 16px; margin-bottom:18px;
         background:rgba(217,97,79,.08);}
       .hm-ap h3{margin:0 0 2px; font-size:15px; font-weight:800; color:var(--err);}
       .hm-ap .sub{font-size:12px; color:var(--text-muted); margin-bottom:10px;}
@@ -107,6 +110,7 @@
         <div id="installSlot" style="margin-top:14px"></div>
       </div>
 
+      <div id="hmAgents"></div>
       <div id="hmApprovals"></div>
       <div id="hmSections"></div>
     </div>

@@ -18,6 +18,11 @@
     getToken() {
       return localStorage.getItem(TOKEN_KEY) || "";
     },
+    // This page's own name plus query, for a sign-in bounce to come back to.
+    thisPage() {
+      var name = (location.pathname.split("/").pop() || "dashboard.html");
+      return name + (location.search || "");
+    },
     setToken(t) {
       localStorage.setItem(TOKEN_KEY, t);
     },
@@ -47,10 +52,14 @@
       }
 
       if (res.status === 401 && auth) {
-        // Session gone — bounce to login (unless we're already there).
+        /* Session gone — bounce to login (unless we're already there). Carry
+           ?next= the same way requireAuth does for the no-token case: a stale
+           token from a sign-in without "keep me signed in" lands here, and the
+           page they were sent to (the timesheet link in a text, with its ?date=
+           seed) would otherwise be lost, dropping them on the dashboard. */
         DCR.clearToken();
         if (!/index\.html$|\/$/.test(location.pathname)) {
-          location.href = "index.html";
+          location.href = "index.html?next=" + encodeURIComponent(DCR.thisPage());
         }
       }
       if (!res.ok) {
@@ -65,7 +74,7 @@
     // Load the current user or redirect to login. Returns the profile object.
     async requireAuth() {
       if (!DCR.getToken()) {
-        location.href = "index.html";
+        location.href = "index.html?next=" + encodeURIComponent(DCR.thisPage());
         throw new Error("not signed in");
       }
       for (let attempt = 0; ; attempt++) {

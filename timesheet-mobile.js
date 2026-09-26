@@ -256,7 +256,10 @@ document.addEventListener("DOMContentLoaded", async function(){
   el("userPill").textContent=(profile.displayName||profile.email);
   el("logoutBtn").onclick=function(){ DCR.logout(); };
   document.querySelectorAll("#daySeg button").forEach(function(b){ b.onclick=function(){ setDayType(b.getAttribute("data-type")); }; });
-  el("tsDate").value=todayStr();
+  /* A text message can link straight to a day: ?date=YYYY-MM-DD. Anything
+     else is today, as before. */
+  var wantDay=/[?&]date=(\d{4}-\d{2}-\d{2})(?:&|$)/.exec(location.search);
+  el("tsDate").value=wantDay?wantDay[1]:todayStr();
   await loadEmployees();
   await loadData();
 });
