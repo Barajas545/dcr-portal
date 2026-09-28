@@ -206,6 +206,10 @@
         <button type="button" id="tsPdfBtn" class="m-btn m-btn-ghost" style="margin-top:12px">📄 Send timesheet as PDF</button>
       </div>
 
+      <!-- "Phone reminders: on/off" — push.js draws the switch here. This is
+           the page a reminder opens, so the switch lives where the crew is. -->
+      <div id="pushSlot" style="text-align:center;margin-bottom:14px"></div>
+
       <div style="text-align:center"><a class="m-note" href="timesheet.html?view=desktop" onclick="try{sessionStorage.setItem('tsView','desktop')}catch(e){}">🖥️ Switch to desktop view</a></div>
     </div>
 
@@ -215,5 +219,6 @@
     <script src="common.js"></script>
     <script src="timesheet-mobile.js"></script>
     <script src="timesheet-pdf.js"></script>
+    <script src="push.js"></script>
   </body>
 </html>
