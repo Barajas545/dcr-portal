@@ -67,29 +67,61 @@
       .m-msg.err { background: rgba(200,55,31,0.16); color: var(--err); }
 
       .m-daycard { display: flex; align-items: center; justify-content: space-between; padding: 10px 2px; }
-      .m-daylabel { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); margin: 16px 0 6px; }
-      .m-entry { border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-bottom: 10px; background: var(--surface); }
-      .m-entry-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
-      .m-entry-proj { font-weight: 700; font-size: 15px; color: var(--text); }
-      .m-entry-work { font-size: 13px; color: var(--text-muted); margin-top: 2px; word-break: break-word; }
-      .m-badge { flex-shrink: 0; background: var(--tint-2); color: var(--badge-text); border-radius: 8px; padding: 3px 9px; font-size: 13px; font-weight: 800; white-space: nowrap; }
-      .m-badge.leave { background: rgba(139,105,20,0.20); color: var(--gold); }
-      .m-entry-actions { display: flex; gap: 8px; margin-top: 12px; }
-      .m-entry-actions button { flex: 1; padding: 9px; font-size: 13px; font-weight: 700; border-radius: 9px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); cursor: pointer; }
-      .m-entry-actions .del { color: var(--err); }
       .m-empty { text-align: center; color: var(--text-muted); padding: 24px; }
 
-      /* accent vars (same blue as desktop), theme-aware badge text */
-      .m-wrap { --acc:#2f80d8; --acc-2:#1f6fc8; --tint-2: rgba(47,128,216,0.20);
+      /* Two-week calendar, Saturday first (the company week). Seven columns
+         have to fit a 375px phone: the card's 16px padding leaves 315px, so
+         the grid bleeds 6px into it on each side and the cells keep a 2px gap
+         - about 45px per day, enough for "8h" and a two-line street name.
+         Header and day cells share ONE grid per week (14 children) so the
+         columns line up by construction; minmax(0,1fr) lets a long address
+         ellipsise instead of widening its column. */
+      .m-cal-week { margin: 0 -6px 12px; }
+      .m-cal-week:last-child { margin-bottom: 4px; }
+      .m-cal-label { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 0 6px; margin: 8px 0 6px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); }
+      .m-cal-label .tot { flex-shrink: 0; font-size: 15px; font-weight: 800; letter-spacing: 0; text-transform: none; color: var(--text); }
+      .m-cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
+      .m-cal-head { text-align: center; padding: 3px 0 2px; border-radius: 6px; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; line-height: 1.2; color: var(--acc); }
+      .m-cal-head .dn { display: block; font-size: 13px; font-weight: 800; color: var(--text); letter-spacing: 0; }
+      .m-cal-head.weekend { color: var(--text-muted); background: var(--surface-2); }
+      .m-cal-head.weekend .dn { color: var(--text-muted); }
+      .m-cal-head.today .dn { color: var(--acc); }
+      .m-cal-cell { display: flex; flex-direction: column; justify-content: flex-start; gap: 3px; min-height: 60px; padding: 5px 2px; margin: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; text-align: center; cursor: pointer; -webkit-appearance: none; appearance: none; -webkit-tap-highlight-color: transparent; }
+      .m-cal-cell.weekend { background: var(--surface-2); }
+      .m-cal-cell.has { background: var(--tint-1); border-color: var(--tint-2); }
+      .m-cal-cell.today { border-color: var(--acc); box-shadow: inset 0 0 0 1px var(--acc); }
+      .m-cal-cell:active { background: var(--tint-2); }
+      .m-cal-cell:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
+      .m-cal-ent { display: block; min-width: 0; }
+      .m-cal-ent + .m-cal-ent { border-top: 1px solid var(--border); padding-top: 3px; }
+      /* The hours never wrap or spill over the neighbouring cell: a quarter-hour
+         value like "10.25h" is six characters, wider than the ~38px cell at
+         13px, so renderCalendar marks anything over four characters .long and
+         it drops to 11px; ellipsis is the last resort, not the plan. */
+      .m-cal-h { display: block; font-size: 13px; font-weight: 800; line-height: 1.15; color: var(--badge-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .m-cal-h.long { font-size: 11px; letter-spacing: -0.02em; }
+      .m-cal-a { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 10px; line-height: 1.2; color: var(--text-muted); overflow-wrap: anywhere; word-break: break-word; }
+      .m-cal-ent.leave .m-cal-h, .m-cal-ent.leave .m-cal-a { color: var(--gold); }
+      .m-cal-dot { margin: auto; font-size: 18px; line-height: 1; color: var(--text-muted); opacity: .4; }
+      /* The "several entries this day" sheet: one row per entry, address then hours. */
+      .m-daylist button { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; padding: 12px; margin-bottom: 8px; font-size: 14px; font-weight: 600; text-align: left; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); color: var(--text); cursor: pointer; }
+      .m-daylist .hrs { flex-shrink: 0; font-weight: 800; color: var(--badge-text); }
+      .m-daylist .leave .hrs { color: var(--gold); }
+
+      /* accent vars (same blue as desktop), theme-aware badge text.
+         Declared on the bottom sheet's container too, because #modalContainer
+         is a sibling of .m-wrap, not a child: without this the hours and the
+         gold leave rows in the "several entries" sheet (and the red Delete
+         button) would fall back to plain text colour. */
+      .m-wrap, #modalContainer { --acc:#2f80d8; --acc-2:#1f6fc8; --tint-1: rgba(47,128,216,0.10); --tint-2: rgba(47,128,216,0.20);
         --badge-text:#1f6fc8; --gold:#d6a13a; --ok:#2fa679; --err:#d9614f; }
       @media (prefers-color-scheme: dark) {
-        :root:not([data-theme="light"]) .m-wrap { --badge-text:#9cc9f5; }
+        :root:not([data-theme="light"]) .m-wrap, :root:not([data-theme="light"]) #modalContainer { --badge-text:#9cc9f5; }
       }
 
       /* The same, chosen explicitly in Settings rather than read
          from the operating system. */
-      :root[data-theme="dark"] .m-wrap { --badge-text:#9cc9f5; }
-      :root[data-theme="dark"] .m-wrap { --badge-text:#9cc9f5; }
+      :root[data-theme="dark"] .m-wrap, :root[data-theme="dark"] #modalContainer { --badge-text:#9cc9f5; }
 
       .m-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: flex; align-items: flex-end; z-index: 60; }
       .m-sheet { background: var(--surface); color: var(--text); width: 100%; border-radius: 16px 16px 0 0; padding: 20px 18px calc(20px + env(safe-area-inset-bottom)); box-shadow: 0 -6px 24px rgba(0,0,0,0.35); }
@@ -198,10 +230,14 @@
 
       <div class="m-card">
         <div class="m-daycard">
-          <div class="m-h" style="margin:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--acc)" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> Recent entries</div>
-          <button class="btn btn-ghost btn-sm" onclick="loadData()">&#8635;</button>
+          <div class="m-h" style="margin:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--acc)" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> Last two weeks</div>
+          <button class="btn btn-ghost btn-sm" onclick="loadData()" aria-label="Refresh">&#8635;</button>
         </div>
         <div class="m-note" id="listNote" style="margin-bottom:6px"></div>
+        <!-- Last week and this week, Saturday to Friday, one cell per day:
+             hours in bold over the job's street address. Tap a day with an
+             entry to view it; tap an empty day to log that day. Drawn by
+             renderEntries() in timesheet-mobile.js. -->
         <div id="listArea"><div class="m-empty">Loading…</div></div>
         <button type="button" id="tsPdfBtn" class="m-btn m-btn-ghost" style="margin-top:12px">📄 Send timesheet as PDF</button>
       </div>

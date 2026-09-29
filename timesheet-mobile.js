@@ -109,35 +109,120 @@ function applyScopeUI(){
   }
 }
 
-/* ── entries list ── */
+/* ── two-week calendar (last week + this week, Saturday first) ──
+   The crew asked to SEE the fortnight rather than scroll a list: which days
+   are logged, which are not, and the week's total at a glance. Each cell
+   shows the hours and the job's street address, because on a phone the
+   address is how a foreman recognises the job. The pure part (bounds, model)
+   is exported on window.DCRTimesheetCalendar so it can be tested in node
+   without a browser; everything that touches the DOM is in renderEntries. */
+var DAY_NAMES=["Sat","Sun","Mon","Tue","Wed","Thu","Fri"];
+var projectAddresses={};  // { "<project name as stored on rows>": "<short address>" } from the backend; {} on an old backend
+var calDays={};           // day key -> [ids] of the entries drawn in that cell, for the tap handler
+var dateNoticeTok=0;      // bumps on every "Date set to…" notice so only the latest timer may clear it
+
+/* Same rule as the desktop page's getSaturdayOf: the company week starts on
+   Saturday, so Saturday is its own week start and any other day walks back. */
+function saturdayOf(date){ var d=new Date(date); d.setHours(0,0,0,0); var day=d.getDay(); d.setDate(d.getDate()-(day===6?0:day+1)); return d; }
+function addDays(d,n){ var x=new Date(d); x.setDate(x.getDate()+n); return x; }
+/* Local calendar day, not toISOString: at 8pm Pacific toISOString is already
+   tomorrow, and a cell keyed that way would show Monday's hours on Tuesday. */
+function dayKeyOf(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function fmtHours(n){ return (Math.round((Number(n)||0)*100)/100)+"h"; }
+function shortRange(a,b){ var mo=function(d){ return d.toLocaleDateString("en-US",{month:"short"}); }; return mo(a)+" "+a.getDate()+"–"+(mo(a)===mo(b)?"":mo(b)+" ")+b.getDate(); }
+
+/* The window the calendar draws: last week's Saturday through this week's
+   Friday. The page asks the backend for exactly this range instead of taking
+   the default, because the server decides "today" in its own zone (UTC on
+   Vercel): on a Friday evening here it is already Saturday there, its default
+   window starts a week late, and last week would vanish from the calendar. */
+function calendarBounds(today){ var thisSat=saturdayOf(today); return { from:dayKeyOf(addDays(thisSat,-7)), to:dayKeyOf(addDays(thisSat,6)) }; }
+
+/* Rows in, two weeks out. Rows outside the window are ignored (an old backend
+   may answer a wider range). Several entries on one day are STACKED, each
+   with its own hours and address, rather than totalled with a count: the
+   address is the point of the request, and at 45px a superscript "2" is
+   easy to miss and says nothing about where the other hours went. */
+function buildCalendarModel(items, today, addresses){
+  addresses=addresses||{};
+  var t=new Date(today); t.setHours(0,0,0,0); var todayKey=dayKeyOf(t);
+  var thisSat=saturdayOf(t), prevSat=addDays(thisSat,-7);
+  var byDay={};
+  (items||[]).forEach(function(it){ var k=fmtDate(it.timeSheetDate); if(k) (byDay[k]=byDay[k]||[]).push(it); });
+  return [{label:"Last week",start:prevSat},{label:"This week",start:thisSat}].map(function(w){
+    var total=0, days=[];
+    for(var i=0;i<7;i++){
+      var d=addDays(w.start,i), key=dayKeyOf(d), hours=0;
+      var entries=(byDay[key]||[]).map(function(it){
+        var proj=String(it.timeSheetProjectName||""), leave=isLeaveType(proj), h=Number(it.timeSheetWorkHours)||0;
+        hours+=h;
+        return { id:String(it.id), hours:h, leave:leave, text: leave?proj:(addresses[proj]||proj||"—") };
+      });
+      total+=hours;
+      days.push({ key:key, dow:DAY_NAMES[i], dayNum:d.getDate(), isToday:key===todayKey, isWeekend:i<2, hours:Math.round(hours*100)/100, entries:entries });
+    }
+    var end=addDays(w.start,6);
+    return { label:w.label, from:dayKeyOf(w.start), to:dayKeyOf(end), range:shortRange(w.start,end), total:Math.round(total*100)/100, days:days };
+  });
+}
+
+function renderCalendar(weeks){
+  var html="";
+  weeks.forEach(function(w){
+    html+='<div class="m-cal-week"><div class="m-cal-label"><span>'+escHtml(w.label)+' · '+escHtml(w.range)+'</span><span class="tot">'+fmtHours(w.total)+'</span></div><div class="m-cal-grid">';
+    w.days.forEach(function(d){ html+='<div class="m-cal-head'+(d.isWeekend?" weekend":"")+(d.isToday?" today":"")+'">'+d.dow+'<span class="dn">'+d.dayNum+'</span></div>'; });
+    w.days.forEach(function(d){
+      var n=d.entries.length;
+      var label=niceDate(d.key)+(n?": "+fmtHours(d.hours)+", "+n+(n===1?" entry":" entries"):": no entry, tap to log this day");
+      html+='<button type="button" class="m-cal-cell'+(d.isWeekend?" weekend":"")+(d.isToday?" today":"")+(n?" has":"")+'" data-day="'+d.key+'" aria-label="'+escHtml(label)+'">';
+      if(!n) html+='<span class="m-cal-dot">·</span>';
+      d.entries.forEach(function(e){ var hs=fmtHours(e.hours); html+='<span class="m-cal-ent'+(e.leave?" leave":"")+'"><span class="m-cal-h'+(hs.length>4?" long":"")+'">'+hs+'</span><span class="m-cal-a">'+escHtml(e.text)+'</span></span>'; });
+      html+='</button>';
+    });
+    html+='</div></div>';
+  });
+  return html;
+}
+
 function renderEntries(){
   var area=el("listArea"); var cur=el("tsName").value.trim();
   el("listNote").textContent = cur ? ("Showing: "+cur) : "Showing all entries you can access.";
   var items=allItems.filter(function(x){ if(!cur) return true; return (x.timeSheetEmployeeName||"").toLowerCase()===cur.toLowerCase(); });
-  if(!items.length){ area.innerHTML='<div class="m-empty">No entries in the last two weeks.</div>'; return; }
-  items.sort(function(a,b){ return new Date(b.timeSheetDate)-new Date(a.timeSheetDate); });
-  var html="", last="";
-  items.forEach(function(it){
-    var d=fmtDate(it.timeSheetDate);
-    if(d!==last){ last=d; html+='<div class="m-daylabel">'+escHtml(niceDate(d))+'</div>'; }
-    html+=entryCard(it);
-  });
-  area.innerHTML=html;
-  area.querySelectorAll("[data-view]").forEach(function(b){ b.onclick=function(){ viewEntry(b.getAttribute("data-view")); }; });
-  area.querySelectorAll("[data-edit]").forEach(function(b){ b.onclick=function(){ editEntry(b.getAttribute("data-edit")); }; });
-  area.querySelectorAll("[data-del]").forEach(function(b){ b.onclick=function(){ deleteEntry(b.getAttribute("data-del")); }; });
+  var weeks=buildCalendarModel(items, new Date(), projectAddresses);
+  calDays={};
+  weeks.forEach(function(w){ w.days.forEach(function(d){ calDays[d.key]=d.entries.map(function(e){ return e.id; }); }); });
+  area.innerHTML=renderCalendar(weeks);
+  area.querySelectorAll("[data-day]").forEach(function(b){ b.onclick=function(){ onCalendarDay(b.getAttribute("data-day")); }; });
 }
-function entryCard(it){
-  var proj=it.timeSheetProjectName||"—", leave=isLeaveType(proj);
-  var work=it.timeSheetWorkCompleted||"";
-  var h='<div class="m-entry">';
-  h+='<div class="m-entry-top"><div><div class="m-entry-proj">'+escHtml(proj)+'</div>';
-  if(work) h+='<div class="m-entry-work">'+escHtml(work.length>90?work.slice(0,90)+"…":work)+'</div>';
-  h+='</div><span class="m-badge'+(leave?" leave":"")+'">'+(it.timeSheetWorkHours||0)+'h</span></div>';
-  h+='<div class="m-entry-actions"><button data-view="'+it.id+'">View</button><button data-edit="'+it.id+'">Edit</button><button class="del" data-del="'+it.id+'">Delete</button></div>';
-  h+='</div>';
-  return h;
+
+/* One entry: straight to its sheet (View has Edit and Delete). Several: a
+   sheet to pick from. None: the form is pointed at that day and brought into
+   view, so "tap Monday to log Monday" works - unless an edit is in progress,
+   when silently moving the edited entry to another day would be the surprise
+   nobody wants; then the form is only brought into view. */
+function onCalendarDay(key){
+  var ids=calDays[key]||[];
+  if(ids.length===1) return viewEntry(ids[0]);
+  if(ids.length>1){
+    var rows=ids.map(function(id){ return allItems.find(function(x){ return String(x.id)===id; }); }).filter(Boolean);
+    showSheet('<h3>'+escHtml(niceDate(key))+'</h3><div class="m-daylist">'+rows.map(function(it){
+      var proj=String(it.timeSheetProjectName||""), leave=isLeaveType(proj);
+      return '<button type="button" class="'+(leave?"leave":"")+'" onclick="closeSheet();viewEntry(\''+escHtml(String(it.id))+'\')"><span>'+escHtml(leave?proj:(projectAddresses[proj]||proj||"—"))+'</span><span class="hrs">'+fmtHours(it.timeSheetWorkHours)+'</span></button>';
+    }).join("")+'</div><div class="m-sheet-actions"><button onclick="closeSheet()">Close</button></div>');
+    return;
+  }
+  if(!editingId){
+    el("tsDate").value=key; onDateChange(); showMsg("","Date set to "+niceDate(key)+".");
+    /* The notice fades on its own, but only if it is still THE notice: if the
+       crew has already pressed Submit and "Saving…" or a validation error has
+       replaced it, that message must stay. The token also makes rapid taps on
+       several empty days leave one live timer, not a stack. */
+    var tok=++dateNoticeTok;
+    setTimeout(function(){ var m=el("formMsg"); if(tok===dateNoticeTok && m.textContent.indexOf("Date set to")===0) m.className="m-msg"; },2500);
+  }
+  window.scrollTo({top:0,behavior:"smooth"});
 }
+if(typeof window!=="undefined") window.DCRTimesheetCalendar={ bounds:calendarBounds, model:buildCalendarModel, render:renderCalendar, saturdayOf:saturdayOf, dayKeyOf:dayKeyOf };
 
 /* ── view / edit / delete ── */
 function viewEntry(id){
@@ -237,7 +322,10 @@ async function loadEmployees(){ try{ var d=await DCR.api("/api/portal?action=ros
 async function loadData(){
   el("listArea").innerHTML='<div class="m-empty">Loading…</div>';
   try{
-    var d=await DCR.api("/api/portal?action=timesheets");
+    // Exactly the fortnight the calendar draws; see calendarBounds for why not the default.
+    var b=calendarBounds(new Date());
+    var d=await DCR.api("/api/portal?action=timesheets&from="+b.from+"&to="+b.to);
+    projectAddresses=(d.projectAddresses&&typeof d.projectAddresses==="object")?d.projectAddresses:{};
     allItems=(d.items||[]).map(function(it){
       it.timeSheetWorkStatTime=tsIsoToDisplay(it.timeSheetWorkStatTime);
       it.timeSheetWorkEndTime=tsIsoToDisplay(it.timeSheetWorkEndTime);
