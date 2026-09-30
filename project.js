@@ -2204,55 +2204,19 @@
      those hand off to SharePoint, which sends its own filename. */
   var DL_BLOB_MAX = 60 * 1024 * 1024;
 
-  /* Takeoff projects open in the web build of the estimating app.
+  /* Takeoff projects open in Professional Takeoff Tools through the shared
+     opener in takeoff-open.js, which the search page's plan-files menu uses
+     too. The file listings call these two by name, so they stay here as
+     functions that look the opener up only when called — nothing on this
+     page depends on takeoff-open.js while it loads. If that script failed to
+     load, a .takeoff simply lists and opens like any other file instead of
+     the Files tab failing to draw. */
+  function isTakeoff(name){ return !!(window.DCRTakeoff && window.DCRTakeoff.isTakeoff(name)); }
 
-     Where it lives is configurable, but both apps are GitHub Pages sites on
-     barajas545.github.io, so the default sits beside this one. Same origin is
-     not a convenience here — it is what lets the handoff go through
-     sessionStorage instead of the address bar. */
-  var TAKEOFF_APP = (window.DCR_CONFIG && window.DCR_CONFIG.TAKEOFF_URL) || "../takeoff-web/";
-
-  function isTakeoff(name){ return /\.(takeoff|pdfcache)$/i.test(String(name || "")); }
-
-  /* Open a .takeoff project without downloading it.
-
-     The app reads a project by slicing it — header, metadata and page index
-     only, about 2 KB even on a 2.3 GB job — and SharePoint’s pre-authed URL
-     serves byte ranges, so it never fetches the whole file. The 155 MB Cooper
-     Road plan set opens on about 40 KB. Handing over a blob instead would mean
-     155 MB through a phone before the first sheet appeared.
-
-     The link goes through sessionStorage rather than the URL: it is a
-     credential, and a query string lands in history and in the Referer header.
-     Only a one-shot key travels in the hash, and the app consumes it on
-     arrival. The file id and token key go with it so the app can mint a fresh
-     link when this one expires mid-afternoon. */
-  async function openInTakeoff(fileId, fallbackName, row) {
-    // Both listings show an icon, but only one of them wraps it in an element.
-    var icon = row && row.firstElementChild;
-    var was = icon ? icon.textContent : "";
-    if (icon) icon.textContent = "⏳";
-    try {
-      var info = await DCR.api("/api/portal?action=drive&fileInfo=" + encodeURIComponent(fileId));
-      if (!info || !info.downloadUrl) throw new Error("No download link for this file.");
-
-      var key = Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
-      sessionStorage.setItem("ptt.open." + key, JSON.stringify({
-        v: 1,
-        name: info.name || fallbackName || "project.takeoff",
-        size: Number(info.size) || 0,
-        url: info.downloadUrl,
-        renew: {
-          url: DCR.API_BASE + "/api/portal?action=drive&fileInfo=" + encodeURIComponent(fileId),
-          tokenKey: "dcr_portal_token",
-        },
-      }));
-      location.href = TAKEOFF_APP + "index.html#open=" + encodeURIComponent(key);
-    } catch (e) {
-      if (icon) icon.textContent = was;
-      DCR.alert((e && e.message) || "Could not open that project.",
-                { title: "Could not open" });
-    }
+  // Both listings show an icon, but only one of them wraps it in an element,
+  // so the row's first element child is the icon or nothing (no ⏳ swap).
+  function openInTakeoff(fileId, fallbackName, row) {
+    return window.DCRTakeoff.open(fileId, fallbackName, row && row.firstElementChild);
   }
 
   async function downloadFile(fileId, fallbackName, btn) {
