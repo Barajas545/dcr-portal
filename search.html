@@ -87,6 +87,21 @@
       .se-pm-fold[aria-expanded="true"] .se-pm-car::before{transform:rotate(90deg);}
       .se-pm-kids{padding-left:16px;}
       .se-pm-kids[hidden]{display:none;}
+      /* A file row with its Plans Library button: ⤓ save, a percentage while
+         it downloads, ✓ saved, ↻ a newer version is in SharePoint. */
+      .se-pm-frow{display:flex; align-items:center; gap:4px;}
+      .se-pm-frow > .se-pm-file{flex:1; min-width:0;}
+      .se-pm-save{flex:0 0 auto; width:44px; height:44px; padding:0; border:1px solid var(--border); border-radius:8px;
+        background:var(--surface); color:var(--acc); font:inherit; font-size:16px; font-weight:700; cursor:pointer;}
+      .se-pm-save:hover{border-color:var(--acc); background:var(--tint);}
+      .se-pm-save:focus-visible{outline:2px solid var(--acc); outline-offset:1px;}
+      .se-pm-save.saved{color:var(--ok);}
+      .se-pm-save.update{color:#fff; background:var(--acc); border-color:var(--acc);}
+      .se-pm-save.busy{font-size:11.5px; font-variant-numeric:tabular-nums;}
+      .se-pm-save.paused{color:#b7791f;}
+      .se-pm-note{padding:7px 14px; font-size:12px; border-top:1px solid var(--border); color:var(--text);}
+      .se-pm-note[hidden]{display:none;}
+      .se-pm-foot a{color:var(--acc);}
       /* While a picked file's link is fetched the rest of the list rests. */
       .se-pm[aria-busy="true"] .se-pm-file, .se-pm[aria-busy="true"] .se-pm-fold{opacity:.55; cursor:progress;}
       .se-pm[aria-busy="true"] .se-pm-file.picked{opacity:1;}
@@ -136,6 +151,7 @@
     <script src="config.js"></script>
     <script src="common.js"></script>
     <script src="takeoff-open.js"></script>
+    <script src="plans-library.js"></script>
     <script src="search.js"></script>
   </body>
 </html>

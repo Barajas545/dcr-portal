@@ -2138,6 +2138,82 @@
   function fmtSize(n){ if(!n)return""; if(n>1048576)return (n/1048576).toFixed(1)+" MB"; if(n>1024)return Math.round(n/1024)+" KB"; return n+" B"; }
   function fileIcon(f){ if(f.isFolder)return "📁"; if(isTakeoff(f.name))return "📐"; var m=f.mimeType||""; if(m.indexOf("image")===0)return "🖼️"; if(m.indexOf("pdf")!==-1)return "📕"; if(m.indexOf("sheet")!==-1||m.indexOf("excel")!==-1)return "📊"; if(m.indexOf("video")===0)return "🎬"; return "📄"; }
 
+  /* ── the Plans Library from the Files tab ──────────────────────────────
+     💾 keeps a takeoff on this device so it opens with no internet. The
+     button follows the saved copy: a percentage while it downloads, ✓ when
+     saved (press to go to the library), ↻ when SharePoint has a newer
+     version (press to update the saved copy). */
+  var saveWired = false;
+  function setSaveBtn(b, e) {
+    var L = window.DCRPlansLibrary, s = e ? e.status : "none", label = "💾", title;
+    if (s === "downloading") {
+      var live = e.live || {}, pct = live.size ? Math.min(100, Math.floor(live.done * 100 / live.size)) : 0;
+      label = pct + "%"; title = "Saving on this device — " + pct + "% (" + L.fmtSize(live.done) + " of " + L.fmtSize(live.size) + ")";
+    } else if (s === "paused" || s === "failed") { title = "Saving paused — press to carry on";
+    } else if (s === "outdated") { label = "↻"; title = "Saved, and SharePoint has a newer version — press to update your saved copy";
+    } else if (s === "ready" || s === "gone") { label = "✓"; title = "Saved on this device — press to open your Plans Library";
+    } else if (s === "denied") { label = "✕"; title = "Your account can no longer open this plan file";
+    } else { title = "Save on this device, to open with no internet"; }
+    b.textContent = label;
+    b.title = title;
+    var row = b.closest(".pj-file");
+    b.setAttribute("aria-label", title + (row ? ": " + row.getAttribute("data-name") : ""));
+  }
+  async function paintSaveButtons(pane, msg) {
+    var L = window.DCRPlansLibrary;
+    if (!L) return;
+    if (!saveWired) {
+      saveWired = true;
+      L.onChange(function (m) { var p = el("pane-files"); if (p) paintSaveButtons(p, m); });
+    }
+    var btns = Array.prototype.slice.call((pane || document).querySelectorAll("[data-save]"));
+    if (msg && msg.t === "progress") {
+      var id = String(msg.key || "").slice(String(msg.key || "").indexOf("|") + 1);
+      btns.forEach(function (b) { if (b.getAttribute("data-save") === id) setSaveBtn(b, { status: "downloading", live: msg }); });
+      return;
+    }
+    for (var i = 0; i < btns.length; i++) {
+      var e = null;
+      try { e = await L.entry(btns[i].getAttribute("data-save")); } catch (x) { e = null; }
+      setSaveBtn(btns[i], e);
+    }
+  }
+  async function saveOffline(btn) {
+    var L = window.DCRPlansLibrary;
+    if (!L || !L.supported()) {
+      DCR.alert("This browser cannot keep plan files on the device. Use Chrome or Edge on a computer or Android phone, " +
+        "or Safari 16.4 or newer on an iPhone or iPad.", { title: "Plans Library" });
+      return;
+    }
+    var id = btn.getAttribute("data-save");
+    var name = btn.closest(".pj-file").getAttribute("data-name");
+    var e = await L.entry(id);
+    if (e && (e.status === "ready" || e.status === "gone" || e.status === "denied")) { location.href = "plans-library.html"; return; }
+    if (e && e.status === "downloading") return;
+    var size = Number(btn.getAttribute("data-size")) || 0;
+    var job;
+    if (e && e.status === "outdated") job = L.update(id);
+    else if (e && (e.status === "paused" || e.status === "failed")) job = L.resume(id);
+    else {
+      if (size > 500 * 1024 * 1024 && !(await DCR.confirm("“" + name + "” is " + L.fmtSize(size) +
+        ". Save it on this device so it opens with no internet?", { title: "Save on this device", okText: "Save it" }))) return;
+      var p = state.project || {};
+      job = L.save({
+        id: id, name: name, size: size, source: "project", projectId: PID,
+        projectCode: p.internalIDNumber || "", projectTitle: p.projectName || "",
+        projectSub: [p.projectAddress, p.projectCity].filter(Boolean).join(" · "),
+        // where it sits under the project folder, e.g. "Floor Plans"
+        folder: state.files.stack.slice(1).map(function (s) { return s.name; }).join(" / "),
+      });
+    }
+    setSaveBtn(btn, { status: "downloading", live: { done: 0, size: size } });
+    job.then(function () { paintSaveButtons(el("pane-files")); }, function (x) {
+      paintSaveButtons(el("pane-files"));
+      if (x && x.code === "paused") return;
+      DCR.alert((x && x.message) || "Could not save that plan on this device.", { title: "Could not save" });
+    });
+  }
+
   function renderFiles(items) {
     var pane = el("pane-files");
     var crumbs = state.files.stack.map(function(s,i){
@@ -2151,6 +2227,9 @@
         (f.isFolder ? "" :
           '<button class="pj-dl" data-dl="'+esc(f.id)+'" title="Download '+esc(f.name)+'" ' +
           'aria-label="Download '+esc(f.name)+'">&#11015;</button>') +
+        // A takeoff can also be kept on this device (the Plans Library) to open with no internet.
+        (!f.isFolder && isTakeoff(f.name) && window.DCRPlansLibrary ?
+          '<button class="pj-dl pj-save" data-save="'+esc(f.id)+'" data-size="'+esc(f.size||0)+'" title="Save on this device">💾</button>' : "") +
         '</div>';
     }).join("") || '<div class="pj-empty">Empty folder.</div>';
     pane.innerHTML = capBarHtml() + '<div class="pj-crumb">'+crumbs+
@@ -2172,6 +2251,10 @@
         downloadFile(btn.getAttribute("data-dl"), btn.closest(".pj-file").getAttribute("data-name"), btn);
       };
     });
+    pane.querySelectorAll("[data-save]").forEach(function(btn){
+      btn.onclick = function(ev){ ev.stopPropagation(); saveOffline(btn); };
+    });
+    paintSaveButtons(pane);
     pane.querySelectorAll(".pj-file").forEach(function(row){
       row.onclick = function(){
         if (row.getAttribute("data-folder")==="1") {

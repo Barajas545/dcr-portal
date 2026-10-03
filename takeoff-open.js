@@ -83,5 +83,30 @@
     }
   }
 
-  window.DCRTakeoff = { open: open, isTakeoff: isTakeoff, APP: APP };
+  /* Open a copy saved in this device's Plans Library (plans-library.js).
+
+     No link and no internet: the tool reads the file straight from the
+     device's private file storage, which it shares with this page because
+     both apps are served from the same origin. Same one-shot handoff as
+     above, with the library file's name instead of a URL. The tool opens it
+     with no file handle, so its Save can never write into the saved copy —
+     the library holds SharePoint's version and nothing else. */
+  function openSaved(entry) {
+    var key = Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+    sessionStorage.setItem("ptt.open." + key, JSON.stringify({
+      v: 2,
+      source: "library",
+      dir: "plans-library",
+      file: entry.file,
+      name: entry.name || "project.takeoff",
+      size: Number(entry.size) || 0,
+      lastModified: Number(entry.lastModified) || 0,
+      libId: entry.id,
+      owner: entry.owner,
+      updateAvailable: !!entry.updateAvailable,
+    }));
+    location.href = APP + "index.html#open=" + encodeURIComponent(key);
+  }
+
+  window.DCRTakeoff = { open: open, openSaved: openSaved, isTakeoff: isTakeoff, APP: APP };
 })();

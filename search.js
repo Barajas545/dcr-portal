@@ -155,28 +155,136 @@
       (none ? TITLE_NONE : TITLE_PLANS) + '">' + PLAN_SVG + "</button>";
   }
 
-  function fileRow(f) {
+  function fileRow(f, folder) {
     var meta = [fmtSize(f.size), fmtDay(f.modifiedTime)].filter(Boolean).join(" · ");
     // The icon is the same 📐 the project page shows for a takeoff, as text,
     // so the opener's ⏳ swap can put it back exactly if the open fails.
-    return '<button type="button" class="se-pm-file" data-fid="' + esc(f.id) + '" data-name="' + esc(f.name) + '">' +
+    // The ⤓ beside it keeps a copy on this device (the Plans Library); it is a
+    // sibling, not a child, because a button may not sit inside a button.
+    return '<div class="se-pm-frow">' +
+      '<button type="button" class="se-pm-file" data-fid="' + esc(f.id) + '" data-name="' + esc(f.name) + '">' +
       '<span class="se-pf-ic" aria-hidden="true">📐</span>' +
       '<span class="se-pf-txt"><span class="se-pf-name">' + esc(f.name) + "</span>" +
-      (meta ? '<span class="se-pf-meta">' + esc(meta) + "</span>" : "") + "</span></button>";
+      (meta ? '<span class="se-pf-meta">' + esc(meta) + "</span>" : "") + "</span></button>" +
+      (window.DCRPlansLibrary
+        ? '<button type="button" class="se-pm-save" data-save="' + esc(f.id) + '" data-name="' + esc(f.name) +
+          '" data-size="' + esc(f.size || 0) + '" data-folder="' + esc(folder || "") + '" title="Save on this device">⤓</button>'
+        : "") +
+      "</div>";
   }
 
   // Files at this level first, then each sub-folder as a heading that folds.
   // Sub-folders start folded when there are files above them (the Backups
   // folder is usually the older copies) and open when there are none.
-  function nodeHtml(node) {
+  function nodeHtml(node, path) {
     var files = node.files || [], folders = node.folders || [];
     var open = !files.length;
-    return files.map(fileRow).join("") + folders.map(function (f) {
+    return files.map(function (f) { return fileRow(f, path); }).join("") + folders.map(function (f) {
       var n = f.count != null ? f.count : countFiles(f);
       return '<div class="se-pm-grp"><button type="button" class="se-pm-fold" aria-expanded="' + open + '">' +
         '<span class="se-pm-car" aria-hidden="true"></span><span class="se-pm-fname">📁 ' + esc(f.name) + " · " + n + "</span></button>" +
-        '<div class="se-pm-kids"' + (open ? "" : " hidden") + ">" + nodeHtml(f) + "</div></div>";
+        '<div class="se-pm-kids"' + (open ? "" : " hidden") + ">" + nodeHtml(f, path ? path + " / " + f.name : f.name) + "</div></div>";
     }).join("");
+  }
+
+  /* ── the Plans Library from this menu ───────────────────────────────────
+     ⤓ saves a file on this device, a percentage shows while it downloads,
+     ✓ means saved (press to go to the library), ↻ means SharePoint has a
+     newer version than the saved copy (press to update it). */
+  function setSaveState(b, e) {
+    var L = window.DCRPlansLibrary;
+    var s = e ? e.status : "none", label = "⤓", cls = "", title;
+    if (s === "downloading") {
+      var live = e.live || {}, pct = live.size ? Math.min(100, Math.floor((live.done / live.size) * 100)) : 0;
+      label = pct + "%"; cls = "busy";
+      title = "Saving on this device — " + pct + "% (" + L.fmtSize(live.done) + " of " + L.fmtSize(live.size) + ")";
+    } else if (s === "paused" || s === "failed") {
+      cls = "paused"; title = (s === "paused" ? "Saving paused" : "Saving stopped") + " — press to carry on";
+    } else if (s === "outdated") {
+      label = "↻"; cls = "update"; title = "Saved, and SharePoint has a newer version — press to update your saved copy";
+    } else if (s === "ready" || s === "gone") {
+      label = "✓"; cls = "saved"; title = "Saved on this device — press to open your Plans Library";
+    } else if (s === "denied") {
+      label = "✕"; cls = "paused"; title = "Your account can no longer open this plan file";
+    } else {
+      title = "Save on this device, to open with no internet";
+    }
+    b.textContent = label;
+    b.title = title;
+    b.setAttribute("aria-label", title + ": " + (b.getAttribute("data-name") || ""));
+    b.className = "se-pm-save" + (cls ? " " + cls : "");
+  }
+
+  async function paintSaves(m, msg) {
+    var L = window.DCRPlansLibrary;
+    if (!L || !m || !m.panel.isConnected) return;
+    var btns = Array.prototype.slice.call(m.panel.querySelectorAll(".se-pm-save"));
+    if (msg && msg.t === "progress") {
+      var id = String(msg.key || "").slice(String(msg.key || "").indexOf("|") + 1);
+      btns.forEach(function (b) {
+        if (b.getAttribute("data-save") === id) setSaveState(b, { status: "downloading", live: msg });
+      });
+      return;
+    }
+    for (var i = 0; i < btns.length; i++) {
+      var e = null;
+      try { e = await L.entry(btns[i].getAttribute("data-save")); } catch (x) { e = null; }
+      if (menu !== m) return;
+      setSaveState(btns[i], e);
+    }
+  }
+
+  function saveNote(m, text) {
+    var n = m.panel.querySelector(".se-pm-note");
+    if (!n) return;
+    n.textContent = text || "";
+    n.hidden = !text;
+  }
+
+  async function onSave(m, b) {
+    var L = window.DCRPlansLibrary;
+    if (!L || !L.supported()) {
+      DCR.alert("This browser cannot keep plan files on the device. Use Chrome or Edge on a computer or Android phone, " +
+        "or Safari 16.4 or newer on an iPhone or iPad.", { title: "Plans Library" });
+      return;
+    }
+    var id = b.getAttribute("data-save"), name = b.getAttribute("data-name") || "";
+    var e = await L.entry(id);
+    if (e && (e.status === "ready" || e.status === "gone" || e.status === "denied")) { location.href = "plans-library.html"; return; }
+    if (e && e.status === "downloading") return;
+    var size = Number(b.getAttribute("data-size")) || 0;
+    var job;
+    if (e && e.status === "outdated") job = L.update(id);
+    else if (e && (e.status === "paused" || e.status === "failed")) job = L.resume(id);
+    else {
+      if (size > 500 * 1024 * 1024) {
+        var ok = await DCR.confirm("“" + name + "” is " + L.fmtSize(size) + ". Save it on this device so it opens with no internet?",
+          { title: "Save on this device", okText: "Save it" });
+        if (!ok || menu !== m) return;
+      }
+      // Who and where, for the library's project card: the tile this menu
+      // hangs from says it ("A249 — Remodel …" and the address line).
+      var tile = m.btn.parentElement;
+      var title = ((tile && tile.querySelector(".se-title")) || {}).textContent || "";
+      var sub = ((tile && tile.querySelector(".se-sub")) || {}).textContent || "";
+      var code = m.btn.getAttribute("data-folder") || "";
+      var cut = title.indexOf(" — ");
+      job = L.save({
+        id: id, name: name, size: size, source: "archive", projectId: m.projectId, projectCode: code,
+        projectTitle: cut > -1 ? title.slice(cut + 3) : title, projectSub: sub,
+        folder: b.getAttribute("data-folder") || "",
+      });
+    }
+    saveNote(m, "Saving on this device. You can keep searching; if you leave this page, the Plans Library finishes it.");
+    setSaveState(b, { status: "downloading", live: { done: 0, size: size } });
+    job.then(function (r) {
+      if (menu === m) saveNote(m, r && r.paused ? "" : "Saved — it opens from the Plans Library, with or without internet.");
+      if (menu === m) paintSaves(m);
+    }, function (x) {
+      if (menu === m) { saveNote(m, ""); paintSaves(m); }
+      if (x && x.code === "paused") return;
+      DCR.alert((x && x.message) || "Could not save that plan on this device.", { title: "Could not save" });
+    });
   }
 
   function menuRows(panel) {
@@ -200,11 +308,12 @@
       body.innerHTML = '<div class="se-pm-msg">No .takeoff files in the ' + esc(label) + " archive folder.</div>";
       return;
     }
-    body.innerHTML = nodeHtml(tree) +
+    body.innerHTML = nodeHtml(tree, "") +
       (d.truncated || anyTruncated(tree) ? '<div class="se-pm-msg se-pm-trunc">Showing the first ' + shown + " files.</div>" : "");
     // Only now is there a file to open, so only now does the note on how it
     // opens belong under the list.
     panel.querySelector(".se-pm-foot").hidden = false;
+    paintSaves(m);
     // Hand the keyboard to the first file, unless the owner has already moved
     // on (clicked back into the search box) while the list was loading.
     var active = document.activeElement;
@@ -297,8 +406,11 @@
       '<div class="se-pm-head"><b class="se-pm-title">Plan files — ' + esc(label) + "</b>" +
         '<button type="button" class="se-pm-close">Close</button></div>' +
       '<div class="se-pm-body"><div class="se-pm-msg">Loading…</div></div>' +
+      '<div class="se-pm-note" role="status" aria-live="polite" hidden></div>' +
       '<div class="se-pm-foot" hidden>Opens in Professional Takeoff Tools without downloading the file — ' +
-        "each sheet loads as you view it.</div>";
+        "each sheet loads as you view it." +
+        (window.DCRPlansLibrary ? ' ⤓ keeps a copy on this device for use with no internet — see your <a href="plans-library.html">Plans Library</a>.' : "") +
+        "</div>";
     wrap.appendChild(scrim);
     wrap.appendChild(panel);
     btn.setAttribute("aria-expanded", "true");
@@ -340,6 +452,8 @@
       var t = e.target;
       if (t.closest(".se-pm-close")) { closeMenu(true); return; }
       if (m.opening) return;
+      var sv = t.closest(".se-pm-save");
+      if (sv) { onSave(m, sv); return; }
       var fold = t.closest(".se-pm-fold");
       if (fold) {
         var open = fold.getAttribute("aria-expanded") !== "true";
@@ -469,6 +583,12 @@
     el("companyName").textContent = DCR.company + " Portal";
     el("userPill").textContent = (profile.displayName || profile.email) + " · " + profile.role;
     el("logoutBtn").onclick = function () { DCR.logout(); };
+    // Saved plans: the open menu follows downloads (here or in another
+    // window), and a quiet check for new versions runs every few hours.
+    if (window.DCRPlansLibrary) {
+      window.DCRPlansLibrary.onChange(function (msg) { if (menu) paintSaves(menu, msg); });
+      window.DCRPlansLibrary.maybeCheck();
+    }
 
     var q0 = new URLSearchParams(location.search).get("q") || "";
     el("seInput").value = q0;

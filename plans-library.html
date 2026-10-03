@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DCR Portal — Plans Library</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      :root{
+        --acc:#2f80d8; --tint:rgba(47,128,216,0.12); --tint-2:rgba(47,128,216,0.22);
+        --warn:#b7791f; --warn-bg:rgba(214,158,46,0.14);
+      }
+      .pl{max-width:920px; margin:0 auto; padding:18px 16px 60px;}
+      .pl-head h2{margin:0 0 4px; font-size:22px;}
+      .pl-lead{margin:0 0 14px; color:var(--text-muted); font-size:14px;}
+      .pl-net{margin:0 0 12px; padding:10px 14px; border-radius:var(--radius); background:var(--warn-bg);
+        border:1px solid rgba(214,158,46,0.45); font-size:13.5px;}
+      .pl-bar{display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-bottom:6px;}
+      .pl-usage{flex:1 1 280px; font-size:13px; color:var(--text-muted);}
+      .pl-usage b{color:var(--text);}
+      .pl-actions{display:flex; gap:8px; flex-wrap:wrap;}
+      .pl-btn{min-height:36px; padding:7px 14px; border-radius:8px; border:1px solid var(--border);
+        background:var(--surface); color:var(--text); font:inherit; font-size:13px; font-weight:600; cursor:pointer;}
+      .pl-btn:hover:not(:disabled){border-color:var(--acc);}
+      .pl-btn:focus-visible{outline:2px solid var(--acc); outline-offset:2px;}
+      .pl-btn:disabled{opacity:.5; cursor:default;}
+      .pl-btn.primary{background:var(--acc); border-color:var(--acc); color:#fff;}
+      .pl-btn.danger{color:var(--danger);}
+      .pl-status{font-size:12.5px; color:var(--text-muted); margin:0 0 14px; min-height:18px;}
+      .pl-status .ok{color:var(--ok); font-weight:600;}
+      .pl-status .warn{color:var(--warn); font-weight:600;}
+      .pl-empty{padding:36px 18px; text-align:center; color:var(--text-muted); font-size:14px; line-height:1.6;
+        background:var(--surface); border:1px dashed var(--border); border-radius:var(--radius);}
+      .pl-proj{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+        box-shadow:var(--shadow); margin-bottom:14px; overflow:hidden;}
+      .pl-ph{display:flex; align-items:center; gap:12px; padding:12px 14px; border-bottom:1px solid var(--border);}
+      .pl-thumb{flex:0 0 auto; width:84px; height:60px; border-radius:8px; overflow:hidden; background:var(--surface-2, #eef1f4);
+        display:flex; align-items:center; justify-content:center; font-size:26px;}
+      .pl-thumb img{width:100%; height:100%; object-fit:cover; display:block;}
+      .pl-pt{min-width:0;}
+      .pl-ptitle{font-weight:700; font-size:15px; overflow-wrap:anywhere;}
+      .pl-psub{font-size:12.5px; color:var(--text-muted); overflow-wrap:anywhere;}
+      .pl-file{display:flex; flex-wrap:wrap; align-items:flex-start; gap:10px; padding:12px 14px; border-bottom:1px solid var(--border);}
+      .pl-file:last-child{border-bottom:0;}
+      .pl-fmain{display:flex; gap:10px; flex:1 1 360px; min-width:0;}
+      .pl-fic{font-size:20px; line-height:1.2;}
+      .pl-ftxt{min-width:0; flex:1;}
+      .pl-fname{font-weight:600; font-size:14px; overflow-wrap:anywhere;}
+      .pl-fmeta{font-size:12px; color:var(--text-muted); margin-top:2px; overflow-wrap:anywhere;}
+      .pl-fstate{font-size:12.5px; margin-top:4px; font-weight:600; overflow-wrap:anywhere;}
+      .pl-fstate.s-ok{color:var(--ok);}
+      .pl-fstate.s-new{color:var(--acc);}
+      .pl-fstate.s-warn{color:var(--warn);}
+      .pl-fstate.s-bad{color:var(--danger);}
+      .pl-fstate.s-dim{color:var(--text-muted); font-weight:500;}
+      .pl-bar-track{height:6px; border-radius:3px; background:var(--tint); margin-top:6px; overflow:hidden; max-width:420px;}
+      .pl-bar-fill{height:100%; width:0; background:var(--acc); transition:width .25s linear;}
+      .pl-facts{display:flex; gap:6px; flex-wrap:wrap; align-items:center;}
+      .pl-newer{padding:10px 14px; font-size:13px; background:var(--tint); border-top:1px solid var(--border);
+        display:flex; flex-wrap:wrap; gap:8px; align-items:center;}
+      .pl-newer span{flex:1 1 260px; overflow-wrap:anywhere;}
+      @media (max-width:600px){
+        .pl-facts{width:100%;}
+        .pl-facts .pl-btn{flex:1 1 auto;}
+      }
+    </style>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/png" href="icon-192.png" />
+  <link rel="apple-touch-icon" href="icon-180.png" />
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#171d25" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="DCR Portal" />
+    <script>/* theme before first paint; see DCR.theme in common.js */try{var t=localStorage.getItem("dcr_theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t;}catch(e){}</script>
+  </head>
+  <body>
+    <div class="topbar">
+      <div class="brand"><img class="brand-logo" src="logo.png" alt="DCR Framing" /><h1 id="companyName">DCR Portal</h1></div>
+      <div class="top-actions">
+        <span class="pill" id="userPill">…</span>
+        <a class="btn btn-ghost btn-sm" href="dashboard.html">Home</a>
+        <button class="btn btn-ghost btn-sm" id="logoutBtn">Log out</button>
+      </div>
+    </div>
+
+    <div class="pl">
+      <div class="pl-head">
+        <h2>Plans Library</h2>
+        <p class="pl-lead">Plan files saved on this device. They open in Professional Takeoff Tools with or without internet.</p>
+      </div>
+      <div class="pl-net" id="plNet" role="status" hidden></div>
+      <div class="pl-bar">
+        <div class="pl-usage" id="plUsage">&nbsp;</div>
+        <div class="pl-actions">
+          <button type="button" class="pl-btn" id="plCheck">Check for updates</button>
+          <button type="button" class="pl-btn primary" id="plUpdateAll" hidden>Update all</button>
+        </div>
+      </div>
+      <div class="pl-status" id="plStatus" role="status" aria-live="polite"></div>
+      <div id="plList"></div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="common.js"></script>
+    <script src="takeoff-open.js"></script>
+    <script src="plans-library.js"></script>
+    <script src="plans-library-page.js"></script>
+  </body>
+</html>

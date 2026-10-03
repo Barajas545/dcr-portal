@@ -4,6 +4,27 @@
   const cfg = window.DCR_CONFIG || {};
   const API_BASE = (cfg.API_BASE || "").replace(/\/$/, "");
   const TOKEN_KEY = "dcr_portal_token";
+  // The portal's root, from where this file was loaded (a page may sit in a subfolder).
+  const COMMON_BASE = (function () {
+    try { return document.currentScript && document.currentScript.src ? new URL(".", document.currentScript.src).href : ""; }
+    catch (e) { return ""; }
+  })();
+
+  /* How many plans the signed-in person keeps on this device (the Plans
+     Library's index, plans-library.js). Read here so the offline notice can
+     offer them without loading the library itself. */
+  function savedPlansHere() {
+    try {
+      const parts = (localStorage.getItem(TOKEN_KEY) || "").split(".");
+      if (parts.length < 2) return 0;
+      let b = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+      while (b.length % 4) b += "=";
+      const c = JSON.parse(atob(b));
+      const who = String(c.sub || c.email || "");
+      const idx = JSON.parse(localStorage.getItem("dcr.plansLibrary.v1") || "null");
+      return ((idx && idx.entries) || []).filter(function (e) { return e.owner === who && e.status === "ready"; }).length;
+    } catch (e) { return 0; }
+  }
 
   const DCR = {
     API_BASE,
@@ -129,12 +150,20 @@
           "justify-content:center;background:rgba(0,0,0,.55);" +
           "font:14px/1.5 system-ui,-apple-system,'Segoe UI',sans-serif"
       );
+      /* With plans saved on this device, the useful thing to do offline is to
+         open them — the Plans Library works with no connection at all. */
+      const saved = savedPlansHere();
       el.innerHTML =
         '<div style="max-width:340px;margin:16px;padding:22px;border-radius:14px;' +
         'background:#fff;color:#1a1a1a;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,.3)">' +
         '<div style="font-size:17px;font-weight:700;margin-bottom:6px">Can&rsquo;t reach the portal</div>' +
         '<div style="color:#666;font-size:13px;margin-bottom:16px">You are still signed in — ' +
         "this looks like the connection, not your account.</div>" +
+        (saved
+          ? '<button id="dcrOfflineLib" style="width:100%;padding:11px;margin-bottom:8px;border:0;border-radius:8px;' +
+            'background:#1f9d55;color:#fff;font:inherit;font-weight:700;cursor:pointer">Open my Plans Library (' +
+            saved + " saved plan" + (saved === 1 ? "" : "s") + ")</button>"
+          : "") +
         '<button id="dcrOfflineRetry" style="width:100%;padding:11px;border:0;border-radius:8px;' +
         'background:#2f80d8;color:#fff;font:inherit;font-weight:700;cursor:pointer">Try again</button>' +
         '<button id="dcrOfflineOut" style="width:100%;margin-top:8px;padding:9px;border:0;background:none;' +
@@ -143,6 +172,8 @@
       document.body.appendChild(el);
       el.querySelector("#dcrOfflineRetry").onclick = function () { location.reload(); };
       el.querySelector("#dcrOfflineOut").onclick = function () { DCR.logout(); };
+      const lib = el.querySelector("#dcrOfflineLib");
+      if (lib) lib.onclick = function () { location.href = (COMMON_BASE || "") + "plans-library.html"; };
     },
 
     logout() {

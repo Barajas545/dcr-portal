@@ -34,6 +34,8 @@
         links: [["Sales view","board.html?view=sales"],["Marketing view","board.html?view=marketing"],["Accounting view","board.html?view=accounting"]] },
       { href: "pm.html", ic: "📊", tt: "Progress Chart", ds: "Every stage, item and dollar — bids to paid — on one chart.", show: !!pp.project },
       { href: "plans.html", ic: "📐", tt: "Floor Plans", ds: "Open plan PDFs — measure, annotate, and build takeoffs.", show: !!pp.project },
+      { href: "plans-library.html", ic: "💾", tt: "Plans Library", id: "hmLibrary",
+        ds: "Plan files saved on this device — they open with no internet.", show: !!pp.project },
       { href: "logs.html", ic: "📜", tt: "Log History", ds: "Today's project logs, grouped by project — or any period.", show: !!pp.projectLog },
       { href: "estimates.html", ic: "💰", tt: "Sales Estimates", ds: "Estimate decks & more from completed-project history.", show: canSales },
       { href: "leads.html", ic: "📞", tt: "Leads", ds: "Sales pipeline: track contacts, convert to projects.", show: !!pp.leads },
@@ -80,7 +82,7 @@
              as a card followed by a second, title-less tile containing three
              loose links. Both the card and its links are still real anchors, so
              middle-click and keyboard still open them. */
-          return '<div class="hm-card">' +
+          return '<div class="hm-card"' + (c.id ? ' id="' + c.id + '"' : "") + '>' +
             '<a class="hm-card-go" href="' + c.href + '">' +
               '<span class="ic">' + c.ic + '</span>' +
               '<span class="tt">' + esc(c.tt) + '</span>' +
@@ -89,6 +91,31 @@
         }).join("") + "</div>";
     });
     el("hmSections").innerHTML = html;
+    libraryBadge();
+  }
+
+  /* The Plans Library card says what is saved on this device and whether
+     SharePoint has newer versions of any of it. The numbers come from the
+     library's own index, so drawing them opens nothing; a quiet check for
+     new versions runs every few hours and redraws them when it is done. */
+  var libraryWired = false;
+  function libraryBadge() {
+    var L = window.DCRPlansLibrary, card = el("hmLibrary");
+    if (!L || !card) return;
+    var c = L.counts(), tt = card.querySelector(".tt");
+    var old = tt.querySelector(".hm-badge");
+    if (old) old.remove();
+    if (c.updates || c.saved) {
+      var b = document.createElement("span");
+      b.className = "hm-badge" + (c.updates ? "" : " dim");
+      b.textContent = c.updates ? c.updates + " new version" + (c.updates === 1 ? "" : "s") : c.saved + " saved";
+      tt.appendChild(b);
+    }
+    if (!libraryWired) {
+      libraryWired = true;
+      L.onChange(function (m) { if (m.t !== "progress") setTimeout(libraryBadge, 300); });
+      L.maybeCheck();
+    }
   }
 
   /* Invoices waiting for approval, across every project.

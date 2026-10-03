@@ -14,11 +14,40 @@ self.addEventListener("install", function () {
   self.skipWaiting(); // activate the new worker immediately
 });
 
+/* Only this app's own old caches. The takeoff tool is served from the same
+   origin and keeps its offline copy in Cache Storage too ("ptt-web-*"):
+   deleting every name but ours wiped it on each portal update, and the saved
+   plans in the Plans Library are useless offline without the tool to open
+   them. (The name above stays v6 on purpose: a changed worker installs by
+   itself, and a new name would throw away every page already kept offline.) */
 self.addEventListener("activate", function (event) {
   event.waitUntil((async function () {
     const keys = await caches.keys();
-    await Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)));
+    await Promise.all(keys.filter((k) => k.indexOf("dcr-portal-") === 0 && k !== CACHE).map((k) => caches.delete(k)));
     await self.clients.claim();
+  })());
+});
+
+/* The Plans Library asks for the pages it needs offline to be kept now,
+   rather than whenever they happen to be visited: the library page, its
+   scripts, the shared helpers and styles. Only this app's own files, inside
+   this worker's scope, are ever fetched. */
+self.addEventListener("message", function (event) {
+  const m = event.data || {};
+  if (m.type !== "dcr-precache" || !Array.isArray(m.urls)) return;
+  const scope = self.registration.scope;
+  // Normalised first: "…/dcr-portal/../takeoff-web/x" is not inside the scope.
+  const urls = m.urls.map(function (u) {
+    try { return new URL(String(u), scope).href; } catch (e) { return ""; }
+  }).filter((u) => u && u.indexOf(scope) === 0).slice(0, 40);
+  event.waitUntil((async function () {
+    const cache = await caches.open(CACHE);
+    await Promise.all(urls.map(async (u) => {
+      try {
+        const res = await fetch(u, { cache: "no-cache" });
+        if (res && res.ok && res.type === "basic") await cache.put(u, res);
+      } catch (e) { /* offline or missing: keep whatever copy is there */ }
+    }));
   })());
 });
 
@@ -29,18 +58,51 @@ self.addEventListener("fetch", function (event) {
   if (url.origin !== self.location.origin) return;        // don't touch the Vercel API (cross-origin)
 
   event.respondWith((async function () {
-    try {
-      // "Network first" only means something if the request actually reaches
-      // the network. A plain fetch(req) still consults the browser's own HTTP
-      // cache, so GitHub Pages' max-age let a page load new HTML against a JS
-      // file the browser was still holding — a shipped fix looking unshipped.
-      // no-cache revalidates every time (a 304 costs nothing when unchanged).
-      const fresh = await fetch(req, { cache: "no-cache" });
+    // "Network first" only means something if the request actually reaches
+    // the network. A plain fetch(req) still consults the browser's own HTTP
+    // cache, so GitHub Pages' max-age let a page load new HTML against a JS
+    // file the browser was still holding — a shipped fix looking unshipped.
+    // no-cache revalidates every time (a 304 costs nothing when unchanged).
+    const network = fetch(req, { cache: "no-cache" }).then(function (fresh) {
       if (fresh && fresh.ok) {
-        const cache = await caches.open(CACHE);
-        cache.put(req, fresh.clone());
+        const copy = fresh.clone();
+        caches.open(CACHE).then(function (cache) { return cache.put(req, copy); }).catch(function () {});
       }
       return fresh;
+    });
+
+    /* The Plans Library exists for a weak or absent signal. With a signal
+       that is there but barely, a network-first fetch can hang for most of a
+       minute before failing, and the saved plans would sit out of reach the
+       whole time. So the library page, and what it loads, wait at most three
+       seconds before the copy kept on this device is used (the network
+       answer still refreshes that copy for next time). Every other page stays
+       strictly network-first, as above. */
+    let quick = false;
+    try {
+      if (url.pathname.indexOf("/api/") !== 0) {
+        if (/\/plans-library\.html$/.test(url.pathname)) quick = true;
+        else if (event.clientId) {
+          const client = await self.clients.get(event.clientId);
+          quick = !!(client && /\/plans-library\.html$/.test(new URL(client.url).pathname));
+        }
+      }
+    } catch (e) { quick = false; }
+    if (quick) {
+      const kept = await caches.match(req);
+      if (kept) {
+        const first = await Promise.race([
+          network.catch(function () { return null; }),
+          new Promise(function (r) { setTimeout(function () { r(null); }, 3000); }),
+        ]);
+        if (first) return first;
+        event.waitUntil(network.catch(function () {}));
+        return kept;
+      }
+    }
+
+    try {
+      return await network;
     } catch (err) {
       const cached = await caches.match(req);             // offline → last-seen copy of the app shell
       if (cached) return cached;
