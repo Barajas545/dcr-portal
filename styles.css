@@ -115,24 +115,56 @@ input:focus, select:focus, textarea:focus {
 .msg.ok { background: #e3f4ea; color: #0f5f34; }
 
 /* ---------- App shell ---------- */
+/* The bar wraps rather than overflowing. On a phone the title and the name
+   pill step aside (see the media queries below), which leaves room for every
+   page's buttons on one row except a few with three long ones - Leads,
+   Marketing, Batch timesheets, Backup, Compare. Those drop their buttons to a
+   second row, all still on screen, instead of pushing Log out off the right
+   edge. */
 .topbar {
   display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; column-gap: 12px; row-gap: 8px;
   padding: 12px 20px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   position: sticky; top: 0; z-index: 10;
 }
 .topbar .brand h1 { font-size: 16px; }
-.top-actions { display: flex; align-items: center; gap: 12px; }
+.topbar a.brand { color: inherit; text-decoration: none; }
+/* One line, cut short with an ellipsis if it must be - never wrapped into a
+   three-line stack that makes the whole bar three times as tall.
+
+   The title gives way before the buttons do. Its width:0 means it claims no
+   room when the bar decides what fits on a row, then flex-grow hands it
+   whatever is left over. The 6em floor is where it stops giving way: a title
+   cut to "DCR…" is noise, so below that the buttons take a row of their own
+   and the title gets the first row whole. Growing into the free space also
+   keeps the nav and the brand together on the left and the actions on the
+   right. */
+.topbar > .brand { flex: 1 1 0%; }
+.topbar .brand > h1, .topbar .brand > span {
+  flex: 1 1 auto; width: 0; min-width: 6em;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* margin-left: auto keeps the buttons on the right when they wrap onto a row
+   of their own. They never shrink or break - "Log out" split over two lines is
+   how this bar looked on a phone. A long name in the pill is cut short. */
+.top-actions {
+  display: flex; align-items: center; justify-content: flex-end;
+  flex-wrap: wrap; gap: 8px 12px; margin-left: auto; min-width: 0;
+}
+.top-actions > .btn { flex-shrink: 0; white-space: nowrap; }
+.top-actions > .pill {
+  min-width: 0; max-width: 260px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 
 /* ── Back / Forward ────────────────────────────────────────────────────────
    The portal is opened in a desktop shell with no browser chrome, so no page
    has a back control of its own. These sit at the far left of the bar, ahead
    of the brand, which is where one is looked for. */
-.topbar > .dcr-nav { display: flex; align-items: center; gap: 6px; margin-right: 14px; flex-shrink: 0; }
-/* An auto margin outranks justify-content: space-between, so the nav and the
-   brand stay together on the left while the actions keep the right. */
-.topbar > .brand { margin-right: auto; }
+/* The bar's 12px column gap plus this 2px is the 14px the nav always had. */
+.topbar > .dcr-nav { display: flex; align-items: center; gap: 6px; margin-right: 2px; flex-shrink: 0; }
 .dcr-navbtn {
   width: 32px; height: 32px; padding: 0; flex-shrink: 0;
   display: inline-flex; align-items: center; justify-content: center;
@@ -148,8 +180,34 @@ input:focus, select:focus, textarea:focus {
 /* Dimmed, never hidden: a control that disappears shifts everything beside it,
    and the button you were reaching for moves out from under the cursor. */
 .dcr-navbtn:disabled { opacity: .3; cursor: default; }
-@media (max-width: 620px) {
-  .topbar > .dcr-nav { margin-right: 8px; gap: 4px; }
+/* ── The bar on narrower screens ──────────────────────────────────────────
+   Given up in order of how little it is missed: first the pill's length, then
+   the pill (you know who you are), then the title (the logo still says whose
+   portal this is, and each page names itself in its own heading). Back,
+   Forward and the page's buttons are never given up. */
+@media (max-width: 768px) {
+  .top-actions > .pill { max-width: 180px; }
+}
+@media (max-width: 640px) {
+  .topbar { padding: 10px 14px; column-gap: 8px; }
+  .topbar > .dcr-nav { margin-right: 0; gap: 4px; }
+  .top-actions { gap: 6px; }
+  .top-actions > .pill { display: none; }
+}
+@media (max-width: 480px) {
+  .topbar { padding: 8px 12px; }
+  /* Out of sight but still the page's heading to a screen reader. */
+  .topbar .brand > h1, .topbar .brand > span {
+    position: absolute; width: 1px; min-width: 0; height: 1px; margin: -1px; padding: 0;
+    overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+  }
+}
+/* A finger, not a cursor: 44px is the smallest target that is reliably hit
+   with a thumb. A phone-width window gets it too, so the bar measures the
+   same in a desktop preview as in a hand. */
+@media (max-width: 480px), (pointer: coarse) {
+  .top-actions > .btn { min-height: 44px; }
+  .dcr-navbtn { width: 40px; height: 44px; }
 }
 .pill {
   font-size: 12px; font-weight: 600;

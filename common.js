@@ -946,10 +946,11 @@
         '<button type="button" class="dcr-navbtn" data-nav="fwd" title="Forward" aria-label="Go forward">' + CHEV("9 18 15 12 9 6") + '</button>';
 
       /* querySelector finds a .brand at any depth, but insertBefore demands a
-         direct child - and capture.html wraps its bar contents in .topbar-in,
-         so passing that grandchild threw NotFoundError and Site Photos got no
-         buttons at all. Staying a direct child also keeps the CSS matching,
-         since those rules use the child combinator. */
+         direct child - and capture.html once wrapped its bar contents in
+         .topbar-in, so passing that grandchild threw NotFoundError and Site
+         Photos got no buttons at all. Kept for any bar built that way. Staying
+         a direct child also keeps the CSS matching, since those rules use the
+         child combinator. */
       var brand = bar.querySelector(".brand");
       bar.insertBefore(nav, brand && brand.parentNode === bar ? brand : bar.firstChild);
 
