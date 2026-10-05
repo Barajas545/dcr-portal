@@ -22,6 +22,10 @@
     var sections = [];
 
     sections.push({ label: "Field & Time", cards: [
+      /* First in the row: it is the one card here that is somebody's job
+         today, and its badge says how many tasks are waiting for an update. */
+      { href: "my-tasks.html", ic: "✅", tt: "My Tasks", id: "hmMyTasks", show: true,
+        ds: "Your open tasks — send an update in a few taps." },
       { href: "capture.html", ic: "📸", tt: "Site Photos", ds: "Photograph or film the job you're standing on — filed by week.", show: true },
       { href: "timesheet.html", ic: "🕐", tt: "Time Sheet", ds: "Enter your daily hours, schedule, and leave days.", show: true },
       { href: "tasks-map.html", ic: "🗺️", tt: "Tasks on Map", ds: "Photo & site tasks on a map with directions.", show: true },
@@ -116,6 +120,39 @@
       L.onChange(function (m) { if (m.t !== "progress") setTimeout(libraryBadge, 300); });
       L.maybeCheck();
     }
+  }
+
+  /* The My Tasks card's badge: how many of your own tasks have gone quiet
+     for more than five days. An owner or manager with no tasks of their own
+     sees the crew's number instead, dimmed. Drawn after the cards, from the
+     counts-only answer; any failure leaves the card as it is. */
+  async function myTasksBadge() {
+    var card = el("hmMyTasks");
+    if (!card) return;
+    var d;
+    try {
+      d = await DCR.api("/api/portal?action=tasks&summary=1");
+    } catch (e) { return; }
+    if (!d) return;
+    var text = "", cls = "hm-badge";
+    if (d.linked && d.needUpdate) {
+      text = d.needUpdate + (d.needUpdate === 1 ? " needs" : " need") + " an update";
+      cls += " warn";
+    } else if (d.linked && d.open) {
+      text = d.open + " open";
+      cls += " dim";
+    } else if (!d.open && d.crewNeedUpdate) {
+      text = d.crewNeedUpdate + " crew task" + (d.crewNeedUpdate === 1 ? " needs" : "s need") + " an update";
+      cls += " dim";
+    }
+    if (!text) return;
+    var tt = card.querySelector(".tt");
+    var old = tt.querySelector(".hm-badge");
+    if (old) old.remove();
+    var b = document.createElement("span");
+    b.className = cls;
+    b.textContent = text;
+    tt.appendChild(b);
   }
 
   /* Invoices waiting for approval, across every project.
@@ -266,6 +303,7 @@
     el("hmGo").onclick = goSearch;
     el("hmSearch").addEventListener("keydown", function (e) { if (e.key === "Enter") goSearch(); });
     render(profile);
+    myTasksBadge();
     renderApprovals();
     renderAgentsStatus(profile);
   });

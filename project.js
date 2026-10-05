@@ -1462,7 +1462,10 @@
         cc: el("tkCc").value.trim(),
         mapLink: el("tkMapLink").value.trim(),
         description: el("tkDesc").value.trim(),
-        portalLink: location.origin + location.pathname + "?id=" + encodeURIComponent(PID) + "&tab=tasks",
+        /* My Tasks, not this project screen: the assignee may not be allowed
+           to open a project, and My Tasks is where they send an update. The
+           server adds ?task=<the new id> once it exists. */
+        portalLink: new URL("my-tasks.html", location.href).href,
       }});
 
       el("taskModal").classList.remove("open");

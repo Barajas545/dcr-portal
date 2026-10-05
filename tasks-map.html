@@ -676,7 +676,6 @@ function ptParseNotes(raw){
     return{date:"",text:line.trim()};
   });
 }
-function ptSerializeNotes(notes){return notes.map(n=>n.date?`[${n.date}] --- ${n.text}`:n.text).join("\r\n");}
 
 // Pin coordinates live server-side in each task's TaskProjectCoordinates ("lat,lng"),
 // so a saved/adjusted pin is shared across users and devices.
@@ -1070,8 +1069,9 @@ window.ptSubmitNewTask=async function(){
       cc:document.getElementById("ptNTCc").value.trim(),
       description:document.getElementById("ptNTDesc").value.trim(),
       /* No map link: the pin IS the location, and the address already travels
-         on the task record. */
-      portalLink:location.origin+location.pathname,
+         on the task record. The email points at My Tasks, where the person
+         can send an update; the server adds ?task=<the new id>. */
+      portalLink:new URL("my-tasks.html",location.href).href,
     }});
     const n=r.notify||{};
     ptNTMsg("ok", n.sent?("Task created — "+who+" has been emailed."):"Task created.");
@@ -1162,7 +1162,9 @@ window.ptCloseDrawer2=function(){
 function ptRenderInlineNotes(t){
   const notes=ptParseNotes(t.TaskCompletedWork);
   if(!notes.length)return'<p style="color:#aaa;font-size:13px;text-align:center;padding:12px 0;">No notes yet.</p>';
-  return notes.slice().reverse().map(n=>'<div class="pt-note-entry">'+(n.date?'<p class="pt-note-date">'+n.date+'</p>':'')+'<p class="pt-note-text">'+n.text.replace(/</g,"&lt;").replace(/>/g,"&gt;")+'</p></div>').join("");
+  /* The date is escaped as well as the text: ptParseNotes reads anything
+     before " — " or "::" as a date, so it is words somebody typed. */
+  return notes.slice().reverse().map(n=>'<div class="pt-note-entry">'+(n.date?'<p class="pt-note-date">'+esc(n.date)+'</p>':'')+'<p class="pt-note-text">'+esc(n.text)+'</p></div>').join("");
 }
 
 window.ptToggleNote=function(id){const a=document.getElementById("ptnote_"+id);if(a)a.classList.toggle("open");};
@@ -1174,17 +1176,17 @@ window.ptSaveNote=function(id){
   const text=ta.value.trim();
   if(!text){st.textContent="Nothing to save.";st.style.color="#aaa";return;}
   const task=ptRecords.find(t=>(t.id||t.ID)===id);
-  const existing=ptParseNotes(task?task.TaskCompletedWork:"");
-  const now=new Date();
-  const days=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-  const months=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  const dateStr=`${days[now.getDay()]} ${months[now.getMonth()]} ${String(now.getDate()).padStart(2,"0")}, ${now.getFullYear()}`;
-  existing.push({date:dateStr,text});
-  const serialized=ptSerializeNotes(existing);
-  if(task)task.TaskCompletedWork=serialized;
+  /* The server appends the note to the field it reads fresh, stamped in
+     company time. This page used to send the whole field back from its own
+     copy, which overwrote any note added in Access since the map loaded. */
   st.textContent="Saving…";st.style.color="#999";
-  DCR.api(TASKS_EP,{method:"PATCH",body:{itemId:id,TaskCompletedWork:serialized}})
-    .then(()=>{st.textContent="Saved ✓";st.style.color="#2e7d32";ta.value="";const a=document.getElementById("ptnote_"+id);if(a)a.classList.remove("open");const nl=document.getElementById("ptnotelist_"+id);if(nl&&task)nl.innerHTML=ptRenderInlineNotes(task);})
+  DCR.api(TASKS_EP,{method:"POST",body:{op:"addNote",itemId:id,text}})
+    .then(r=>{
+      if(task&&r&&r.task)task.TaskCompletedWork=r.task.TaskCompletedWork;
+      st.textContent="Saved ✓";st.style.color="#2e7d32";ta.value="";
+      const a=document.getElementById("ptnote_"+id);if(a)a.classList.remove("open");
+      const nl=document.getElementById("ptnotelist_"+id);if(nl&&task)nl.innerHTML=ptRenderInlineNotes(task);
+    })
     .catch(err=>{st.textContent=(err&&err.message)||"Error saving";st.style.color="#c62828";});
 };
 
@@ -1194,7 +1196,7 @@ window.ptShowNotes=function(id){
   document.getElementById("ptModalTitle").textContent="Task Updates";
   const body=document.getElementById("ptModalBody");
   if(!notes.length){body.innerHTML=`<p class="pt-no-notes">No notes yet.</p>`;}
-  else{body.innerHTML=notes.slice().reverse().map(n=>`<div class="pt-note-entry">${n.date?`<p class="pt-note-date">${n.date}</p>`:""}<p class="pt-note-text">${n.text.replace(/</g,"&lt;").replace(/>/g,"&gt;")}</p></div>`).join("");}
+  else{body.innerHTML=notes.slice().reverse().map(n=>`<div class="pt-note-entry">${n.date?`<p class="pt-note-date">${esc(n.date)}</p>`:""}<p class="pt-note-text">${esc(n.text)}</p></div>`).join("");}
   document.getElementById("ptNotesModal").classList.add("open");
 };
 window.ptCloseNotes=function(){document.getElementById("ptNotesModal").classList.remove("open");};

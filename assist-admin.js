@@ -14,9 +14,13 @@
   var el = function (id) { return document.getElementById(id); };
   var esc = function (v) { return DCR.esc(v); };
 
-  // The pages worth sending someone to, in the order they appear on Home.
+  /* The pages worth sending someone to, roughly as Home lists them. Not every
+     card is here, only the ones a helper talks someone through. My Tasks sits
+     right after Home because it is where a task reminder sends crew members,
+     so it is the page most often reached for when helping one send an update. */
   var PAGES = [
     ["dashboard.html", "Home"],
+    ["my-tasks.html", "My Tasks"],
     ["timesheet.html", "Time Sheet"],
     ["timesheet-mobile.html", "Time Sheet (phone)"],
     ["capture.html", "Site Photos"],
