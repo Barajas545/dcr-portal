@@ -11,7 +11,14 @@
 
    What is typed is kept on this phone, per account and per task, until the
    server says it is saved — a dropped signal or a sign-in that expired in the
-   truck loses nothing. Everything drawn from a task goes through DCR.esc. */
+   truck loses nothing. Everything drawn from a task goes through DCR.esc.
+
+   A shoot the Photo & Video Agent announced (the server marks it with
+   `photo: {shootDate, ref}`) shows as a brief: a camera badge and the shoot
+   day, the description's sections as small headings, its shot list as a
+   checklist the photographer ticks on site (kept on this phone only),
+   photo-specific quick phrases, Maps, and an upload link that opens the
+   photo page on this job. */
 (function () {
   var el = function (id) { return document.getElementById(id); };
   var esc = function (v) { return DCR.esc(v); };
@@ -20,7 +27,12 @@
   var FINE = window.matchMedia("(pointer: fine)");
   var VIEW_KEY = "dcr.myTasks.view";
   var DRAFT_KEY = "dcr.myTasks.draft.v1";
+  var SHOTS_KEY = "dcr.myTasks.shots.v1";
   var PHRASES = ["Started today", "Waiting on materials", "Waiting on the client"];
+  /* On a shoot these replace the phrases above. "Shoot done" is not a note:
+     the agent reads the task being closed, so it closes it (see renderDetail). */
+  var PHOTO_PHRASES = ["On site now", "Weather — need a new day", "Can't make it — please move it", "Drone not possible today"];
+  var SHOOT_DONE = "Shoot done — photos uploaded";
   var UNLINKED = "Your account isn’t linked to an employee yet — ask an admin.";
 
   var S = {
@@ -61,6 +73,25 @@
   }
   function setDraft(id, t) {
     store(draftKey(id), t && t.trim() ? JSON.stringify({ t: t, at: Date.now() }) : null);
+  }
+
+  /* The shots ticked on a shoot's checklist, by their words (so a brief the
+     agent rewrites keeps the ticks of the shots it kept). Only a convenience
+     on this phone: nothing is sent. */
+  function shotsKey(id) { return SHOTS_KEY + ":" + account() + ":" + id; }
+  function getShots(id) {
+    try {
+      var d = JSON.parse(read(shotsKey(id)) || "null");
+      var out = {};
+      ((d && d.done) || []).forEach(function (s) { out[String(s)] = true; });
+      return out;
+    } catch (e) { return {}; }
+  }
+  function setShot(id, shot, on) {
+    var done = getShots(id);
+    if (on) done[shot] = true; else delete done[shot];
+    var list = Object.keys(done);
+    store(shotsKey(id), list.length ? JSON.stringify({ done: list, at: Date.now() }) : null);
   }
 
   var WD = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -113,20 +144,89 @@
     var city = String(t.TaskProjectCity || "").trim();
     return { project: String(t.TaskProjectName || "").trim(), addr: addr, city: city };
   }
+  function dirUrl(pl) {
+    if (!pl.addr) return "";
+    return "https://www.google.com/maps/dir/?api=1&destination=" + encodeURIComponent([pl.addr, pl.city].filter(Boolean).join(", "));
+  }
   function dirLink(pl) {
     if (!pl.addr) return "";
     var q = [pl.addr, pl.city].filter(Boolean).join(", ");
-    return '<a class="mt-dir" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=' +
-      encodeURIComponent(q) + '" aria-label="Directions to ' + esc(q) + ' (opens maps)">' + esc(pl.addr) + " ↗</a>";
+    return '<a class="mt-dir" target="_blank" rel="noopener" href="' + dirUrl(pl) +
+      '" aria-label="Directions to ' + esc(q) + ' (opens maps)">' + esc(pl.addr) + " ↗</a>";
   }
   function chip(t) {
     var k = priKey(t.TaskPrioraty);
     return k ? '<span class="mt-chip ' + k + '">' + esc(t.TaskPrioraty) + "</span>" : "";
   }
-  /* Access descriptions can carry <br> and stray tags; shown as plain text
-     with the line breaks kept. */
+  /* A shoot's badge and its day, against the server's company day: "Shoot:
+     Thu Oct 15", "Shoot: Today", "Shoot was Tue Oct 13". */
+  function photoChips(t) {
+    if (!t.photo) return "";
+    var s = '<span class="mt-chip photo">📷 Photo &amp; Video</span>';
+    var d = String(t.photo.shootDate || "");
+    if (!DAY_RE.test(d)) return s;
+    var n = daysAgo(d);
+    var past = n !== null && n > 0;
+    var label = n === 0 ? "Shoot: Today" : past ? "Shoot was " + dayText(d) : "Shoot: " + dayText(d);
+    return s + '<span class="mt-chip shoot' + (n === 0 ? " today" : past ? " late" : "") + '">' + esc(label) + "</span>";
+  }
+  function chips(t) { return t.photo ? '<span class="mt-chips">' + photoChips(t) + chip(t) + "</span>" : chip(t); }
+  /* Access descriptions can carry <br>, stray tags and entities (a rich-text
+     rewrite stores "·" as &middot; and "&" as &amp;); shown as plain text
+     with the line breaks kept. The entities are exactly the ones the
+     server's reader decodes (lib/photo-agent.js normalise), so a shoot's
+     footer the server found is hidden here too; &amp; goes last, and &lt;
+     / &gt; are not among them, so "&lt;script&gt;" still shows as typed.
+     The words then go through esc() like any other. */
   function plain(s) {
-    return String(s || "").replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim();
+    return String(s || "").replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]*>/g, "")
+      .replace(/&nbsp;/gi, " ").replace(/&#183;|&middot;/gi, "·").replace(/&quot;|&#34;/g, '"')
+      .replace(/&#39;/g, "'").replace(/&#58;/g, ":").replace(/&#123;/g, "{").replace(/&#125;/g, "}")
+      .replace(/&#10;/g, "\n").replace(/&amp;/g, "&").trim();
+  }
+
+  /* A shoot brief, from the description the agent wrote: its sections
+     (WHEN, SHOT LIST, …) on lines of their own, optionally with words after
+     a colon; "• " lines as list items, the ones under SHOT LIST as
+     checkboxes; anything else as a line of text. The footer ("Shoot date: …
+     · Ref: PV-…") is the agent's bookkeeping and is not shown. Parsed from
+     plain(), the way every description is read here (a rich-text line from
+     Access ends with </div> or </p>, so those end a line first); every word
+     goes through esc(). Answers the markup and the shot list, in order, for
+     the checkboxes' data-shot index. */
+  var BRIEF_HEAD = /^(WHEN|WHERE|SHOT LIST|TIPS|SAMPLE SHOT|BRING|SAFETY|CAPTION IDEAS|DRONE CHECK)(?:\s*:\s*(.*)|\s*)$/;
+  var BRIEF_FOOT = /^Shoot date: \d{4}-\d{2}-\d{2} · Ref: PV-/;
+  function brief(t) {
+    var lines = plain(String(t.TaskDescription || "").replace(/<\/(?:div|p)>/gi, "\n")).split(/\r?\n/);
+    var done = getShots(t.id);
+    var html = "", open = false, head = "", shots = [];
+    function close() { if (open) { html += "</ul>"; open = false; } }
+    lines.forEach(function (raw) {
+      var line = raw.trim();
+      if (!line) { close(); return; }
+      if (BRIEF_FOOT.test(line)) return;
+      var h = BRIEF_HEAD.exec(line);
+      if (h) {
+        close();
+        head = h[1];
+        html += '<h4 class="mt-bh">' + esc(head) + "</h4>" + (h[2] ? '<p class="mt-bp">' + esc(h[2]) + "</p>" : "");
+        return;
+      }
+      var b = /^•\s*(.+)$/.exec(line);
+      if (!b) { close(); html += '<p class="mt-bp">' + esc(line) + "</p>"; return; }
+      var shot = head === "SHOT LIST";
+      if (!open) { html += '<ul class="mt-blist' + (shot ? " shots" : "") + '">'; open = true; }
+      /* the agent's "Map: <Google Maps search>" line: a tap, not a web address
+         to read; only that exact https prefix becomes a link */
+      var map = shot ? null : /^Map:\s*(https:\/\/www\.google\.com\/maps\/search\/\?\S+)$/.exec(b[1]);
+      if (map) { html += '<li><a href="' + esc(map[1]) + '" target="_blank" rel="noopener">Open in Maps ↗</a></li>'; return; }
+      if (!shot) { html += "<li>" + esc(b[1]) + "</li>"; return; }
+      html += '<li><label class="mt-shot"><input type="checkbox" data-shot="' + shots.length + '"' + (done[b[1]] ? " checked" : "") +
+        " /> <span>" + esc(b[1]) + "</span></label></li>";
+      shots.push(b[1]);
+    });
+    close();
+    return { html: html, shots: shots };
   }
 
   var byDays = function (a, b) { return (b.daysSinceUpdate || 0) - (a.daysSinceUpdate || 0); };
@@ -134,6 +234,16 @@
     return (PRI_RANK[priKey(a.TaskPrioraty)] - PRI_RANK[priKey(b.TaskPrioraty)]) ||
       String(a.requested || "").localeCompare(String(b.requested || ""));
   };
+  /* Inside each group the shoots come first, the soonest first: a shoot has
+     a day it happens on, every other task only an age. */
+  function photoFirst(rest) {
+    return function (a, b) {
+      var pa = a.photo ? 1 : 0, pb = b.photo ? 1 : 0;
+      if (pa !== pb) return pb - pa;
+      var c = pa ? String(a.photo.shootDate || "9999").localeCompare(String(b.photo.shootDate || "9999")) : 0;
+      return c || rest(a, b);
+    };
+  }
 
   /* ── who is looking ──────────────────────────────────────────────────── */
 
@@ -161,7 +271,7 @@
       : '<div class="mt-place"></div>';
     return '<article class="mt-card' + (t.needsUpdate ? " needs" : "") + (String(S.sel) === String(t.id) ? " sel" : "") + '">' +
       '<button type="button" class="mt-open" data-open="' + esc(t.id) + '">' +
-        '<span class="mt-row1"><span class="mt-name">' + esc(nameOf(t)) + "</span>" + chip(t) + "</span>" +
+        '<span class="mt-row1"><span class="mt-name">' + esc(nameOf(t)) + "</span>" + chips(t) + "</span>" +
         '<span class="mt-when' + (t.needsUpdate ? " warn" : "") + '">' + esc(whenText(t)) + "</span>" +
         '<span class="mt-last">' + esc(previewText(t)) + "</span>" +
       "</button>" + place + "</article>";
@@ -221,8 +331,8 @@
     }
     var html = "";
     if (S.view === "mine") {
-      html = group("Needs an update", tasks.filter(function (t) { return t.needsUpdate; }).sort(byDays), true) +
-        group("Up to date", tasks.filter(function (t) { return !t.needsUpdate; }).sort(byPriority), false);
+      html = group("Needs an update", tasks.filter(function (t) { return t.needsUpdate; }).sort(photoFirst(byDays)), true) +
+        group("Up to date", tasks.filter(function (t) { return !t.needsUpdate; }).sort(photoFirst(byPriority)), false);
     } else {
       /* Grouped by person, under the roster name the reminders use (a task
          typed as "Luis" sits with Luis Martinez's). The caller's own first. */
@@ -237,8 +347,8 @@
       });
       html = order.map(function (k) {
         var g = groups[k];
-        var needs = g.list.filter(function (t) { return t.needsUpdate; }).sort(byDays);
-        var fine = g.list.filter(function (t) { return !t.needsUpdate; }).sort(byPriority);
+        var needs = g.list.filter(function (t) { return t.needsUpdate; }).sort(photoFirst(byDays));
+        var fine = g.list.filter(function (t) { return !t.needsUpdate; }).sort(photoFirst(byPriority));
         return '<h3 class="mt-grp"><span class="who">' + esc(g.mine ? "You (" + g.name + ")" : g.name) + "</span>" +
           '<span class="mt-n">' + g.list.length + "</span>" +
           (needs.length ? '<span class="mt-n warn">' + needs.length + " need" + (needs.length === 1 ? "s" : "") + " an update</span>" : "") +
@@ -292,17 +402,29 @@
       "<dt>Assigned to</dt><dd>" + esc(ownerOf(t)) + (t.mine ? " (you)" : "") + "</dd>" +
       (cat ? "<dt>Category</dt><dd>" + esc(cat) + "</dd>" : "") +
       (t.TaskWebSiteDetails ? "<dt>Details</dt><dd>" + esc(plain(t.TaskWebSiteDetails)) + "</dd>" : "");
+    /* A shoot: the description is a brief, the phrases are the
+       photographer's, Maps is one tap, and the photo page opens on this job. */
+    var shoot = t.photo ? brief(t) : null;
+    var phrases = shoot ? PHOTO_PHRASES.concat([SHOOT_DONE]) : PHRASES;
+    var maps = shoot ? dirUrl(pl) : "";
+    var pid = t.ProjectID === null || t.ProjectID === undefined ? "" : String(t.ProjectID).trim();
+    var upload = shoot
+      ? '<a class="mt-photo" href="' + esc("capture.html" + (pid ? "?project=" + encodeURIComponent(pid) : "")) + '">📷 Upload photos &amp; videos</a>'
+      : '<a class="mt-photo" href="capture.html">📷 Site photos</a>';
     el("mtDScroll").innerHTML =
-      '<div class="mt-dtop">' + chip(t) + "</div>" +
+      '<div class="mt-dtop">' + chip(t) + photoChips(t) + "</div>" +
       '<h2 class="mt-dtitle" id="mtDTitle" tabindex="-1">' + esc(nameOf(t)) + "</h2>" +
       ((pl.project || pl.addr) ? '<div class="mt-dplace">' + esc(pl.project) + (pl.project && pl.addr ? " · " : "") + dirLink(pl) + "</div>" : "") +
       '<div class="mt-dwhen' + (t.needsUpdate ? " warn" : "") + '" id="mtDWhen">' + esc(whenText(t)) + "</div>" +
-      (desc ? '<p class="mt-desc">' + esc(desc) + "</p>" : "") +
+      (shoot ? (shoot.html ? '<div class="mt-brief" role="group" aria-label="Shoot brief">' + shoot.html + "</div>" : "")
+        : desc ? '<p class="mt-desc">' + esc(desc) + "</p>" : "") +
       '<dl class="mt-facts">' + facts + "</dl>" +
       '<form class="mt-compose" id="mtCompose" novalidate>' +
         '<label class="mt-label" for="mtText">Add an update</label>' +
         '<div class="mt-quick" role="group" aria-label="Quick phrases — each adds its words to your update">' +
-          PHRASES.map(function (p) { return '<button type="button" data-phrase="' + esc(p) + '">' + esc(p) + "</button>"; }).join("") +
+          phrases.map(function (p) {
+            return '<button type="button"' + (p === SHOOT_DONE ? ' class="done"' : "") + ' data-phrase="' + esc(p) + '">' + esc(p) + "</button>";
+          }).join("") +
           '<button type="button" id="mtSchedBtn" aria-controls="mtDatePick" aria-expanded="false">Scheduled for…</button>' +
           '<button type="button" class="done" id="mtDoneBtn">Done ✓</button>' +
         "</div>" +
@@ -323,7 +445,8 @@
       '<ol class="mt-history" id="mtHistory">' + historyHtml(t, false) + "</ol>" +
       '<div class="mt-dactions">' +
         '<button type="button" class="mt-complete" id="mtComplete">Mark complete</button>' +
-        '<a class="mt-photo" href="capture.html">📷 Site photos</a>' +
+        (maps ? '<a class="mt-photo" target="_blank" rel="noopener" href="' + esc(maps) + '">🗺️ Open in Maps</a>' : "") +
+        upload +
       "</div>";
 
     var ta = el("mtText");
@@ -355,9 +478,25 @@
       setTimeout(function () { try { ta.scrollIntoView({ block: "center", behavior: "smooth" }); } catch (e) {} }, 250);
     });
     el("mtCompose").addEventListener("submit", function (e) { e.preventDefault(); send(); });
+    /* "Shoot done — photos uploaded" puts its words in the box and then asks
+       the same question as Done ✓, with them as the closing note: the agent
+       reads the task being closed, and a note alone would leave its
+       follow-ups running. */
     Array.prototype.forEach.call(document.querySelectorAll("#mtCompose [data-phrase]"), function (b) {
-      b.onclick = function () { addPhrase(b.getAttribute("data-phrase")); };
+      b.onclick = function () {
+        var p = b.getAttribute("data-phrase");
+        addPhrase(p);
+        if (shoot && p === SHOOT_DONE) complete();
+      };
     });
+    if (shoot) {
+      Array.prototype.forEach.call(document.querySelectorAll("#mtDScroll [data-shot]"), function (c) {
+        c.onchange = function () {
+          var words = shoot.shots[Number(c.getAttribute("data-shot"))];
+          if (words !== undefined) setShot(t.id, words, !!c.checked);
+        };
+      });
+    }
     el("mtSchedBtn").onclick = function () {
       var box = el("mtDatePick"), input = el("mtDate");
       box.hidden = !box.hidden;
@@ -588,6 +727,7 @@
         closeTask();
       }
       setDraft(t.id, "");
+      store(shotsKey(t.id), null);   // a finished shoot's checklist is not needed again
       S.tasks = S.tasks.filter(function (x) { return String(x.id) !== String(t.id); });
       notice("ok", "“" + nameOf(t) + "” is marked complete.",
         r && r.already ? "It had already been completed." : "It has left your list, and the office can see it.");

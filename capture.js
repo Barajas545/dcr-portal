@@ -799,6 +799,15 @@
       return;
     }
     renderPick();
+    /* A shoot on My Tasks links here as capture.html?project=<id>: that job
+       goes straight to the Confirm step that says where the files will go,
+       instead of waiting on GPS — if this person can see it (the board's
+       answer is what they may see, closed jobs included). Anything else is
+       the normal flow. locate() still runs; it only redraws the pick list
+       behind the Confirm step. */
+    var want = new URLSearchParams(location.search).get("project");
+    var preset = want && /^\d{1,10}$/.test(want) ? byId(want) : null;
+    if (preset) pickProject(preset);
     locate();
   });
 })();

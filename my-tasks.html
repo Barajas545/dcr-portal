@@ -14,16 +14,21 @@
         --acc:#2f80d8; --acc-2:#1f6fc8; --tint:rgba(47,128,216,.12); --tint-2:rgba(47,128,216,.22);
         --warn:#c8371f; --warn-bg:rgba(200,55,31,.10); --ok-text:#1f7a55; --ok-bg:rgba(31,157,85,.10);
         --gold:#a46a12; --gold-bg:rgba(183,121,31,.14);
+        /* Text on the blue tint (the shoot badge): darker than --acc so it
+           reads at 4.5:1 on the tint over a white card. */
+        --acc-text:#1d5fa8;
         max-width:1180px; margin:0 auto; padding:14px 16px calc(40px + env(safe-area-inset-bottom));
       }
       @media (prefers-color-scheme: dark){
         :root:not([data-theme="light"]) .mt{ --warn:#f0937f; --warn-bg:rgba(240,147,127,.13); --ok-text:#6fd3a4;
-          --ok-bg:rgba(111,211,164,.12); --gold:#e0b25a; --gold-bg:rgba(224,178,90,.14); --tint-2:rgba(77,155,240,.30); }
+          --ok-bg:rgba(111,211,164,.12); --gold:#e0b25a; --gold-bg:rgba(224,178,90,.14); --tint-2:rgba(77,155,240,.30);
+          --acc-text:#8cc4fa; }
       }
       /* The same, chosen explicitly in Settings rather than read
          from the operating system. */
       :root[data-theme="dark"] .mt{ --warn:#f0937f; --warn-bg:rgba(240,147,127,.13); --ok-text:#6fd3a4;
-        --ok-bg:rgba(111,211,164,.12); --gold:#e0b25a; --gold-bg:rgba(224,178,90,.14); --tint-2:rgba(77,155,240,.30); }
+        --ok-bg:rgba(111,211,164,.12); --gold:#e0b25a; --gold-bg:rgba(224,178,90,.14); --tint-2:rgba(77,155,240,.30);
+        --acc-text:#8cc4fa; }
 
       .mt-layout{display:block;}
       .mt-head h2{margin:4px 0 2px; font-size:22px; line-height:1.25;}
@@ -82,6 +87,14 @@
         text-transform:uppercase; background:var(--surface-2); color:var(--text-muted);}
       .mt-chip.urgent{background:var(--warn-bg); color:var(--warn);}
       .mt-chip.medium{background:var(--gold-bg); color:var(--gold);}
+      /* A Photo & Video Agent shoot: the camera badge and the shoot day, in
+         words rather than capitals (a date in capitals is hard to read). */
+      .mt-chips{display:flex; flex-wrap:wrap; justify-content:flex-end; gap:4px; flex:none; max-width:60%;}
+      .mt-chip.photo, .mt-chip.shoot{text-transform:none; letter-spacing:0; font-size:12px;}
+      .mt-chip.photo{background:var(--tint); color:var(--acc-text);}
+      .mt-chip.shoot{background:var(--surface-2); color:var(--text);}
+      .mt-chip.shoot.today{background:var(--gold-bg); color:var(--gold);}
+      .mt-chip.shoot.late{background:var(--warn-bg); color:var(--warn);}
       .mt-when{display:block; margin-top:4px; font-size:13.5px; font-weight:600; color:var(--text-muted);}
       .mt-when.warn{color:var(--warn);}
       .mt-last{display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; margin-top:3px;
@@ -125,6 +138,25 @@
       .mt-dwhen.warn{color:var(--warn);}
       .mt-desc{margin:12px 0 0; padding:10px 12px; border-radius:10px; background:var(--surface); border:1px solid var(--border);
         font-size:14.5px; white-space:pre-wrap; overflow-wrap:anywhere;}
+      /* The shoot brief: its sections as small headings, and the shot list
+         as checkboxes big enough to tick with a thumb on site. */
+      .mt-brief{margin:12px 0 0; padding:2px 12px 10px; border-radius:10px; background:var(--surface); border:1px solid var(--border);
+        font-size:14.5px; overflow-wrap:anywhere;}
+      .mt-bh{margin:12px 0 4px; font-size:11.5px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--text-muted);}
+      .mt-bp{margin:2px 0;}
+      .mt-blist{margin:2px 0 4px; padding-left:20px;}
+      .mt-blist li{margin:2px 0;}
+      .mt-blist.shots{list-style:none; padding-left:0;}
+      /* The shared label style (a form caption: margin, 13px, bold) is not
+         what a checklist row is. */
+      .mt-shot{display:flex; align-items:center; gap:10px; min-height:44px; margin:0; padding:2px 0; cursor:pointer;
+        font-size:14.5px; font-weight:400; color:var(--text);}
+      .mt-shot input{flex:none; width:22px; height:22px; margin:0; accent-color:var(--acc);}
+      .mt-shot input:checked + span{color:var(--text-muted); text-decoration:line-through;}
+      .mt-shot input:focus-visible{outline:2px solid var(--acc); outline-offset:2px;}
+      /* an unticked box is drawn by the browser: dark with the page, not a white square */
+      :root[data-theme="dark"] .mt-shot input{color-scheme:dark;}
+      @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .mt-shot input{color-scheme:dark;} }
       .mt-facts{display:grid; grid-template-columns:auto 1fr; gap:4px 12px; margin:12px 0 0; font-size:13.5px;}
       .mt-facts dt{color:var(--text-muted); font-weight:600;}
       .mt-facts dd{margin:0; overflow-wrap:anywhere;}
@@ -198,7 +230,7 @@
         .mt-back{display:none;}
         .mt-x{display:inline-flex; align-items:center; justify-content:center;}
         .mt-detail:not(.open) .mt-dbar{display:none;}
-        .mt-compose, .mt-desc{background:var(--bg);}
+        .mt-compose, .mt-desc, .mt-brief{background:var(--bg);}
       }
     </style>
   <link rel="manifest" href="manifest.json" />
