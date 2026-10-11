@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>DCR Portal — DCR Agents</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="agents-console.css" />
+    <link rel="stylesheet" href="console-print.css" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/png" href="icon-192.png" />
+  <link rel="apple-touch-icon" href="icon-180.png" />
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#171d25" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="DCR Portal" />
+    <script>/* theme before first paint; see DCR.theme in common.js */try{var t=localStorage.getItem("dcr_theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t;}catch(e){}</script>
+    <script>/* never inside another site's frame (GitHub Pages cannot send X-Frame-Options): a decoy page over it could
+      lead an admin through a confirm — hidden before the first paint; the shell offers its own window */try{if(window.top!==window.self)document.documentElement.className+=" c-framed";}catch(e){document.documentElement.className+=" c-framed";}</script>
+  </head>
+  <body>
+    <div class="topbar">
+      <div class="brand"><img class="brand-logo" src="logo.png" alt="DCR Framing" /><h1>DCR Agents</h1></div>
+      <div class="top-actions">
+        <span class="pill" id="userPill">…</span>
+        <a class="btn btn-ghost btn-sm" href="dashboard.html">Home</a>
+      </div>
+    </div>
+
+    <main class="c-app" id="cApp">
+      <div class="c-status" id="cStatus" role="status" aria-live="polite">
+        <div class="c-st-main"><span class="c-dot" id="cDot"></span><span class="c-st-text" id="cStatusText">Checking the DCR server…</span></div>
+        <span class="c-st-work" id="cWorking"></span>
+      </div>
+      <div class="c-banners" id="cBanners"></div>
+      <nav class="c-tabs" id="cTabs" role="tablist" aria-label="DCR Agents"></nav>
+      <div id="cView"><div class="c-skel"></div><div class="c-skel"></div></div>
+    </main>
+
+    <div class="c-framed-note" id="cFramed" hidden></div>
+    <div class="c-toasts" id="cToasts" role="status" aria-live="polite"></div>
+    <!-- the Print view: hidden on screen, the only thing printed (ctx.print) -->
+    <div id="cPrint"></div>
+
+    <script src="config.js"></script>
+    <script src="common.js"></script>
+    <script src="agents-console.js"></script>
+    <script src="console-dashboard.js"></script>
+    <script src="console-agents.js"></script>
+    <script src="console-work.js"></script>
+    <script src="console-photo.js"></script>
+    <script src="console-assistants.js"></script>
+    <script src="console-training.js"></script>
+    <script src="console-people.js"></script>
+    <script src="console-settings.js"></script>
+  </body>
+</html>

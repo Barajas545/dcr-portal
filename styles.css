@@ -301,6 +301,9 @@ tbody tr:hover { background: var(--surface-2); }
   border: 1px solid var(--border); border-radius: 9px; background: var(--bg); color: var(--text);
 }
 .dcr-mo-f input:focus, .dcr-mo-f textarea:focus, .dcr-mo-f select:focus { outline: 2px solid #2f80d8; outline-offset: 1px; }
+.dcr-mo-chk label { display: flex; align-items: center; gap: 9px; min-height: 40px; margin: 0;
+  font-size: 13.5px; color: var(--text); font-weight: 600; cursor: pointer; }
+.dcr-mo-f.dcr-mo-chk input { width: 20px; height: 20px; margin: 0; flex: none; padding: 0; }
 .dcr-mo-err { color: #d9614f; font-size: 12.5px; min-height: 16px; margin-top: 6px; }
 .dcr-mo-ft { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
 .dcr-mo-danger { background: #c44b3b; border-color: #c44b3b; color: #fff; }

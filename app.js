@@ -26,6 +26,11 @@
          today, and its badge says how many tasks are waiting for an update. */
       { href: "my-tasks.html", ic: "✅", tt: "My Tasks", id: "hmMyTasks", show: true,
         ds: "Your open tasks — send an update in a few taps." },
+      /* Beside My Tasks: the other card that is about the person's own day.
+         Its badge says how many answers they have not read, or what is due
+         today. */
+      { href: "my-assistant.html", ic: "🤖", tt: "My Assistant", id: "hmMyAssistant", show: true,
+        ds: "Your day, reminders and a chat with your DCR assistant." },
       { href: "capture.html", ic: "📸", tt: "Site Photos", ds: "Photograph or film the job you're standing on — filed by week.", show: true },
       { href: "timesheet.html", ic: "🕐", tt: "Time Sheet", ds: "Enter your daily hours, schedule, and leave days.", show: true },
       { href: "tasks-map.html", ic: "🗺️", tt: "Tasks on Map", ds: "Photo & site tasks on a map with directions.", show: true },
@@ -50,6 +55,11 @@
       { href: "vehicles.html", ic: "🚚", tt: "Vehicles", ds: "Fleet board: oil changes, services due, history.", show: !!pp.vehicleInformation },
       { href: "data.html", ic: "🗄️", tt: "Data Browser", ds: "Browse and edit any SharePoint table directly.", show: profile.role === "Admin" },
       { href: "assist.html", ic: "🤝", tt: "Guided Assist", ds: "Show someone how to use the portal on their own phone, tablet or PC.", show: profile.role === "Admin" },
+      /* The DCR Agents on the DCR server computer, managed from here by
+         every admin with their own account. Its dot is the server's pulse,
+         from the same feed=status read as the "DCR Agents PC" line. */
+      { href: "agents-console.html", ic: "🤖", tt: "DCR Agents", id: "hmAgentsConsole", show: profile.role === "Admin",
+        ds: "Manage the reminder agents, photo plans, assistants and training on the DCR server." },
       { href: "accounting.html", ic: "📒", tt: "The Books", ds: "What is ready to enter in QuickBooks, and what is already in.", show: !!pp.expenses },
       { href: "ledger.html", ic: "🧾", tt: "Expenses & Receipts", show: !!pp.projectExpenseAnalisis,
         ds: "Every purchase and cost, by project, person or card — with the receipts." },
@@ -155,6 +165,35 @@
     tt.appendChild(b);
   }
 
+  /* The My Assistant card's badge: answers from the assistant not read yet,
+     else what is due today. From the counts-only answer (one small read);
+     an assistant that is not on, or any failure, leaves the card alone. */
+  async function myAssistantBadge() {
+    var card = el("hmMyAssistant");
+    if (!card) return;
+    var d;
+    try {
+      d = await DCR.api("/api/portal?action=assistant&summary=1");
+    } catch (e) { return; }
+    if (!d || !d.enabled) return;
+    var text = "", cls = "hm-badge";
+    if (d.unread) {
+      text = d.unread + " new";
+      cls += " warn";
+    } else if (d.dueToday) {
+      text = d.dueToday + " today";
+      cls += " dim";
+    }
+    if (!text) return;
+    var tt = card.querySelector(".tt");
+    var old = tt.querySelector(".hm-badge");
+    if (old) old.remove();
+    var b = document.createElement("span");
+    b.className = cls;
+    b.textContent = text;
+    tt.appendChild(b);
+  }
+
   /* Invoices waiting for approval, across every project.
 
      Shown to anyone who can read bills — which is wider than who can approve
@@ -185,17 +224,35 @@
     if (!s) return;                               // never set up: say nothing
     var mins = d.minutesAgo;
     var late = mins === null || mins > 15;
+    agentsConsoleDot(late);
     var when = mins === null ? "never" : mins < 1 ? "just now" : mins < 60 ? mins + " min ago"
       : mins < 1440 ? Math.round(mins / 60) + " h ago" : Math.round(mins / 1440) + " days ago";
     slot.innerHTML = '<div class="hm-ap" style="border-color:' + (late ? "var(--err)" : "var(--border)") + '">' +
       '<div class="sub" style="margin:0">' +
-      '<span class="who' + (late ? " late" : "") + '">DCR Agents PC</span> · last seen ' + esc(when) +
+      '<a class="who' + (late ? " late" : "") + '" href="agents-console.html" style="color:inherit">DCR Agents PC</a> · last seen ' + esc(when) +
       (s.paused ? " · <b>paused</b>" : "") +
       (late ? " · <span class=\"late\">not reporting — check the PC</span>" : "") +
       " · today: " + esc(String(s.sentToday || 0)) + " sent, " + esc(String(s.failedToday || 0)) + " failed, " +
       esc(String(s.repliesToday || 0)) + " replies" +
       (s.lastError ? ' · <span class="nodoc">' + esc(s.lastError) + "</span>" : "") +
       "</div></div>";
+  }
+
+  /* The DCR Agents card's dot: green while the DCR server has reported in
+     the last 15 minutes, red once it has gone quiet. */
+  function agentsConsoleDot(late) {
+    var card = el("hmAgentsConsole");
+    if (!card) return;
+    var tt = card.querySelector(".tt");
+    var old = tt.querySelector(".hm-dot");
+    if (old) old.remove();
+    var dot = document.createElement("span");
+    dot.className = "hm-dot";
+    dot.title = late ? "The DCR server is not reporting" : "The DCR server is online";
+    dot.setAttribute("aria-label", dot.title);
+    dot.style.cssText = "display:inline-block;width:10px;height:10px;border-radius:50%;margin-left:8px;vertical-align:1px;" +
+      "background:" + (late ? "#d24a33" : "#1f9d55");
+    tt.appendChild(dot);
   }
 
   async function renderApprovals() {
@@ -304,6 +361,7 @@
     el("hmSearch").addEventListener("keydown", function (e) { if (e.key === "Enter") goSearch(); });
     render(profile);
     myTasksBadge();
+    myAssistantBadge();
     renderApprovals();
     renderAgentsStatus(profile);
   });

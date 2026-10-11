@@ -298,6 +298,13 @@
             return '<div class="dcr-mo-f">' + lab + '<textarea id="' + id + '" rows="' + (f.rows || 3) +
               '" placeholder="' + DCR.esc(f.placeholder || "") + '">' + DCR.esc(f.value || "") + "</textarea></div>";
           }
+          /* A tick box beside its words (the DCR Agents console's "Also run
+             the assistants on the DCR server computer"); its value is true
+             or false, not text. */
+          if (f.type === "checkbox") {
+            return '<div class="dcr-mo-f dcr-mo-chk"><label for="' + id + '"><input id="' + id + '" type="checkbox"' +
+              (f.value ? " checked" : "") + "> " + DCR.esc(f.label || "") + "</label></div>";
+          }
           if (f.type === "select") {
             return '<div class="dcr-mo-f">' + lab + '<select id="' + id + '">' +
               (f.options || []).map(function (o) {
@@ -335,7 +342,7 @@
         var out = {};
         fields.forEach(function (f, i) {
           var n = document.getElementById("dcrMoF" + i);
-          out[f.name || String(i)] = n ? n.value : "";
+          out[f.name || String(i)] = f.type === "checkbox" ? !!(n && n.checked) : n ? n.value : "";
         });
         return out;
       }

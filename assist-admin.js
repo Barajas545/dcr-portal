@@ -21,6 +21,7 @@
   var PAGES = [
     ["dashboard.html", "Home"],
     ["my-tasks.html", "My Tasks"],
+    ["my-assistant.html", "My Assistant"],
     ["timesheet.html", "Time Sheet"],
     ["timesheet-mobile.html", "Time Sheet (phone)"],
     ["capture.html", "Site Photos"],

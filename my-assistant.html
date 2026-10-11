@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>DCR Portal — My Assistant</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      /* My Assistant is opened from a phone far more than from a desk (a
+         reminder or an answer lands as a notification), so it is laid out
+         for a phone first: one column, tabs that fit a thumb, and the chat
+         box always at hand. The look is My Tasks'. */
+      .ma{
+        --acc:#2f80d8; --acc-2:#1f6fc8; --tint:rgba(47,128,216,.12); --tint-2:rgba(47,128,216,.22);
+        --warn:#c8371f; --warn-bg:rgba(200,55,31,.10); --ok-text:#1f7a55; --ok-bg:rgba(31,157,85,.10);
+        --gold:#a46a12; --gold-bg:rgba(183,121,31,.14); --acc-text:#1d5fa8; --mine:#2f80d8; --mine-text:#fff;
+        max-width:760px; margin:0 auto; padding:14px 16px calc(40px + env(safe-area-inset-bottom));
+      }
+      @media (prefers-color-scheme: dark){
+        :root:not([data-theme="light"]) .ma{ --warn:#f0937f; --warn-bg:rgba(240,147,127,.13); --ok-text:#6fd3a4;
+          --ok-bg:rgba(111,211,164,.12); --gold:#e0b25a; --gold-bg:rgba(224,178,90,.14); --tint-2:rgba(77,155,240,.30);
+          --acc-text:#8cc4fa; --mine:#2a6fb8; --mine-text:#fff; }
+      }
+      /* The same, chosen explicitly in Settings rather than read from the
+         operating system. */
+      :root[data-theme="dark"] .ma{ --warn:#f0937f; --warn-bg:rgba(240,147,127,.13); --ok-text:#6fd3a4;
+        --ok-bg:rgba(111,211,164,.12); --gold:#e0b25a; --gold-bg:rgba(224,178,90,.14); --tint-2:rgba(77,155,240,.30);
+        --acc-text:#8cc4fa; --mine:#2a6fb8; --mine-text:#fff; }
+
+      .top-actions a.btn{text-decoration:none;}
+      .top-actions .btn, .dcr-mo-ft .btn{min-height:44px;}
+      [hidden]{display:none !important;}
+      .ma-head h2{margin:4px 0 2px; font-size:22px; line-height:1.25;}
+      .ma-head h2:focus{outline:none;}
+      .ma-sub{margin:0 0 10px; color:var(--text-muted); font-size:14px; min-height:21px;}
+      .ma-muted{color:var(--text-muted); font-weight:400;}
+      .ma-small{font-size:13px;}
+      .ma-sr{position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap;}
+
+      .ma-banner{padding:12px 14px; margin:0 0 12px; border-radius:12px; font-size:14px; line-height:1.4;
+        background:var(--surface); border:1px solid var(--border); border-left:4px solid var(--acc);}
+      .ma-banner.warn{border-left-color:var(--warn); background:var(--warn-bg);}
+      .ma-empty{padding:22px 16px; text-align:center; color:var(--text-muted); background:var(--surface);
+        border:1px dashed var(--border); border-radius:12px; margin:12px 0;}
+      .ma-empty b{display:block; color:var(--text); font-size:16px; margin-bottom:4px;}
+      .ma-empty.big{display:flex; flex-direction:column; align-items:center; gap:8px;}
+      .ma-skel{height:70px; border-radius:12px; margin-bottom:10px; background:var(--surface); border:1px solid var(--border); opacity:.6;}
+
+      /* Tabs: three to a row on a phone, all six in one row from 560px. */
+      .ma-tabs{display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:3px; padding:3px; margin:0 0 12px;
+        background:var(--surface-2); border:1px solid var(--border); border-radius:12px;}
+      .ma-tabs button{min-height:44px; padding:6px 6px; border:0; border-radius:9px; background:transparent; color:var(--text-muted);
+        font-weight:700; font-size:14px; line-height:1.15; overflow-wrap:anywhere;}
+      .ma-tabs button[aria-selected="true"]{background:var(--surface); color:var(--text); box-shadow:0 1px 3px rgba(0,0,0,.14);}
+      .ma-tabs button:focus-visible{outline:2px solid var(--acc); outline-offset:1px;}
+      .ma-badge{display:inline-block; margin-left:2px; padding:0 6px; border-radius:9px; background:var(--warn); color:#fff;
+        font-size:11px; font-weight:800; vertical-align:1px;}
+      :root[data-theme="dark"] .ma-badge{color:#2a0d07;}
+      @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .ma-badge{color:#2a0d07;} }
+      @media (min-width:560px){ .ma-tabs{grid-template-columns:repeat(6, minmax(0,1fr));} }
+
+      .ma-ph{display:flex; flex-wrap:wrap; align-items:baseline; gap:6px; margin:6px 0 10px; font-size:18px;}
+      .ma-ph:focus{outline:none;}
+      .ma-hours{padding:10px 12px; margin:0 0 10px; border-radius:12px; background:var(--surface); border:1px solid var(--border); font-size:14.5px;}
+      .ma-hlabel{color:var(--text-muted); font-weight:700;}
+      .ma-group{margin:14px 0 6px;}
+      .ma-gh{display:flex; align-items:baseline; gap:6px; margin:0 0 6px; font-size:12px; font-weight:800; text-transform:uppercase;
+        letter-spacing:.06em; color:var(--text-muted);}
+      .ma-gh .ma-muted{text-transform:none; letter-spacing:0; font-size:12.5px;}
+      .ma-list{list-style:none; margin:0; padding:0;}
+
+      .ma-item{display:flex; gap:10px; padding:10px 12px; margin-bottom:8px; background:var(--surface); border:1px solid var(--border);
+        border-radius:12px;}
+      .ma-item.sel{border-color:var(--acc); box-shadow:0 0 0 2px var(--tint-2);}
+      .ma-item.done .ma-itext{color:var(--text-muted); text-decoration:line-through;}
+      .ma-check{display:flex; align-items:flex-start; justify-content:center; min-width:44px; min-height:44px; margin:-10px 0 -10px -12px;
+        padding-top:12px; cursor:pointer;}
+      .ma-check input{width:22px; height:22px; margin:0; accent-color:var(--acc);}
+      :root[data-theme="dark"] .ma-check input{color-scheme:dark;}
+      @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .ma-check input{color-scheme:dark;} }
+      .ma-ibody{flex:1 1 auto; min-width:0;}
+      .ma-itext{font-weight:700; font-size:15.5px; line-height:1.3; overflow-wrap:anywhere;}
+      .ma-iwhen{margin-top:2px; font-size:13.5px; font-weight:600; color:var(--text-muted);}
+      .ma-iwhen.warn{color:var(--warn);}
+      .ma-iloc, .ma-inotes{margin-top:2px; font-size:13.5px; color:var(--text-muted); overflow-wrap:anywhere; white-space:pre-wrap;}
+      .ma-iby{margin-top:4px;}
+      .ma-itools{display:flex; flex-wrap:wrap; gap:4px 10px; margin-top:4px;}
+      .ma-lbtn{min-height:44px; padding:6px 2px; border:0; background:none; color:var(--acc-text); font-weight:700; font-size:14px;}
+      .ma-lbtn.warn{color:var(--warn);}
+      .ma-lbtn:focus-visible, .ma-x:focus-visible, .ma-add:focus-visible, .ma-wide:focus-visible{outline:2px solid var(--acc); outline-offset:2px; border-radius:6px;}
+      .ma-chip{display:inline-block; padding:2px 8px; border-radius:10px; font-size:12px; font-weight:700; background:var(--surface-2); color:var(--text-muted);}
+      .ma-chip.office{background:var(--gold-bg); color:var(--gold);}
+      .ma-chip.warn{background:var(--warn-bg); color:var(--warn);}
+      .ma-chip.photo{background:var(--tint); color:var(--acc-text);}
+
+      .ma-task{margin-bottom:8px;}
+      .ma-task.needs .ma-tlink{border-left:4px solid var(--warn);}
+      .ma-tlink{display:flex; flex-direction:column; gap:2px; min-height:44px; padding:10px 12px; border-radius:12px; text-decoration:none;
+        background:var(--surface); border:1px solid var(--border); color:var(--text);}
+      .ma-tlink:hover{border-color:var(--acc);}
+      .ma-tlink:focus-visible{outline:2px solid var(--acc); outline-offset:2px;}
+      .ma-tname{font-weight:700; overflow-wrap:anywhere;}
+      .ma-tproj{font-size:13.5px; color:var(--text-muted); overflow-wrap:anywhere;}
+      .ma-tmeta{display:flex; flex-wrap:wrap; gap:4px;}
+
+      .ma-site{padding:10px 12px; margin-bottom:8px; background:var(--surface); border:1px solid var(--border); border-radius:12px;}
+      .ma-sname{font-weight:700; overflow-wrap:anywhere;}
+      .ma-smeta{font-size:13.5px; color:var(--text-muted); overflow-wrap:anywhere;}
+      .ma-dir{display:inline-flex; align-items:center; min-height:44px; color:var(--acc-text); font-weight:700; text-decoration:none;}
+      .ma-dir:hover{text-decoration:underline;}
+      .ma-logs{margin-top:4px; padding-top:6px; border-top:1px solid var(--border); font-size:13.5px;}
+      .ma-ltitle{font-weight:700; color:var(--text-muted); font-size:12.5px;}
+      .ma-logs ul{margin:2px 0 0; padding-left:18px;}
+      .ma-ldate{color:var(--text-muted); font-weight:600;}
+      .ma-wide{display:block; width:100%; min-height:48px; margin:14px 0 4px; padding:10px 14px; border-radius:12px; border:1px solid var(--acc);
+        background:var(--tint); color:var(--acc-text); font-weight:800; font-size:15px;}
+      .ma-day .ma-gh{margin-top:4px;}
+
+      /* The chat */
+      .ma-intro{margin:4px 0 10px; color:var(--text-muted); font-size:14.5px;}
+      .ma-chat{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:10px;}
+      .ma-msg{display:flex; flex-direction:column; max-width:88%;}
+      .ma-msg.user{align-self:flex-end; align-items:flex-end;}
+      .ma-msg.assistant, .ma-msg.office{align-self:flex-start;}
+      .ma-who{font-size:12px; font-weight:700; color:var(--text-muted); margin:0 4px 2px;}
+      .ma-bubble{padding:10px 12px; border-radius:16px; font-size:15px; line-height:1.4; white-space:pre-wrap; overflow-wrap:anywhere;
+        background:var(--surface); border:1px solid var(--border);}
+      .ma-msg.user .ma-bubble{background:var(--mine); color:var(--mine-text); border-color:transparent; border-bottom-right-radius:4px;}
+      .ma-msg.assistant .ma-bubble{border-bottom-left-radius:4px;}
+      .ma-msg.office .ma-bubble{border-left:4px solid var(--gold); border-bottom-left-radius:4px;}
+      .ma-mstat{margin:3px 4px 0; font-size:13px; color:var(--text-muted);}
+      .ma-mstat.warn{color:var(--warn); font-weight:600;}
+      .ma-card{margin-top:6px; padding:10px 12px; border-radius:12px; background:var(--surface); border:1px solid var(--border); width:100%;
+        box-sizing:border-box;}
+      .ma-card .ma-item{margin:0; border:0; padding:0;}
+      .ma-card .ma-check{display:none;}
+      .ma-card.muted{color:var(--text-muted);}
+      .ma-ctitle{font-weight:800; margin-bottom:4px;}
+      .ma-cfield{font-size:14px; overflow-wrap:anywhere;}
+      .ma-cfield span{color:var(--text-muted); font-weight:700;}
+      .ma-cbody{margin-top:6px; padding:8px 10px; border-radius:10px; background:var(--bg); font-size:14px; white-space:pre-wrap;
+        overflow-wrap:anywhere; max-height:220px; overflow:auto;}
+      .ma-crow{display:flex; flex-wrap:wrap; align-items:center; gap:6px 14px; margin-top:8px;}
+      .ma-think{display:flex; gap:5px; padding:10px 14px; align-self:flex-start;}
+      .ma-think span{width:8px; height:8px; border-radius:50%; background:var(--text-muted); opacity:.4; animation:maDot 1.2s infinite ease-in-out;}
+      .ma-think span:nth-child(2){animation-delay:.2s;}
+      .ma-think span:nth-child(3){animation-delay:.4s;}
+      @keyframes maDot{0%,80%,100%{opacity:.25; transform:translateY(0);} 40%{opacity:.9; transform:translateY(-3px);}}
+      @media (prefers-reduced-motion: reduce){ .ma-think span{animation:none; opacity:.6;} }
+      .ma-suggest{display:flex; flex-wrap:wrap; gap:6px; margin:14px 0 8px;}
+      .ma-suggest button{min-height:44px; padding:8px 12px; border:1px solid var(--border); border-radius:22px; background:var(--surface-2);
+        color:var(--text); font-size:13.5px; font-weight:600; text-align:left;}
+      .ma-suggest button:hover{border-color:var(--acc);}
+      .ma-suggest button:focus-visible{outline:2px solid var(--acc); outline-offset:1px;}
+      .ma-compose{position:sticky; bottom:0; margin:8px -16px 0; padding:10px 16px calc(10px + env(safe-area-inset-bottom));
+        background:var(--bg); border-top:1px solid var(--border);}
+      .ma-text{display:block; width:100%; box-sizing:border-box; min-height:64px; max-height:40vh; font-family:inherit; font-size:16px;
+        line-height:1.45; resize:vertical; border-radius:12px; background:var(--surface); color-scheme:light dark;}
+      .ma-row{display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:10px; margin-top:8px;}
+      .ma-status{flex:1 1 160px; font-size:13.5px; color:var(--text-muted); min-height:20px;}
+      .ma-status.ok{color:var(--ok-text); font-weight:700;}
+      .ma-status.err{color:var(--warn); font-weight:600;}
+      .ma-btn{display:inline-flex; align-items:center; justify-content:center; min-height:44px; padding:8px 18px; border:0; border-radius:12px;
+        background:var(--acc); color:#fff; font-weight:800; font-size:15px; text-decoration:none;}
+      .ma-btn:hover{background:var(--acc-2);}
+      .ma-btn:disabled{opacity:.6; cursor:default;}
+      .ma-btn:focus-visible{outline:2px solid var(--text); outline-offset:2px;}
+      .ma-send{min-height:48px; padding:10px 24px; font-size:16px;}
+
+      /* Reminders, to-dos and events */
+      .ma-addrow{display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:6px; margin:0 0 10px;}
+      .ma-add{min-height:48px; padding:8px 6px; border-radius:12px; border:1px solid var(--acc); background:var(--tint); color:var(--acc-text);
+        font-weight:800; font-size:14px; overflow-wrap:anywhere;}
+      .ma-note{padding:8px 12px; margin:0 0 10px; border-radius:10px; font-size:14px; background:var(--surface); border:1px solid var(--border);}
+      .ma-note.ok{background:var(--ok-bg); color:var(--ok-text); font-weight:700; border-color:transparent;}
+      .ma-note.err, .ma-note.warn{background:var(--warn-bg); color:var(--warn); font-weight:600; border-color:transparent;}
+      .ma-group.missed .ma-item{border-left:4px solid var(--warn);}
+      .ma-done{margin:14px 0;}
+      .ma-done summary{min-height:44px; display:flex; align-items:center; cursor:pointer; font-weight:700; color:var(--text-muted);}
+
+      /* Me */
+      .ma-mem{display:flex; align-items:center; gap:8px; padding:6px 6px 6px 12px; margin-bottom:6px; background:var(--surface);
+        border:1px solid var(--border); border-radius:12px;}
+      .ma-memtext{flex:1 1 auto; overflow-wrap:anywhere;}
+      .ma-x{flex:none; width:44px; height:44px; border:1px solid var(--border); border-radius:10px; background:var(--surface);
+        color:var(--text); font-size:22px; line-height:1;}
+      .ma-memform{display:flex; gap:8px; margin:8px 0 18px;}
+      .ma-memform input{flex:1 1 auto; min-width:0; min-height:44px; font-size:16px;}
+      .ma-prefs{padding:6px 12px 12px; border-radius:12px; background:var(--surface); border:1px solid var(--border);}
+      .ma-pref{display:flex; flex-wrap:wrap; align-items:center; gap:6px 12px; padding:8px 0; border-bottom:1px solid var(--border);}
+      .ma-pref label{display:inline-flex; align-items:center; gap:8px; min-height:44px; margin:0; font-size:14.5px; font-weight:600;}
+      .ma-pref input[type="checkbox"]{width:22px; height:22px; margin:0; accent-color:var(--acc);}
+      .ma-pref input[type="time"], .ma-pref select{width:auto; min-height:44px; font-size:16px; color-scheme:light dark;}
+      .ma-at{display:inline-flex; align-items:center; gap:6px; color:var(--text-muted); font-size:14px;}
+      .ma-prow{display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:10px; margin-top:10px;}
+      .ma-pushbox{margin:16px 0 0; padding:10px 12px; border-radius:12px; background:var(--surface); border:1px solid var(--border);
+        text-align:center;}
+      .ma-pushbox p{margin:0 0 4px;}
+      .ma-privacy{margin:22px 0 0; padding-top:12px; border-top:1px solid var(--border); font-size:13px; color:var(--text-muted); line-height:1.45;}
+      .ma-foot{display:flex; flex-wrap:wrap; gap:4px 16px; margin-top:10px; font-size:14px;}
+      .ma-foot a{display:inline-flex; align-items:center; min-height:44px; color:var(--acc-text); font-weight:600; text-decoration:none;}
+
+      @media (max-width:560px){
+        .ma-pill{display:none;}
+        .topbar{padding:10px 12px;}
+        .top-actions{gap:6px;}
+      }
+      @media (min-width:960px){ .ma-compose{margin:8px 0 0; border:1px solid var(--border); border-radius:14px;} }
+    </style>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/png" href="icon-192.png" />
+  <link rel="apple-touch-icon" href="icon-180.png" />
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#171d25" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="DCR Portal" />
+    <script>/* theme before first paint; see DCR.theme in common.js */try{var t=localStorage.getItem("dcr_theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t;}catch(e){}</script>
+  </head>
+  <body>
+    <div class="topbar">
+      <div class="brand"><img class="brand-logo" src="logo.png" alt="DCR Framing" /><h1>My Assistant</h1></div>
+      <div class="top-actions">
+        <span class="pill ma-pill" id="userPill">…</span>
+        <a class="btn btn-ghost btn-sm" href="my-tasks.html">My Tasks</a>
+        <a class="btn btn-ghost btn-sm" href="dashboard.html">Home</a>
+      </div>
+    </div>
+
+    <main class="ma">
+      <header class="ma-head">
+        <h2 id="maTitle" tabindex="-1">My assistant</h2>
+        <p class="ma-sub" id="maSub">Loading your assistant…</p>
+      </header>
+      <div id="maBanner" role="status" aria-live="polite"></div>
+      <nav class="ma-tabs" id="maTabs" role="tablist" aria-label="Your assistant" hidden></nav>
+
+      <section class="ma-panel" id="today" role="tabpanel" aria-labelledby="tab-today">
+        <div id="maToday"><div class="ma-skel"></div><div class="ma-skel"></div><div class="ma-skel"></div></div>
+      </section>
+      <section class="ma-panel" id="tomorrow" role="tabpanel" aria-labelledby="tab-tomorrow" hidden><div id="maTomorrow"></div></section>
+      <section class="ma-panel" id="week" role="tabpanel" aria-labelledby="tab-week" hidden><div id="maWeek"></div></section>
+      <section class="ma-panel" id="chat" role="tabpanel" aria-labelledby="tab-chat" hidden>
+        <div id="maChat" aria-live="polite"></div>
+        <div class="ma-suggest" id="maSuggest" role="group"></div>
+        <form class="ma-compose" id="maForm" novalidate>
+          <label class="ma-sr" for="maText">Message to your assistant</label>
+          <textarea class="ma-text" id="maText" rows="2" maxlength="1500" placeholder="Ask your assistant…"></textarea>
+          <div class="ma-row">
+            <span class="ma-status" id="maStatus" role="status" aria-live="polite"></span>
+            <button type="submit" class="ma-btn ma-send" id="maSend">Send</button>
+          </div>
+        </form>
+      </section>
+      <section class="ma-panel" id="items" role="tabpanel" aria-labelledby="tab-items" hidden><div id="maItems"></div></section>
+      <section class="ma-panel" id="me" role="tabpanel" aria-labelledby="tab-me" hidden>
+        <div id="maMe"></div>
+        <!-- the reminders and answers reach this phone only with phone reminders on; push.js draws the switch here -->
+        <div class="ma-pushbox"><p class="ma-muted ma-small" id="maPushHint"></p><div id="pushSlot"></div></div>
+      </section>
+
+      <p class="ma-privacy" id="maPrivacy"></p>
+      <footer class="ma-foot">
+        <a href="my-tasks.html">My Tasks</a>
+        <a href="timesheet.html">Time Sheet</a>
+        <a href="#me" id="maPushLink">Phone reminders</a>
+      </footer>
+    </main>
+
+    <script src="config.js"></script>
+    <script src="common.js"></script>
+    <script src="push.js"></script>
+    <script src="my-assistant.js"></script>
+  </body>
+</html>
