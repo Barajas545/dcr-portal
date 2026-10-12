@@ -6,7 +6,10 @@
    today's numbers, the health rows, Coming up and Recent runs, and Pause /
    Resume everything. Every line is the server's own (dashboard.py), so the
    two screens say the same thing; the questions before an approve or a
-   pause come from the server too (ctx.act). */
+   pause come from the server too (ctx.act). WhatsApp on the DCR server
+   computer's outbox is shown read-only (dashboard.status → wadesktop): what
+   waits for someone at the server to press Send in WhatsApp, numbers masked
+   — it is sent from there, never from here. */
 (function () {
   "use strict";
   var C = window.DCRConsole;
@@ -54,8 +57,44 @@
           '<button type="button" class="c-btn sm" data-do="approve" data-i="' + i + '" data-mark="0" data-act data-method="dashboard.approve">' +
           "Send them, and start</button></div>";
       }
+      if (!buttons && n && Number(n.outbox) > 0) {
+        buttons = '<div class="c-actions cd-fr"><button type="button" class="c-btn ghost sm" data-do="wa">Show the messages</button></div>';
+      }
       return '<li class="cd-need ' + tone + '"><span class="cd-need-t">' + esc(n && n.text) + "</span>" + buttons + "</li>";
     }).join("") + "</ul>";
+  }
+
+  /* WhatsApp on the DCR server computer: the outbox, read-only. The server
+     sends the oldest few (each cut short) with the numbers masked; Open in
+     WhatsApp, Sent and Skip are at the server's keyboard only. */
+  function waHtml(ctx, w) {
+    if (!w) return "";
+    var esc = ctx.esc, ui = ctx.ui;
+    var n = num(w.waiting);
+    var auto = w.mode === "automatic";
+    var chips = (w.enabled ? ui.chip(w.mode_words || (auto ? "sent automatically" : "waits for someone to press Send"), auto ? "warn" : "good")
+      : ui.chip("off", "dim")) + (w.read_ok === false || w.read_error ? " " + ui.chip("replies not read", "bad") : "");
+    var lines = [];
+    if (auto && n && w.state_words) lines.push(String(w.state_words));
+    if (w.read_error) lines.push("Reading replies: " + w.read_error);
+    else if (w.read_ok === false && w.read_words) lines.push("Reading replies: " + w.read_words);
+    var list = n ? ui.table({
+      cols: [
+        { key: "created_at", label: "Waiting since", cls: "c-nowrap", render: function (r) { return esc(ui.when(r.created_at)); } },
+        { key: "person", label: "Person", render: function (r) { return esc(r.person || "(not on the roster)"); } },
+        { key: "phone_masked", label: "Number", cls: "c-nowrap" },
+        { key: "agent", label: "Agent" },
+        { key: "text", label: "Message", render: function (r) { return '<span class="cd-wa-text">' + esc(r.text) + "</span>"; } },
+        { key: "status", label: "", render: function (r) { return r.opened ? ui.chip("opened in WhatsApp", "info") : ""; } },
+      ],
+      rows: w.items || [], empty: "",
+    }) : ui.empty("Nothing is waiting in the WhatsApp outbox.");
+    return '<div class="c-card" id="cdWa"><div class="c-head"><h3>WhatsApp outbox</h3><div class="cd-wa-chips">' + chips + "</div></div>" +
+      '<p class="c-sub c-small">' + esc(n ? plural(n, "message") + " waiting" + (w.expire_hours ? " · dropped after " + num(w.expire_hours) + " h if nobody sends them" : "")
+        : "WhatsApp on the DCR server computer") + "</p>" +
+      lines.map(function (t) { return '<p class="cd-wa-line">' + esc(t) + "</p>"; }).join("") +
+      list + (num(w.more) ? '<p class="c-muted c-small">… and ' + esc(plural(num(w.more), "more message")) + ".</p>" : "") +
+      '<p class="c-muted c-small">' + esc(w.where || "") + "</p></div>";
   }
 
   function stat(label, value, bad) {
@@ -104,6 +143,7 @@
         "</div></div>" +
       (d.dry_run_all ? '<div class="c-banner info"><span>Dry run: the DCR server decides and records, and sends nothing.</span></div>' : "") +
       '<div class="c-card"><h3>Needs you</h3>' + needsHtml(ctx, d.needs || []) + "</div>" +
+      waHtml(ctx, d.wadesktop) +
       '<div class="c-stats">' +
         stat("Sent today", num(cards.sent)) + stat("Failed today", num(cards.failed), num(cards.failed) > 0) +
         stat("Replies today", num(cards.replies)) + stat("Agents on", num(cards.agents_on) + " / " + num(cards.agents_total)) +
@@ -177,6 +217,11 @@
       if (t.id === "cdRefresh") { ctx.refresh(); return; }
       if (t.id === "cdPause") { pause(ctx, t, !d.paused); return; }
       if (t.id === "cdCheck") { checkHealth(el, ctx, t); return; }
+      if (t.getAttribute("data-do") === "wa") {
+        var card = el.querySelector ? el.querySelector("#cdWa") : null;
+        if (card && card.scrollIntoView) card.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
       if (t.getAttribute("data-do") === "approve") {
         var n = (d.needs || [])[Number(t.getAttribute("data-i"))];
         if (n && n.firstrun) approve(ctx, t, n.firstrun.agent_id, t.getAttribute("data-mark") === "1");
@@ -217,5 +262,5 @@
     });
   }
 
-  if (window.__DCR_CONSOLE_TEST__) C._dashboard = { needsHtml: needsHtml, healthHtml: healthHtml };
+  if (window.__DCR_CONSOLE_TEST__) C._dashboard = { needsHtml: needsHtml, healthHtml: healthHtml, waHtml: waHtml };
 })();

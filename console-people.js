@@ -13,10 +13,14 @@
    Replies — what came back and what happened with it; Poll now; a reply
    by hand (always to the reply's own address, on the channel the PC picks,
    after the PC's own question); "Teach the agents what this meant…", a
-   reply-reading example kept on Training.
+   reply-reading example kept on Training; "This is…" for a WhatsApp
+   message from a name nobody is known by (the contact name saved on the
+   company phone): the PC keeps it as the person's WhatsApp name and
+   handles the last day's messages from it, after its own question.
 
    People — the roster with phones, emails and flags (taught on Training);
-   a person's overrides, channel preference, mute and always-nudge; Refresh
+   a person's overrides, WhatsApp name, channel preference, mute and
+   always-nudge; Refresh
    from portal; a test text to the number on file (after the PC's
    question). Opt-outs are shown, never cleared — the desktop does not
    allow it either.
@@ -34,7 +38,9 @@
   var EXPORT_PAGE = 200;
   var EXPORT_MAX_PAGES = 10;          // the PC reads the newest 1000 messages
   var FILTER_WAIT_MS = 500;
-  var REPLY_MAX = 1600, SAID_MAX = 1000, MEANT_MAX = 500, PHONE_MAX = 30, EMAIL_MAX = 120;
+  var REPLY_MAX = 1600, SAID_MAX = 1000, MEANT_MAX = 500, PHONE_MAX = 30, EMAIL_MAX = 120, WA_NAME_MAX = 80;
+  /* the two WhatsApps told apart in a reply's line */
+  var CHANNEL_WORDS = { whatsapp: "WhatsApp (Twilio)", wadesktop: "WhatsApp on the DCR server" };
 
   /* ── small helpers ───────────────────────────────────────────────────── */
 
@@ -422,16 +428,19 @@
     if (!rows.length) return emptyHtml(ctx, "No replies yet.");
     return '<ul class="cp-replies">' + rows.map(function (r, i) {
       var email = r.channel === "email";
+      var wa = r.channel === "wadesktop";
       return '<li class="c-card flat cp-reply">' +
         '<div class="cp-rhead"><span class="cp-rwho">' + esc(r.person || "(unknown)") + "</span>" +
-          '<span class="c-muted c-small">' + esc([r.from, r.channel, when(r.at)].filter(Boolean).join(" · ")) + "</span></div>" +
+          '<span class="c-muted c-small">' + esc([r.from, CHANNEL_WORDS[r.channel] || r.channel, when(r.at)].filter(Boolean).join(" · ")) + "</span></div>" +
         (r.subject ? '<div class="cp-rline"><b>Subject:</b> ' + esc(r.subject) + "</div>" : "") +
         '<div class="cp-rbody">' + esc(r.body || "(no words)") + "</div>" +
         (r.result ? '<div class="cp-rline"><b>What happened:</b> ' + esc(r.result) + "</div>" : "") +
         (r.reply ? '<div class="cp-rline"><b>We replied:</b> ' + esc(r.reply) + "</div>" : "") +
         '<div class="cp-ract">' +
+          (r.learn ? '<button type="button" class="c-btn link" data-cp="rp-thisis" data-i="' + i + '" data-act' + m("replies.this_is") +
+            ' title="Say who this WhatsApp name is: it is kept as their WhatsApp name and the last day\'s messages from it are handled.">This is…</button>' :
           '<button type="button" class="c-btn link" data-cp="rp-reply" data-i="' + i + '" data-act' + m("replies.reply") + ">" +
-            (email ? "Send an email…" : "Send a text…") + "</button>" +
+            (email ? "Send an email…" : wa ? "Send a WhatsApp message…" : "Send a text…") + "</button>") +
           '<button type="button" class="c-btn link" data-cp="rp-teach" data-i="' + i + '" data-act' + m("replies.teach") +
             ' title="Save this reply as an example for reading replies (Training → Reading replies). Claude reads the crew\'s replies with the newest examples in mind.">' +
             "Teach the agents what this meant…</button>" +
@@ -476,17 +485,17 @@
       : Promise.resolve(null);
     return first.then(function (chk) {
       if (gen !== RP.gen) return;
-      var email = chk && chk.kind ? chk.kind === "email" : r.channel === "email";
+      var kind = chk && chk.kind ? String(chk.kind) : r.channel;
       var head = chk && chk.words ? String(chk.words) : "To " + (r.person || r.from) + ":";
-      return ask(email, head, RP.drafts[r.sid] || "", "");
+      return ask(kind, head, RP.drafts[r.sid] || "", "");
     }, function (e) {
       if (gen !== RP.gen) return;
       say(root, "cpRpMsg", errWords(e), "bad");
     });
 
-    function ask(email, head, typed, why) {
+    function ask(kind, head, typed, why) {
       return Promise.resolve(ctx.modal({
-        title: email ? "Send an email" : "Send a text",
+        title: kind === "email" ? "Send an email" : kind === "wadesktop" ? "Send a WhatsApp message" : "Send a text",
         message: head + (why ? "\n\nNot sent: " + why : ""),
         fields: [{ name: "text", type: "textarea", rows: 5, placeholder: "Type the message", value: typed }],
         okText: "Next",
@@ -512,10 +521,52 @@
             if (e && (e.code === "refused" || e.code === "bad_args")) return { again: errWords(e) };
           });
         }, "Sending…").then(function (res) {
-          if (res && res.again && gen === RP.gen) return ask(email, head, words, res.again);
+          if (res && res.again && gen === RP.gen) return ask(kind, head, words, res.again);
         });
       });
     }
+  }
+
+  /* "This is…": pick the person a WhatsApp name belongs to (people with a
+     phone only — the answer goes back to it on WhatsApp), the server's
+     likely one first. The DCR server asks its own question before anything
+     is saved, then keeps the name and handles the last day's messages. */
+  function rpThisIs(root, ctx, r, btn) {
+    if (!r || !canAct(ctx)) return Promise.resolve();
+    var gen = RP.gen;
+    var people = PP.data && PP.data.rows ? Promise.resolve(PP.data) :
+      press(ctx, btn, function () { return ctx.rpc("people.list", {}, { text: "Loading the people…", quiet: true }); }, "Loading…");
+    return people.then(function (d) {
+      if (gen !== RP.gen) return;
+      if (d && d.rows && !PP.data) PP.data = d;
+      var options = [{ value: "", label: "— pick a person —" }].concat(((d && d.rows) || []).filter(function (p) {
+        return p && (p.phone_override || p.phone);
+      }).map(function (p) { return { value: p.name, label: p.name + " — " + (p.phone_override || p.phone) }; }));
+      return Promise.resolve(ctx.modal({
+        title: "This is…",
+        message: "A WhatsApp message came from “" + r.from + "”, a name nobody on the People list is known by — it is how the person " +
+          "is saved in the company phone's contacts.\n\nThey wrote: " + String(r.body || "(no words)").slice(0, 200) + "\n\nWho is it?",
+        fields: [{ name: "name", type: "select", label: "This is", options: options, value: r.suggest || "" }],
+        okText: "Next",
+        validate: function (v) { return String(v.name || "") ? "" : "Pick the person first."; },
+      })).then(function (v) {
+        if (!v || gen !== RP.gen || !v.name) return;
+        return press(ctx, btn, function () {
+          return ctx.act("replies.this_is", { sid: r.sid, name: String(v.name) }, { text: "Saving and handling…", quiet: true }).then(function (res) {
+            if (gen !== RP.gen || !res) return;
+            say(root, "cpRpMsg", res.words || "Saved.", "ok");
+            PP.data = null;                    // the WhatsApp name changed
+            return rpLoad(root, ctx);
+          }, function (e) {
+            if (gen !== RP.gen) return;
+            say(root, "cpRpMsg", errWords(e), "bad");
+          });
+        }, "Saving…");
+      });
+    }, function (e) {
+      if (gen !== RP.gen) return;
+      say(root, "cpRpMsg", errWords(e), "bad");
+    });
   }
 
   function rpTeach(root, ctx, r, btn) {
@@ -590,6 +641,7 @@
       else if (act === "rp-refresh") rpLoad(el, ctx);
       else if (act === "rp-reply") rpReply(el, ctx, rpRow(Number(t.getAttribute("data-i"))), t);
       else if (act === "rp-teach") rpTeach(el, ctx, rpRow(Number(t.getAttribute("data-i"))), t);
+      else if (act === "rp-thisis") rpThisIs(el, ctx, rpRow(Number(t.getAttribute("data-i"))), t);
     });
     if (ctx.has && !ctx.has("replies.list")) {
       setHtml(el, "cpRpList", emptyHtml(ctx, UPDATE + "."));
@@ -617,7 +669,7 @@
     var q = fold(PP.q);
     if (!q) return rows;
     return rows.filter(function (r) {
-      return fold([r.name, r.role, r.phone, r.phone_override, r.email, r.email_override].concat(r.flags || []).join(" ")).indexOf(q) >= 0;
+      return fold([r.name, r.role, r.phone, r.phone_override, r.email, r.email_override, r.wa_name].concat(r.flags || []).join(" ")).indexOf(q) >= 0;
     });
   }
 
@@ -733,6 +785,10 @@
           '<div class="c-field"><label for="cpPeE">Email override</label>' +
             '<input type="email" id="cpPeE" maxlength="' + EMAIL_MAX + '" autocomplete="off" aria-describedby="cpPeEHelp" value="' + esc(r.email_override) +
             '"><p class="c-help" id="cpPeEHelp">Used instead of the portal\'s email.</p></div>' +
+          ("wa_name" in r ? '<div class="c-field"><label for="cpPeW">WhatsApp name</label>' +
+            '<input type="text" id="cpPeW" maxlength="' + WA_NAME_MAX + '" autocomplete="off" aria-describedby="cpPeWHelp" value="' + esc(r.wa_name) +
+            '"><p class="c-help" id="cpPeWHelp">How WhatsApp on the DCR server computer shows them — their contact name on the company phone. ' +
+            "Messages under this name are theirs. Empty clears it.</p></div>" : "") +
           '<div class="c-field"><label for="cpPePref">Prefers</label><select id="cpPePref">' + prefs.map(function (p) {
             return '<option value="' + esc(p.key) + '"' + (String(p.key) === String(r.channel_pref || "") ? " selected" : "") + ">" + esc(p.label) + "</option>";
           }).join("") + "</select></div>" +
@@ -758,7 +814,7 @@
       if (!r || !find(el, "cpPeP")) return false;
       return val("cpPeP", "").trim() !== String(r.phone_override || "") || val("cpPeE", "").trim() !== String(r.email_override || "") ||
         val("cpPePref", "") !== String(r.channel_pref || "") || ticked("cpPeMute", false) !== !!r.muted ||
-        ticked("cpPeAlways", false) !== !!r.always_nudge;
+        ticked("cpPeAlways", false) !== !!r.always_nudge || ("wa_name" in r && val("cpPeW", "").trim() !== String(r.wa_name || ""));
     }
     if (ctx.guard) ctx.guard(function () { return dirty() ? "Leave without saving your changes to this person?" : ""; });
 
@@ -773,11 +829,15 @@
         muted: ticked("cpPeMute", !!r.muted),
         always_nudge: ticked("cpPeAlways", !!r.always_nudge),
       };
+      /* only to a server that knows it (its rows carry wa_name): an older one
+         would refuse the key */
+      if ("wa_name" in r) values.wa_name = val("cpPeW", r.wa_name || "").trim();
       /* what was on the screen when it opened: another admin's save in
          between answers "changed" instead of being overwritten */
       if (r.rev) values.rev = String(r.rev);
       if (values.phone_override.length > PHONE_MAX) { say(el, "cpPeMsg", "The phone override can be at most " + PHONE_MAX + " characters.", "bad"); return Promise.resolve(); }
       if (values.email_override.length > EMAIL_MAX) { say(el, "cpPeMsg", "The email override can be at most " + EMAIL_MAX + " characters.", "bad"); return Promise.resolve(); }
+      if ((values.wa_name || "").length > WA_NAME_MAX) { say(el, "cpPeMsg", "A WhatsApp name can be at most " + WA_NAME_MAX + " characters.", "bad"); return Promise.resolve(); }
       var gen = PP.gen;
       return press(ctx, btn, function () {
         return ctx.rpc("people.save", values, { text: "Saving…", quiet: true }).then(function (d) {

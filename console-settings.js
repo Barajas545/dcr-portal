@@ -8,7 +8,9 @@
    choices, Photo & Video, the personal assistants and the training switch.
    A secret is only ever shown as set / not set / unreadable, with "Change it
    on the DCR server computer"; the portal sign-in, Twilio, SMTP and Graph
-   are shown read-only for the same reason. Each section saves on its own
+   are shown read-only for the same reason, and so is whether WhatsApp on the
+   DCR server computer sends by itself (that risk to the number is answered
+   at the server's keyboard; the other WhatsApp settings are changed here). Each section saves on its own
    with the `rev` it was read at, and sends only what was changed; the server
    checks every value again and answers in the desktop's words, ending
    "Nothing was saved." when it refuses. The tests are health checks only —
@@ -18,9 +20,11 @@
   var C = window.DCRConsole;
   if (!C) return;
 
-  var TITLES = { general: "General", email: "Email", claude: "Claude", photo: "Photo & Video", assistant: "Personal assistants",
-    training: "Training" };
-  var ORDER = ["general", "email", "claude", "photo", "assistant", "training"];
+  var TITLES = { general: "General", email: "Email", wadesktop: "WhatsApp on the DCR server computer", claude: "Claude", photo: "Photo & Video",
+    assistant: "Personal assistants", training: "Training" };
+  var ORDER = ["general", "email", "wadesktop", "claude", "photo", "assistant", "training"];
+  /* a Save button whose title would not read lower-cased */
+  var SAVE_WORDS = { wadesktop: "Save the WhatsApp settings" };
   var SECRET_WORDS = {
     "portal.password_enc": "The portal password (the DCR Agents account)",
     "llm.api_key_enc": "The Claude key",
@@ -30,7 +34,8 @@
   };
   var READONLY_WORDS = [["portal_url", "Portal address"], ["portal_site", "Portal site"], ["portal_email", "Signs in to the portal as"],
     ["twilio", "Twilio (texts and WhatsApp)"], ["email_smtp_host", "SMTP server"], ["email_graph_sender", "Microsoft Graph sender"],
-    ["email_from_address", "Email is sent from"], ["email_outlook_mailbox", "Replies are read from the Inbox of"]];
+    ["email_from_address", "Email is sent from"], ["email_outlook_mailbox", "Replies are read from the Inbox of"],
+    ["wadesktop_mode", "WhatsApp on the DCR server computer: how messages go"]];
   /* The copies' groups, when the server's field does not list them
      (photo/copies.py KIND_GROUPS). */
   var CC_KINDS = [{ key: "heads_up", label: "Heads-up and date changes" }, { key: "followups", label: "Follow-ups and the escalation" },
@@ -189,15 +194,31 @@
       tools = '<button type="button" class="c-btn ghost sm" data-do="test" data-what="email" data-act data-method="settings.test">Test email</button>';
     } else if (name === "claude") {
       tools = '<button type="button" class="c-btn ghost sm" data-do="claude" data-act data-method="settings.test_claude">Test the Claude key</button>';
+    } else if (name === "wadesktop" && (!ctx.has || ctx.has("wadesktop.test"))) {
+      tools = '<button type="button" class="c-btn ghost sm" data-do="watest" data-act data-method="wadesktop.test">Test WhatsApp on the server</button>';
     }
     var cw = name === "claude" && Array.isArray(d.claude_words) ?
       '<p class="cs-claude">' + ctx.ui.chip(d.claude_words[0], d.claude_words[1]) + "</p>" : "";
+    if (name === "wadesktop") cw = waModeHtml(ctx, d);
     return '<section class="c-card cs-sec" id="cs-sec-' + esc(name) + '"><div class="c-head"><h3>' + esc(TITLES[name] || name) + "</h3></div>" +
       cw + '<div class="cs-fields" id="cs-f-' + esc(name) + '">' + fieldsHtml(name, fields, values) + "</div>" +
       (fields.length < (sec.fields || []).length ? '<p class="c-help">The Photo &amp; Video planner\'s model is in the Photo &amp; Video section.</p>' : "") +
       '<div class="cs-msg" id="cs-msg-' + esc(name) + '" role="status" aria-live="polite"></div>' +
-      '<div class="c-actions"><button type="button" class="c-btn" data-do="save" data-section="' + esc(name) + '" data-act data-method="settings.save">Save ' +
-      esc((TITLES[name] || name).toLowerCase()) + "</button>" + tools + "</div></section>";
+      '<div class="c-actions"><button type="button" class="c-btn" data-do="save" data-section="' + esc(name) + '" data-act data-method="settings.save">' +
+      esc(SAVE_WORDS[name] || "Save " + (TITLES[name] || name).toLowerCase()) + "</button>" + tools + "</div></section>";
+  }
+
+  /* WhatsApp on this computer: whether it sends by itself is shown, never
+     changed here — "Send automatically" can get the company's number
+     restricted or banned, so it is switched at the DCR server computer. */
+  function waModeHtml(ctx, d) {
+    var ro = d.readonly || {};
+    var label = text(ro.wadesktop_mode);
+    if (!label) return "";
+    var auto = /^Send automatically/.test(label);
+    return '<p class="cs-wa-mode" id="cs-wa-mode"><span class="c-label">How messages go</span>' + ctx.ui.chip(label, auto ? "warn" : "good") +
+      '<span class="c-help">Changed only at the DCR server computer: sending automatically can get the company\'s number restricted or banned by WhatsApp. ' +
+      "Messages that wait for someone to press Send are on the Dashboard.</span></p>";
   }
 
   function draw(el, ctx, d) {
@@ -264,6 +285,7 @@
       if (what === "save") save(ctx, t.getAttribute("data-section"), t);
       else if (what === "test") test(ctx, t);
       else if (what === "claude") testClaude(ctx, t);
+      else if (what === "watest") testWa(ctx, t);
       else if (what === "ccadd" || what === "ccdel") editCc(t, what);
     });
   }
@@ -368,6 +390,22 @@
       return ctx.rpc("settings.test_claude", {}, { quiet: true }).then(function (r) {
         r = r || {};
         say(name, (r.ok ? "OK — " : "PROBLEM — ") + text(r.words), r.ok ? "good" : "bad");
+      }, function (e) { say(name, e.message, "bad"); });
+    }, "Testing…");
+  }
+
+  /* The read-only questions the server's own Test asks Windows (installed,
+     running, its window found; the screen unlocked when it sends by itself).
+     Nothing is opened, pressed or sent. One line per check. */
+  function testWa(ctx, btn) {
+    var name = sectionOf(btn);
+    say(name, "", "");
+    return ctx.press(btn, function () {
+      return ctx.rpc("wadesktop.test", {}, { quiet: true }).then(function (r) {
+        r = r || {};
+        var lines = (r.lines || []).map(function (x) { return (x && x.ok ? "✓ " : "✗ ") + text(x && x.text); });
+        say(name, (r.ok ? "OK — every check passed" : "PROBLEM — something still needs doing") + (lines.length ? "\n" + lines.join("\n") : ""),
+          r.ok ? "good" : "bad");
       }, function (e) { say(name, e.message, "bad"); });
     }, "Testing…");
   }

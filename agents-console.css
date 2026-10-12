@@ -260,6 +260,9 @@ html.c-framed .topbar, html.c-framed .c-app, html.c-framed #cPrint, html.c-frame
 .cd-need.bad .cd-need-t{color:var(--bad); font-weight:600;}
 .cd-need-t{display:block; overflow-wrap:anywhere;}
 .cd-fr{margin-top:6px;}
+.cd-wa-chips{display:flex; flex-wrap:wrap; gap:4px;}
+.cd-wa-line{margin:0 0 8px; font-size:14px; font-weight:600; color:var(--warn); overflow-wrap:anywhere;}
+.cd-wa-text{white-space:pre-line; overflow-wrap:anywhere;}
 
 /* ── Agents (console-agents.js) ───────────────────────────────────────── */
 .c-app{ --grp-type:#b02a2a; --grp-person:#2d7a3e; --agent-name:#1f5fa8; }
@@ -341,8 +344,12 @@ html.c-framed .topbar, html.c-framed .c-app, html.c-framed #cPrint, html.c-frame
 .cs-fields input.cs-time{max-width:10em;}
 .cs-cc{display:grid; grid-template-columns:1fr 1.3fr auto; gap:6px; margin:0 0 6px;}
 @media (max-width:480px){ .cs-cc{grid-template-columns:1fr; padding-bottom:6px; border-bottom:1px solid var(--border);} }
-.cs-msg{margin:0 0 8px; font-size:14px; font-weight:600; overflow-wrap:anywhere;}
+.cs-msg{margin:0 0 8px; font-size:14px; font-weight:600; overflow-wrap:anywhere; white-space:pre-line;}
 .cs-msg:empty{display:none;}
 .cs-msg.good{color:var(--good);} .cs-msg.bad{color:var(--bad);}
 .cs-claude{margin:0 0 10px;}
+.cs-wa-mode{display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; margin:0 0 12px;}
+.cs-wa-mode .c-label{margin:0;}
+.cs-wa-mode .c-chip{white-space:normal; line-height:1.4; padding:4px 10px;}
+.cs-wa-mode .c-help{flex-basis:100%; margin:0;}
 .cs-claude .c-chip{white-space:normal; line-height:1.4; padding:4px 10px;}
