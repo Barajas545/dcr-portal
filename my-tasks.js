@@ -170,7 +170,19 @@
     var label = n === 0 ? "Shoot: Today" : past ? "Shoot was " + dayText(d) : "Shoot: " + dayText(d);
     return s + '<span class="mt-chip shoot' + (n === 0 ? " today" : past ? " late" : "") + '">' + esc(label) + "</span>";
   }
-  function chips(t) { return t.photo ? '<span class="mt-chips">' + photoChips(t) + chip(t) + "</span>" : chip(t); }
+  /* A Recurring Tasks agent task (the server marks it with `recurring:
+     {agentId, date, every}`): a badge saying how often it comes back,
+     "↻ Weekly on Mondays", before the priority; "↻ Recurring" when the
+     footer that says so was lost in Access. */
+  function recurChip(t) {
+    if (!t.recurring) return "";
+    return '<span class="mt-chip recur">↻ ' + esc(String(t.recurring.every || "") || "Recurring") + "</span>";
+  }
+  function chips(t) {
+    if (t.photo) return '<span class="mt-chips">' + photoChips(t) + chip(t) + "</span>";
+    if (t.recurring) return '<span class="mt-chips">' + recurChip(t) + chip(t) + "</span>";
+    return chip(t);
+  }
   /* Access descriptions can carry <br>, stray tags and entities (a rich-text
      rewrite stores "·" as &middot; and "&" as &amp;); shown as plain text
      with the line breaks kept. The entities are exactly the ones the
@@ -194,6 +206,15 @@
      Access ends with </div> or </p>, so those end a line first); every word
      goes through esc(). Answers the markup and the shot list, in order, for
      the checkboxes' data-shot index. */
+  /* A recurring task's description without its footer ("Recurring: <agent>
+     · <day> · …" is the agent's bookkeeping, like a shoot's), read the way
+     a brief is: a rich-text line from Access ends with </div> or </p>. */
+  var RECUR_FOOT = /^Recurring: [A-Za-z0-9_-]{1,40} · \d{4}-\d{2}-\d{2}/;
+  function recurDesc(t) {
+    return plain(String(t.TaskDescription || "").replace(/<\/(?:div|p)>/gi, "\n")).split(/\r?\n/)
+      .filter(function (l) { return !RECUR_FOOT.test(l.trim()); }).join("\n").trim();
+  }
+
   var BRIEF_HEAD = /^(WHEN|WHERE|SHOT LIST|TIPS|SAMPLE SHOT|BRING|SAFETY|CAPTION IDEAS|DRONE CHECK)(?:\s*:\s*(.*)|\s*)$/;
   var BRIEF_FOOT = /^Shoot date: \d{4}-\d{2}-\d{2} · Ref: PV-/;
   function brief(t) {
@@ -395,7 +416,7 @@
     var pl = placeOf(t);
     var req = t.requested ? dayText(t.requested) : "";
     var reqAgo = t.requested ? daysAgo(t.requested) : null;
-    var desc = plain(t.TaskDescription);
+    var desc = t.recurring ? recurDesc(t) : plain(t.TaskDescription);
     var cat = [t.TaskCategory, t.TaskSubCategory].filter(Boolean).join(" / ");
     var facts =
       (req ? "<dt>Requested</dt><dd>" + esc(req + (reqAgo !== null && reqAgo >= 0 ? " (" + agoText(reqAgo) + ")" : "")) + "</dd>" : "") +
@@ -412,7 +433,7 @@
       ? '<a class="mt-photo" href="' + esc("capture.html" + (pid ? "?project=" + encodeURIComponent(pid) : "")) + '">📷 Upload photos &amp; videos</a>'
       : '<a class="mt-photo" href="capture.html">📷 Site photos</a>';
     el("mtDScroll").innerHTML =
-      '<div class="mt-dtop">' + chip(t) + photoChips(t) + "</div>" +
+      '<div class="mt-dtop">' + recurChip(t) + chip(t) + photoChips(t) + "</div>" +
       '<h2 class="mt-dtitle" id="mtDTitle" tabindex="-1">' + esc(nameOf(t)) + "</h2>" +
       ((pl.project || pl.addr) ? '<div class="mt-dplace">' + esc(pl.project) + (pl.project && pl.addr ? " · " : "") + dirLink(pl) + "</div>" : "") +
       '<div class="mt-dwhen' + (t.needsUpdate ? " warn" : "") + '" id="mtDWhen">' + esc(whenText(t)) + "</div>" +
